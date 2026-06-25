@@ -1,0 +1,43 @@
+# Build output
+bin/
+obj/
+artifacts/
+
+# .NET user files
+*.user
+*.suo
+*.userosscache
+*.sln.docstates
+
+# IDE folders
+.vs/
+.vscode/
+.idea/
+
+# Test and coverage output
+TestResults/
+coverage/
+coverage.*
+*.coverage
+*.coveragexml
+
+# NuGet
+*.nupkg
+packages/
+
+# Node and frontend tooling
+node_modules/
+dist/
+build/
+.vite/
+.next/
+.cache/
+
+# Environment files
+.env
+.env.*
+!.env.example
+
+# OS files
+Thumbs.db
+.DS_Store
