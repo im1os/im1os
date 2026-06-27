@@ -17,5 +17,9 @@ public sealed class OrganizationMembership : AuditableEntity, IOrganizationOwned
 
     public string? EmployeeNumber { get; set; }
 
+    public Guid? PrimaryLocationId { get; set; }
+
+    public string Status { get; set; } = "Active";
+
     public bool IsActive { get; set; } = true;
 }

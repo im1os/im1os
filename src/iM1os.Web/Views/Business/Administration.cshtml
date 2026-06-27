@@ -1,0 +1,177 @@
+@model iM1os.Application.BusinessAdministration.BusinessAdministrationWorkspace
+
+@{
+    ViewData["Title"] = "Business Administration";
+}
+
+<section class="dashboard-header">
+    <div>
+        <p class="eyebrow">Business administration</p>
+        <h1>@Model.Profile.BusinessName</h1>
+        <p class="subtle">@(Model.IsReadyForOperations ? "Your business is now ready to begin operations." : "Configure identity, locations, employees, permissions, labor, taxes, notifications, and integration placeholders.")</p>
+    </div>
+    <a class="primary-action" asp-controller="Business" asp-action="Dashboard">Dashboard</a>
+</section>
+
+<section class="metric-grid">
+    <article><span>Setup</span><strong>@Model.SetupProgress%</strong><p>Administration readiness.</p></article>
+    <article><span>Locations</span><strong>@Model.Locations.Count</strong><p>Configured shops.</p></article>
+    <article><span>Employees</span><strong>@Model.Employees.Count</strong><p>Tenant users.</p></article>
+    <article><span>Status</span><strong>@(Model.IsReadyForOperations ? "Ready" : "Setup")</strong><p>Operational readiness.</p></article>
+</section>
+
+<section class="split-grid admin-grid">
+    <article id="profile" class="page-band">
+        <h2>Business Profile</h2>
+        <form asp-action="Profile" method="post" class="form-grid">
+            <label>Business Name <input name="BusinessName" value="@Model.Profile.BusinessName" /></label>
+            <label>Legal Name <input name="LegalName" value="@Model.Profile.LegalName" /></label>
+            <label>DBA <input name="Dba" value="@Model.Profile.Dba" /></label>
+            <label>Logo URL <input name="LogoUrl" value="@Model.Profile.LogoUrl" /></label>
+            <label>Website <input name="Website" value="@Model.Profile.Website" /></label>
+            <label>Phone <input name="Phone" value="@Model.Profile.Phone" /></label>
+            <label>Email <input name="Email" value="@Model.Profile.Email" /></label>
+            <label>Tax ID <input name="TaxId" value="@Model.Profile.TaxId" /></label>
+            <label>Address <input name="AddressLine1" value="@Model.Profile.AddressLine1" /></label>
+            <label>Address 2 <input name="AddressLine2" value="@Model.Profile.AddressLine2" /></label>
+            <label>City <input name="City" value="@Model.Profile.City" /></label>
+            <label>State/Region <input name="Region" value="@Model.Profile.Region" /></label>
+            <label>Postal Code <input name="PostalCode" value="@Model.Profile.PostalCode" /></label>
+            <label>Country <input name="Country" value="@Model.Profile.Country" /></label>
+            <label>Time Zone <input name="TimeZone" value="@Model.Profile.TimeZone" /></label>
+            <label>Language <input name="Language" value="@Model.Profile.Language" /></label>
+            <label>Currency <input name="Currency" value="@Model.Profile.Currency" /></label>
+            <label>Date Format <input name="DateFormat" value="@Model.Profile.DateFormat" /></label>
+            <label>Time Format <input name="TimeFormat" value="@Model.Profile.TimeFormat" /></label>
+            <button class="primary-action" type="submit">Save Profile</button>
+        </form>
+    </article>
+
+    <article id="locations" class="page-band">
+        <h2>Locations</h2>
+        <div class="compact-list">
+            @foreach (var location in Model.Locations)
+            {
+                <p><strong>@location.Name</strong> @location.Code - @location.Status - @location.City, @location.Region</p>
+            }
+        </div>
+        <form asp-action="Location" method="post" class="form-grid single">
+            <label>Name <input name="Name" /></label>
+            <label>Code <input name="Code" /></label>
+            <label>Phone <input name="Phone" /></label>
+            <label>Address <input name="AddressLine1" /></label>
+            <label>Address 2 <input name="AddressLine2" /></label>
+            <label>City <input name="City" /></label>
+            <label>State/Region <input name="Region" /></label>
+            <label>Postal Code <input name="PostalCode" /></label>
+            <label>Time Zone <input name="TimeZone" value="@Model.Profile.TimeZone" /></label>
+            <label>Default Labor Rate <input name="DefaultLaborRate" type="number" step="0.01" value="@Model.Configuration.DefaultLaborRate" /></label>
+            <label>Default Tax Region <input name="DefaultTaxRegion" /></label>
+            <label>Status <input name="Status" value="Active" /></label>
+            <button class="primary-action" type="submit">Add Location</button>
+        </form>
+    </article>
+
+    <article id="employees" class="page-band">
+        <h2>Employees</h2>
+        <div class="compact-list">
+            @foreach (var employee in Model.Employees)
+            {
+                <p><strong>@employee.Name</strong> @employee.Role - @employee.Status - @employee.Email</p>
+            }
+        </div>
+        <form asp-action="Employee" method="post" class="form-grid single">
+            <label>Name <input name="Name" /></label>
+            <label>Email <input name="Email" type="email" /></label>
+            <label>Phone <input name="Phone" /></label>
+            <label>Role
+                <select name="RoleName">
+                    <option>General Manager</option>
+                    <option>Service Manager</option>
+                    <option>Technician</option>
+                    <option>Parts Manager</option>
+                    <option>Accounting</option>
+                    <option>Administration</option>
+                </select>
+            </label>
+            <label>Primary Location
+                <select name="PrimaryLocationId">
+                    <option value="">Unassigned</option>
+                    @foreach (var location in Model.Locations)
+                    {
+                        <option value="@location.Id">@location.Name</option>
+                    }
+                </select>
+            </label>
+            <button class="primary-action" type="submit">Invite Employee</button>
+        </form>
+    </article>
+
+    <article id="roles" class="page-band">
+        <h2>Roles And Permissions</h2>
+        <div class="compact-list">
+            @foreach (var role in Model.Roles)
+            {
+                <p><strong>@role.Name</strong> @(role.IsSystemRole ? "System" : "Custom-ready") - @(role.Permissions.Count == 0 ? "Permissions pending" : string.Join(", ", role.Permissions))</p>
+            }
+        </div>
+    </article>
+
+    <article id="labor" class="page-band">
+        <h2>Labor Configuration</h2>
+        <form asp-action="Labor" method="post" class="form-grid">
+            <label>Default Labor Rate <input name="DefaultLaborRate" type="number" step="0.01" value="@Model.Configuration.DefaultLaborRate" /></label>
+            <label>Diagnostic Rate <input name="DiagnosticRate" type="number" step="0.01" value="@Model.Configuration.DiagnosticRate" /></label>
+            <label>Emergency Rate <input name="EmergencyRate" type="number" step="0.01" value="@Model.Configuration.EmergencyRate" /></label>
+            <label>Weekend Rate <input name="WeekendRate" type="number" step="0.01" value="@Model.Configuration.WeekendRate" /></label>
+            <label>Environmental Fee <input name="EnvironmentalFee" type="number" step="0.01" value="@Model.Configuration.EnvironmentalFee" /></label>
+            <label>Shop Supplies % <input name="ShopSuppliesPercent" type="number" step="0.01" value="@Model.Configuration.ShopSuppliesPercent" /></label>
+            <button class="primary-action" type="submit">Save Labor</button>
+        </form>
+    </article>
+
+    <article id="taxes" class="page-band">
+        <h2>Taxes</h2>
+        <form asp-action="Taxes" method="post" class="form-grid single">
+            <label>Default Tax Rate <input name="DefaultTaxRate" type="number" step="0.0001" value="@Model.Configuration.DefaultTaxRate" /></label>
+            <label>Regional Overrides JSON <input name="RegionalOverridesJson" value="@Model.Configuration.RegionalTaxOverridesJson" /></label>
+            <button class="primary-action" type="submit">Save Taxes</button>
+        </form>
+    </article>
+
+    <article id="notifications" class="page-band">
+        <h2>Notification Preferences</h2>
+        <form asp-action="Notifications" method="post" class="form-grid single">
+            <label class="checkbox"><input name="EmailEnabled" type="checkbox" value="true" checked /> Email</label>
+            <label class="checkbox"><input name="SmsEnabled" type="checkbox" value="true" /> SMS</label>
+            <label class="checkbox"><input name="PushFutureEnabled" type="checkbox" value="true" /> Push Future</label>
+            <label class="checkbox"><input name="CustomerNotificationsEnabled" type="checkbox" value="true" checked /> Customer Notifications</label>
+            <label class="checkbox"><input name="TechnicianNotificationsEnabled" type="checkbox" value="true" checked /> Technician Notifications</label>
+            <button class="primary-action" type="submit">Save Notifications</button>
+        </form>
+    </article>
+
+    <article id="connectors" class="page-band">
+        <h2>Supplier And Service Placeholders</h2>
+        <div class="connector-grid">
+            @foreach (var connector in Model.Connectors)
+            {
+                <div>
+                    <strong>@connector.Name</strong>
+                    <span>@connector.Category</span>
+                    <em>@connector.Status</em>
+                </div>
+            }
+        </div>
+    </article>
+
+    <article id="activity" class="page-band">
+        <h2>Audit Activity</h2>
+        <ul class="event-list">
+            @foreach (var item in Model.RecentActivity)
+            {
+                <li>@item</li>
+            }
+        </ul>
+    </article>
+</section>

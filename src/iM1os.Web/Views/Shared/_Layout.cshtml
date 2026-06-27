@@ -15,15 +15,28 @@
             <span>IM1 Platform</span>
         </a>
         <nav>
-            <a asp-controller="Platform" asp-action="Dashboard">Dashboard</a>
-            <a asp-controller="Platform" asp-action="Tenants">Tenants</a>
-            <a asp-controller="Platform" asp-action="CreateTenant">Create Instance</a>
-            <a href="/health">Health</a>
-            @if (User.Identity?.IsAuthenticated == true)
+            @if (User.FindFirst("auth_context")?.Value == "tenant")
             {
-                <form asp-controller="Platform" asp-action="Logout" method="post">
+                <a asp-controller="Business" asp-action="Dashboard">Business Dashboard</a>
+                <a asp-controller="Business" asp-action="Administration">Business Admin</a>
+                <a asp-controller="Profile" asp-action="Index">Profile</a>
+                <a href="/health">Health</a>
+                <form asp-controller="Account" asp-action="Logout" method="post">
                     <button class="link-button" type="submit">Logout</button>
                 </form>
+            }
+            else
+            {
+                <a asp-controller="Platform" asp-action="Dashboard">Dashboard</a>
+                <a asp-controller="Platform" asp-action="Tenants">Tenants</a>
+                <a asp-controller="Platform" asp-action="CreateTenant">Create Instance</a>
+                <a href="/health">Health</a>
+                @if (User.Identity?.IsAuthenticated == true)
+                {
+                    <form asp-controller="Platform" asp-action="Logout" method="post">
+                        <button class="link-button" type="submit">Logout</button>
+                    </form>
+                }
             }
         </nav>
     </header>

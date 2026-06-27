@@ -12,11 +12,35 @@ public sealed class ApplicationUser : AuditableEntity
 
     public required string DisplayName { get; set; }
 
+    public string? Phone { get; set; }
+
     public required string PasswordHash { get; set; }
 
     public bool IsActive { get; set; } = true;
 
+    public bool MustChangePassword { get; set; }
+
+    public DateTimeOffset? EmailVerifiedAtUtc { get; set; }
+
+    public int AccessFailedCount { get; set; }
+
+    public DateTimeOffset? LockoutEndAtUtc { get; set; }
+
     public DateTimeOffset? LastLoginAtUtc { get; set; }
+
+    public bool MfaEnabled { get; set; }
+
+    public string? MfaMethod { get; set; }
+
+    public string? MfaSecretProtected { get; set; }
+
+    public string? AvatarUrl { get; set; }
+
+    public string? PinHash { get; set; }
+
+    public string Language { get; set; } = "en-US";
+
+    public string TimeZone { get; set; } = "America/Chicago";
 
     public ICollection<OrganizationMembership> OrganizationMemberships { get; } = new List<OrganizationMembership>();
 

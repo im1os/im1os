@@ -73,9 +73,13 @@ public sealed class TenantProvisioningService(
             Email = Required(request.OwnerEmail, "Owner email"),
             NormalizedEmail = normalizedOwnerEmail,
             DisplayName = Required(request.OwnerName, "Owner name"),
-            PasswordHash = string.Empty
+            PasswordHash = string.Empty,
+            IsActive = false,
+            MustChangePassword = true,
+            Language = Required(request.DefaultLanguage, "Default language"),
+            TimeZone = Required(request.TimeZone, "Time zone")
         };
-        owner.PasswordHash = passwordHasher.HashPassword(owner, "ChangeMe!12345");
+        owner.PasswordHash = passwordHasher.HashPassword(owner, TenantIdentityService.NewToken());
         owner.UserRoles.Add(new UserRole { UserId = owner.Id, RoleId = ownerRole.Id });
         owner.OrganizationMemberships.Add(new OrganizationMembership
         {
@@ -120,6 +124,16 @@ public sealed class TenantProvisioningService(
         dbContext.PlatformTenants.Add(platformTenant);
         dbContext.PlatformSubscriptions.Add(subscription);
 
+        var invitationToken = TenantIdentityService.NewToken();
+        dbContext.UserInvitations.Add(new UserInvitation
+        {
+            OrganizationId = organization.Id,
+            UserId = owner.Id,
+            Email = owner.Email,
+            TokenHash = TenantIdentityService.HashToken(invitationToken),
+            ExpiresAtUtc = now.AddDays(7)
+        });
+
         dbContext.ApplicationSettings.AddRange(
             new ApplicationSetting { OrganizationId = organization.Id, Key = "tenant.language", Value = Required(request.DefaultLanguage, "Default language") },
             new ApplicationSetting { OrganizationId = organization.Id, Key = "tenant.currency", Value = Required(request.DefaultCurrency, "Default currency") },
@@ -148,6 +162,7 @@ public sealed class TenantProvisioningService(
             subscription.IsTrial,
             subscription.TrialExpiresAtUtc
         });
+        AddPlatformEvent(organization.Id, platformUserId, "OwnerInvited", now, correlationId, new { owner.Email, owner.DisplayName });
         AddPlatformEvent(organization.Id, platformUserId, "OwnerCreated", now, correlationId, new { owner.Email, owner.DisplayName });
         AddPlatformEvent(organization.Id, platformUserId, "TenantProvisioned", now, correlationId, new { organization.Name, organization.Slug });
         AddAudit(platformUserId, organization.Id, "TenantProvisioned", now, null, new
@@ -164,7 +179,7 @@ public sealed class TenantProvisioningService(
             RecipientEmail = owner.Email,
             RecipientName = owner.DisplayName,
             Subject = "Welcome to IM1OS",
-            Body = $"Welcome {owner.DisplayName}. Your IM1OS instance for {organization.Name} is ready. Temporary password: ChangeMe!12345",
+            Body = $"Welcome {owner.DisplayName}. Your IM1OS instance for {organization.Name} is ready. Activate your owner account: /Account/Activate?token={Uri.EscapeDataString(invitationToken)}",
             CreatedAtUtc = now
         };
 

@@ -1,0 +1,22 @@
+@model iM1os.Application.TenantIdentity.TenantLoginRequest
+
+@{
+    ViewData["Title"] = "IM1OS Login";
+}
+
+<section class="auth-panel tenant-auth">
+    <img class="auth-logo" src="~/images/im1-logo.png" asp-append-version="true" alt="iM1os" />
+    <p class="eyebrow">Tenant access</p>
+    <h1>Sign in to IM1OS</h1>
+    <p class="subtle">Use your business account to continue.</p>
+
+    <form asp-action="Login" method="post" class="form-grid single">
+        <input type="hidden" name="returnUrl" value="@ViewData["ReturnUrl"]" />
+        <div asp-validation-summary="ModelOnly" class="validation"></div>
+        <label>Email <input asp-for="Email" autocomplete="username" /></label>
+        <label>Password <input asp-for="Password" type="password" autocomplete="current-password" /></label>
+        <label class="checkbox"><input asp-for="RememberMe" /> Remember Me</label>
+        <button class="primary-action" type="submit">Sign In</button>
+        <a class="secondary-action" asp-action="ForgotPassword">Reset Password</a>
+    </form>
+</section>

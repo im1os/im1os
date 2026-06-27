@@ -1,0 +1,43 @@
+@model iM1os.Application.TenantIdentity.TenantProfile
+
+@{
+    ViewData["Title"] = "Profile";
+}
+
+<section class="dashboard-header">
+    <div>
+        <p class="eyebrow">User profile</p>
+        <h1>@Model.Name</h1>
+        <p class="subtle">@Model.Email</p>
+    </div>
+    <a class="primary-action" asp-controller="Business" asp-action="Dashboard">Business Dashboard</a>
+</section>
+
+<section class="split-grid">
+    <article class="page-band">
+        <h2>Profile</h2>
+        <form asp-action="Index" method="post" class="form-grid single">
+            <label>Name <input name="Name" value="@Model.Name" /></label>
+            <label>Phone <input name="Phone" value="@Model.Phone" /></label>
+            <label>PIN <input disabled value="Future" /></label>
+            <label>Avatar <input disabled value="Future" /></label>
+            <label>Language <input name="Language" value="@Model.Language" /></label>
+            <label>Time Zone <input name="TimeZone" value="@Model.TimeZone" /></label>
+            <button class="primary-action" type="submit">Save Profile</button>
+        </form>
+    </article>
+
+    <article class="page-band">
+        <h2>Password Change</h2>
+        @if (TempData["PasswordError"] is not null)
+        {
+            <p class="validation">@TempData["PasswordError"]</p>
+        }
+        <form asp-action="ChangePassword" method="post" class="form-grid single">
+            <label>Current Password <input name="CurrentPassword" type="password" autocomplete="current-password" /></label>
+            <label>New Password <input name="NewPassword" type="password" autocomplete="new-password" /></label>
+            <label>Confirm Password <input name="ConfirmPassword" type="password" autocomplete="new-password" /></label>
+            <button class="primary-action" type="submit">Change Password</button>
+        </form>
+    </article>
+</section>

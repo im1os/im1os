@@ -1,0 +1,20 @@
+@model iM1os.Application.TenantIdentity.ActivateOwnerRequest
+
+@{
+    ViewData["Title"] = "Activate Owner Account";
+}
+
+<section class="auth-panel tenant-auth">
+    <img class="auth-logo" src="~/images/im1-logo.png" asp-append-version="true" alt="iM1os" />
+    <p class="eyebrow">Owner activation</p>
+    <h1>Set Your Password</h1>
+    <p class="subtle">Create your first IM1OS password to activate the owner account.</p>
+
+    <form asp-action="Activate" method="post" class="form-grid single">
+        <input asp-for="Token" type="hidden" />
+        <div asp-validation-summary="ModelOnly" class="validation"></div>
+        <label>Password <input asp-for="Password" type="password" autocomplete="new-password" /></label>
+        <label>Confirm Password <input asp-for="ConfirmPassword" type="password" autocomplete="new-password" /></label>
+        <button class="primary-action" type="submit">Activate Account</button>
+    </form>
+</section>

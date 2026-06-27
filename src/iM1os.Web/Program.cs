@@ -1,7 +1,7 @@
 using iM1os.Application.Common;
 using iM1os.Infrastructure;
 using iM1os.Infrastructure.Persistence;
-using iM1os.Infrastructure.Services;
+using iM1os.Web.Security;
 using Microsoft.AspNetCore.Authentication.Cookies;
 using Serilog;
 
@@ -17,13 +17,24 @@ builder.Host.UseSerilog((context, logger) =>
 builder.Services.AddControllersWithViews();
 builder.Services.AddApplication();
 builder.Services.AddInfrastructure(builder.Configuration);
-builder.Services.AddScoped<ICurrentUser, NoCurrentUser>();
+builder.Services.AddHttpContextAccessor();
+builder.Services.AddScoped<ICurrentUser, HttpContextCurrentUser>();
 builder.Services
     .AddAuthentication(CookieAuthenticationDefaults.AuthenticationScheme)
     .AddCookie(options =>
     {
-        options.LoginPath = "/Platform/Login";
+        options.LoginPath = "/Account/Login";
         options.AccessDeniedPath = "/Platform/Login";
+        options.ExpireTimeSpan = TimeSpan.FromHours(8);
+        options.SlidingExpiration = true;
+        options.Events.OnRedirectToLogin = context =>
+        {
+            var loginPath = context.Request.Path.StartsWithSegments("/Platform")
+                ? "/Platform/Login"
+                : "/Account/Login";
+            context.Response.Redirect($"{loginPath}?ReturnUrl={Uri.EscapeDataString(context.Request.PathBase + context.Request.Path + context.Request.QueryString)}");
+            return Task.CompletedTask;
+        };
     });
 builder.Services.AddHealthChecks().AddDbContextCheck<ApplicationDbContext>("postgresql");
 

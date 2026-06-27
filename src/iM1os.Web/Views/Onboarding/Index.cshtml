@@ -1,0 +1,66 @@
+@model iM1os.Application.TenantIdentity.BusinessOnboardingRequest
+
+@{
+    ViewData["Title"] = "Business Setup";
+}
+
+<section class="dashboard-header">
+    <div>
+        <p class="eyebrow">First-time setup</p>
+        <h1>Welcome to IM1OS</h1>
+        <p class="subtle">Complete the initial setup before opening the business dashboard.</p>
+    </div>
+</section>
+
+<form asp-action="Index" method="post" class="wizard onboarding-wizard">
+    <fieldset>
+        <legend>1. Welcome to IM1OS</legend>
+        <p class="subtle">This setup establishes business identity, hours, labor rate, and launch readiness.</p>
+    </fieldset>
+
+    <fieldset>
+        <legend>2. Confirm Business Information</legend>
+        <label>Business Name <input asp-for="BusinessName" /></label>
+        <label>Business Email <input asp-for="BusinessEmail" /></label>
+        <label>Phone <input asp-for="Phone" /></label>
+        <label>Time Zone <input asp-for="TimeZone" /></label>
+    </fieldset>
+
+    <fieldset>
+        <legend>3. Configure Business Hours</legend>
+        <label>Monday <input asp-for="MondayHours" /></label>
+        <label>Tuesday <input asp-for="TuesdayHours" /></label>
+        <label>Wednesday <input asp-for="WednesdayHours" /></label>
+        <label>Thursday <input asp-for="ThursdayHours" /></label>
+        <label>Friday <input asp-for="FridayHours" /></label>
+        <label>Saturday <input asp-for="SaturdayHours" /></label>
+        <label>Sunday <input asp-for="SundayHours" /></label>
+    </fieldset>
+
+    <fieldset>
+        <legend>4. Configure Labor Rate</legend>
+        <label>Default Labor Rate <input asp-for="LaborRate" type="number" min="0" step="0.01" /></label>
+    </fieldset>
+
+    <fieldset>
+        <legend>5. Create Additional Employees</legend>
+        <label class="checkbox"><input asp-for="InviteEmployeesLater" /> Skip for now</label>
+    </fieldset>
+
+    <fieldset>
+        <legend>6. Connect Suppliers</legend>
+        <label class="checkbox"><input asp-for="ConnectSuppliersLater" /> Skip for now</label>
+    </fieldset>
+
+    <fieldset>
+        <legend>7. Connect Merchant Services</legend>
+        <label class="checkbox"><input asp-for="ConnectMerchantServicesLater" /> Skip for now</label>
+    </fieldset>
+
+    <fieldset>
+        <legend>8. Complete</legend>
+        <p class="subtle">Finish setup and open the IM1OS Business Dashboard.</p>
+    </fieldset>
+
+    <button class="primary-action" type="submit">Complete Setup</button>
+</form>

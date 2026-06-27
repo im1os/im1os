@@ -19,6 +19,10 @@ public interface IApplicationDbContext
 
     DbSet<ApplicationUser> Users { get; }
 
+    DbSet<UserInvitation> UserInvitations { get; }
+
+    DbSet<PasswordResetRequest> PasswordResetRequests { get; }
+
     DbSet<OrganizationMembership> OrganizationMemberships { get; }
 
     DbSet<Role> Roles { get; }
@@ -38,6 +42,12 @@ public interface IApplicationDbContext
     DbSet<DomainEventRecord> DomainEvents { get; }
 
     DbSet<TimelineEvent> TimelineEvents { get; }
+
+    DbSet<TenantIdentityEvent> TenantIdentityEvents { get; }
+
+    DbSet<BusinessOnboarding> BusinessOnboardings { get; }
+
+    DbSet<BusinessConfiguration> BusinessConfigurations { get; }
 
     DbSet<Customer> Customers { get; }
 

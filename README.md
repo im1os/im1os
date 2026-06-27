@@ -33,6 +33,10 @@ The Parts Engine product specification lives at [docs/specs/PARTS_ENGINE_PRODUCT
 
 The IM1 Platform control plane scope lives at [docs/specs/IM1_PLATFORM_CONTROL_PLANE_SPEC.md](docs/specs/IM1_PLATFORM_CONTROL_PLANE_SPEC.md).
 
+The Tenant Identity Experience scope lives at [docs/specs/TENANT_IDENTITY_EXPERIENCE_SPEC.md](docs/specs/TENANT_IDENTITY_EXPERIENCE_SPEC.md).
+
+The Business Administration Foundation scope lives at [docs/specs/BUSINESS_ADMINISTRATION_FOUNDATION_SPEC.md](docs/specs/BUSINESS_ADMINISTRATION_FOUNDATION_SPEC.md).
+
 The Intelligence Layer and data foundation are formal product scope:
 
 - [docs/specs/SERVICE_INTELLIGENCE_ENGINE_SPEC.md](docs/specs/SERVICE_INTELLIGENCE_ENGINE_SPEC.md)

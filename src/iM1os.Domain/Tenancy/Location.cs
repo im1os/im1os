@@ -22,5 +22,15 @@ public sealed class Location : AuditableEntity, IOrganizationOwned
 
     public string? PostalCode { get; set; }
 
+    public string TimeZone { get; set; } = "America/Chicago";
+
+    public string? HoursJson { get; set; }
+
+    public decimal DefaultLaborRate { get; set; }
+
+    public string? DefaultTaxRegion { get; set; }
+
+    public string Status { get; set; } = "Active";
+
     public bool IsActive { get; set; } = true;
 }

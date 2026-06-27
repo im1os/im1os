@@ -26,6 +26,10 @@ public sealed class ApplicationDbContext(
 
     public DbSet<ApplicationUser> Users => Set<ApplicationUser>();
 
+    public DbSet<UserInvitation> UserInvitations => Set<UserInvitation>();
+
+    public DbSet<PasswordResetRequest> PasswordResetRequests => Set<PasswordResetRequest>();
+
     public DbSet<OrganizationMembership> OrganizationMemberships => Set<OrganizationMembership>();
 
     public DbSet<Role> Roles => Set<Role>();
@@ -45,6 +49,12 @@ public sealed class ApplicationDbContext(
     public DbSet<DomainEventRecord> DomainEvents => Set<DomainEventRecord>();
 
     public DbSet<TimelineEvent> TimelineEvents => Set<TimelineEvent>();
+
+    public DbSet<TenantIdentityEvent> TenantIdentityEvents => Set<TenantIdentityEvent>();
+
+    public DbSet<BusinessOnboarding> BusinessOnboardings => Set<BusinessOnboarding>();
+
+    public DbSet<BusinessConfiguration> BusinessConfigurations => Set<BusinessConfiguration>();
 
     public DbSet<Customer> Customers => Set<Customer>();
 
@@ -90,6 +100,24 @@ public sealed class ApplicationDbContext(
             entity.HasIndex(x => x.Slug).IsUnique();
             entity.Property(x => x.Name).HasMaxLength(200).IsRequired();
             entity.Property(x => x.Slug).HasMaxLength(120).IsRequired();
+            entity.Property(x => x.LogoUrl).HasMaxLength(1000);
+            entity.Property(x => x.LegalName).HasMaxLength(200);
+            entity.Property(x => x.Dba).HasMaxLength(200);
+            entity.Property(x => x.Website).HasMaxLength(300);
+            entity.Property(x => x.Phone).HasMaxLength(40);
+            entity.Property(x => x.Email).HasMaxLength(320);
+            entity.Property(x => x.TaxId).HasMaxLength(80);
+            entity.Property(x => x.AddressLine1).HasMaxLength(200);
+            entity.Property(x => x.AddressLine2).HasMaxLength(200);
+            entity.Property(x => x.City).HasMaxLength(120);
+            entity.Property(x => x.Region).HasMaxLength(80);
+            entity.Property(x => x.PostalCode).HasMaxLength(20);
+            entity.Property(x => x.Country).HasMaxLength(80);
+            entity.Property(x => x.TimeZone).HasMaxLength(120).IsRequired();
+            entity.Property(x => x.Language).HasMaxLength(20).IsRequired();
+            entity.Property(x => x.Currency).HasMaxLength(12).IsRequired();
+            entity.Property(x => x.DateFormat).HasMaxLength(40).IsRequired();
+            entity.Property(x => x.TimeFormat).HasMaxLength(40).IsRequired();
         });
 
         modelBuilder.Entity<Location>(entity =>
@@ -104,6 +132,11 @@ public sealed class ApplicationDbContext(
             entity.Property(x => x.City).HasMaxLength(120);
             entity.Property(x => x.Region).HasMaxLength(80);
             entity.Property(x => x.PostalCode).HasMaxLength(20);
+            entity.Property(x => x.TimeZone).HasMaxLength(120).IsRequired();
+            entity.Property(x => x.HoursJson).HasColumnType("jsonb");
+            entity.Property(x => x.DefaultLaborRate).HasPrecision(12, 2);
+            entity.Property(x => x.DefaultTaxRegion).HasMaxLength(120);
+            entity.Property(x => x.Status).HasMaxLength(80).IsRequired();
             entity.HasQueryFilter(x => tenantProvider.CurrentOrganizationId == null || x.OrganizationId == tenantProvider.CurrentOrganizationId);
         });
 
@@ -114,7 +147,33 @@ public sealed class ApplicationDbContext(
             entity.Property(x => x.Email).HasMaxLength(320).IsRequired();
             entity.Property(x => x.NormalizedEmail).HasMaxLength(320).IsRequired();
             entity.Property(x => x.DisplayName).HasMaxLength(160).IsRequired();
+            entity.Property(x => x.Phone).HasMaxLength(40);
             entity.Property(x => x.PasswordHash).HasMaxLength(1000).IsRequired();
+            entity.Property(x => x.MfaMethod).HasMaxLength(40);
+            entity.Property(x => x.MfaSecretProtected).HasMaxLength(1000);
+            entity.Property(x => x.AvatarUrl).HasMaxLength(1000);
+            entity.Property(x => x.PinHash).HasMaxLength(1000);
+            entity.Property(x => x.Language).HasMaxLength(20).IsRequired();
+            entity.Property(x => x.TimeZone).HasMaxLength(120).IsRequired();
+            entity.HasQueryFilter(x => tenantProvider.CurrentOrganizationId == null || x.OrganizationId == tenantProvider.CurrentOrganizationId);
+        });
+
+        modelBuilder.Entity<UserInvitation>(entity =>
+        {
+            entity.ToTable("user_invitations");
+            entity.HasIndex(x => x.TokenHash).IsUnique();
+            entity.HasIndex(x => new { x.OrganizationId, x.UserId });
+            entity.Property(x => x.Email).HasMaxLength(320).IsRequired();
+            entity.Property(x => x.TokenHash).HasMaxLength(128).IsRequired();
+            entity.HasQueryFilter(x => tenantProvider.CurrentOrganizationId == null || x.OrganizationId == tenantProvider.CurrentOrganizationId);
+        });
+
+        modelBuilder.Entity<PasswordResetRequest>(entity =>
+        {
+            entity.ToTable("password_reset_requests");
+            entity.HasIndex(x => x.TokenHash).IsUnique();
+            entity.HasIndex(x => new { x.OrganizationId, x.UserId });
+            entity.Property(x => x.TokenHash).HasMaxLength(128).IsRequired();
             entity.HasQueryFilter(x => tenantProvider.CurrentOrganizationId == null || x.OrganizationId == tenantProvider.CurrentOrganizationId);
         });
 
@@ -124,6 +183,7 @@ public sealed class ApplicationDbContext(
             entity.HasIndex(x => new { x.OrganizationId, x.UserId }).IsUnique();
             entity.Property(x => x.DisplayName).HasMaxLength(160).IsRequired();
             entity.Property(x => x.EmployeeNumber).HasMaxLength(80);
+            entity.Property(x => x.Status).HasMaxLength(80).IsRequired();
             entity.HasOne(x => x.Organization).WithMany().HasForeignKey(x => x.OrganizationId);
             entity.HasOne(x => x.User).WithMany(x => x.OrganizationMemberships).HasForeignKey(x => x.UserId);
             entity.HasQueryFilter(x => tenantProvider.CurrentOrganizationId == null || x.OrganizationId == tenantProvider.CurrentOrganizationId);
@@ -199,6 +259,49 @@ public sealed class ApplicationDbContext(
             entity.Property(x => x.ActorUserId).HasMaxLength(80);
             entity.Property(x => x.Summary).HasMaxLength(500).IsRequired();
             entity.Property(x => x.PayloadJson).HasColumnType("jsonb");
+            entity.HasQueryFilter(x => tenantProvider.CurrentOrganizationId == null || x.OrganizationId == tenantProvider.CurrentOrganizationId);
+        });
+
+        modelBuilder.Entity<TenantIdentityEvent>(entity =>
+        {
+            entity.ToTable("tenant_identity_events");
+            entity.HasIndex(x => new { x.OrganizationId, x.OccurredAtUtc });
+            entity.HasIndex(x => x.EventType);
+            entity.Property(x => x.EventType).HasMaxLength(160).IsRequired();
+            entity.Property(x => x.IpAddress).HasMaxLength(80);
+            entity.Property(x => x.PayloadJson).HasColumnType("jsonb").IsRequired();
+            entity.HasQueryFilter(x => tenantProvider.CurrentOrganizationId == null || x.OrganizationId == tenantProvider.CurrentOrganizationId);
+        });
+
+        modelBuilder.Entity<BusinessOnboarding>(entity =>
+        {
+            entity.ToTable("business_onboardings");
+            entity.HasIndex(x => x.OrganizationId).IsUnique();
+            entity.Property(x => x.BusinessName).HasMaxLength(200).IsRequired();
+            entity.Property(x => x.BusinessEmail).HasMaxLength(320).IsRequired();
+            entity.Property(x => x.Phone).HasMaxLength(40).IsRequired();
+            entity.Property(x => x.TimeZone).HasMaxLength(120).IsRequired();
+            entity.Property(x => x.BusinessHoursJson).HasColumnType("jsonb").IsRequired();
+            entity.Property(x => x.LaborRate).HasPrecision(12, 2);
+            entity.HasQueryFilter(x => tenantProvider.CurrentOrganizationId == null || x.OrganizationId == tenantProvider.CurrentOrganizationId);
+        });
+
+        modelBuilder.Entity<BusinessConfiguration>(entity =>
+        {
+            entity.ToTable("business_configurations");
+            entity.HasIndex(x => x.OrganizationId).IsUnique();
+            entity.Property(x => x.DefaultLaborRate).HasPrecision(12, 2);
+            entity.Property(x => x.DiagnosticRate).HasPrecision(12, 2);
+            entity.Property(x => x.EmergencyRate).HasPrecision(12, 2);
+            entity.Property(x => x.WeekendRate).HasPrecision(12, 2);
+            entity.Property(x => x.EnvironmentalFee).HasPrecision(12, 2);
+            entity.Property(x => x.ShopSuppliesPercent).HasPrecision(8, 4);
+            entity.Property(x => x.DefaultTaxRate).HasPrecision(8, 4);
+            entity.Property(x => x.RegionalTaxOverridesJson).HasColumnType("jsonb").IsRequired();
+            entity.Property(x => x.NumberSequencesJson).HasColumnType("jsonb").IsRequired();
+            entity.Property(x => x.NotificationPreferencesJson).HasColumnType("jsonb").IsRequired();
+            entity.Property(x => x.DepartmentsJson).HasColumnType("jsonb").IsRequired();
+            entity.Property(x => x.ConnectorPlaceholdersJson).HasColumnType("jsonb").IsRequired();
             entity.HasQueryFilter(x => tenantProvider.CurrentOrganizationId == null || x.OrganizationId == tenantProvider.CurrentOrganizationId);
         });
 
