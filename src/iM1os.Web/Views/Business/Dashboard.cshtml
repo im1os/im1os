@@ -1,6 +1,6 @@
 @model iM1os.Application.TenantIdentity.BusinessDashboardSummary
 @{
-    var workspace = ViewBag.AdminWorkspace as iM1os.Application.BusinessAdministration.BusinessAdministrationWorkspace;
+    var isOwner = User.IsInRole("Owner");
 }
 
 @{
@@ -11,9 +11,12 @@
     <div>
         <p class="eyebrow">Business dashboard</p>
         <h1>@Model.BusinessName</h1>
-        <p class="subtle">@(workspace?.IsReadyForOperations == true ? "Your business is now ready to begin operations." : "Finish business administration to prepare this shop for operations.")</p>
+        <p class="subtle">@(Model.SetupProgress >= 100 ? "Your business is now ready to begin operations." : "Finish business administration to prepare this shop for operations.")</p>
     </div>
-    <a class="primary-action" asp-controller="Business" asp-action="Administration">Business Administration</a>
+    @if (isOwner)
+    {
+        <a class="primary-action" asp-controller="Business" asp-action="Administration">Business Administration</a>
+    }
 </section>
 
 <section class="metric-grid">
@@ -30,12 +33,19 @@
     </article>
     <article class="page-band">
         <h2>Quick Actions</h2>
-        <div class="action-row">
-            <a class="secondary-action" asp-controller="Business" asp-action="Administration" asp-fragment="employees">Invite Employee</a>
-            <a class="secondary-action" asp-controller="Business" asp-action="Administration" asp-fragment="connectors">Connect Supplier</a>
-            <a class="secondary-action" asp-controller="Business" asp-action="Administration" asp-fragment="labor">Configure Labor Rates</a>
-            <a class="secondary-action" asp-controller="Business" asp-action="Administration">Open Business Administration</a>
-        </div>
+        @if (isOwner)
+        {
+            <div class="action-row">
+                <a class="secondary-action" asp-controller="Business" asp-action="Administration" asp-fragment="employees">Invite Employee</a>
+                <a class="secondary-action" asp-controller="Business" asp-action="Administration" asp-fragment="connectors">Connect Supplier</a>
+                <a class="secondary-action" asp-controller="Business" asp-action="Administration" asp-fragment="labor">Configure Labor Rates</a>
+                <a class="secondary-action" asp-controller="Business" asp-action="Administration">Open Business Administration</a>
+            </div>
+        }
+        else
+        {
+            <p>Administration actions are available to organization owners.</p>
+        }
     </article>
     <article class="page-band">
         <h2>Recent Activity</h2>
