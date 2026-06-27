@@ -57,6 +57,8 @@ Scope:
 
 IM1 Platform is not part of any dealer tenant. It is IM1's business administration layer.
 
+Platform-facing screens should carry the iM1os Operating System mark as the primary brand signal, using the supplied red, white, and black logo without recoloring it.
+
 ### IM1OS
 
 IM1OS is the tenant operating system used by each shop.

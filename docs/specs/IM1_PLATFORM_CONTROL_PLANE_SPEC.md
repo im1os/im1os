@@ -2,11 +2,19 @@
 
 Status: scope document.
 
+![iM1os Operating System logo](../assets/im1-logo.png)
+
 The IM1 Platform is the control plane above every tenant.
 
 It is not part of any dealer's business administration area.
 
 It is IM1's SaaS operating layer: the system used to manage tenants, subscriptions, provisioning, billing relationships, feature access, health, support, deployments, usage, and platform analytics across the entire IM1OS ecosystem.
+
+## Brand Direction
+
+IM1 Platform should use the supplied iM1os Operating System mark as the primary control-plane brand signal. The mark should appear in Platform navigation and first-screen Platform entry points, including the dashboard and login experience.
+
+The preferred presentation is the red, white, and black iM1os lockup with the Operating System tagline. Platform surfaces should keep the mark legible, avoid recoloring it, and pair it with restrained admin UI styling.
 
 ## Product Split
 
