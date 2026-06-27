@@ -1,5 +1,6 @@
 using iM1os.Application.BusinessAdministration;
 using iM1os.Domain.Identity;
+using iM1os.Domain.Platform;
 using iM1os.Domain.Tenancy;
 using iM1os.Infrastructure.Persistence;
 using iM1os.Infrastructure.Services;
@@ -85,6 +86,29 @@ public sealed class BusinessAdministrationFoundationTests
         var service = CreateService(dbContext);
 
         await Assert.ThrowsAsync<UnauthorizedAccessException>(() => service.GetWorkspaceAsync(seeded.OrganizationId, user.Id, CancellationToken.None));
+    }
+
+    [Fact]
+    public async Task Platform_administrator_can_access_any_tenant_business_administration()
+    {
+        await using var dbContext = CreateContext();
+        var seeded = await SeedOwnerAsync(dbContext);
+        var platformUser = new PlatformUser
+        {
+            Email = "admin@im1os.com",
+            NormalizedEmail = "ADMIN@IM1OS.COM",
+            DisplayName = "Platform Administrator",
+            PasswordHash = "hash",
+            Role = "Platform Administrator"
+        };
+        dbContext.PlatformUsers.Add(platformUser);
+        await dbContext.SaveChangesAsync();
+        var service = CreateService(dbContext);
+
+        var workspace = await service.GetWorkspaceAsync(seeded.OrganizationId, platformUser.Id, CancellationToken.None);
+
+        Assert.Equal(seeded.OrganizationId, workspace.OrganizationId);
+        Assert.Equal("ABC Motorsports", workspace.Profile.BusinessName);
     }
 
     private static BusinessAdministrationService CreateService(ApplicationDbContext dbContext)

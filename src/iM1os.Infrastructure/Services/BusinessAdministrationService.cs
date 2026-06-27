@@ -66,6 +66,7 @@ public sealed class BusinessAdministrationService(
         var ready = organization.OnboardingCompletedAtUtc is not null && locations.Count > 0 && employees.Count > 0 && config.DefaultLaborRate > 0;
 
         return new BusinessAdministrationWorkspace(
+            organizationId,
             ToProfile(organization),
             ToDto(config),
             locations,
@@ -217,10 +218,19 @@ public sealed class BusinessAdministrationService(
     {
         var isOwner = await dbContext.UserRoles.IgnoreQueryFilters()
             .AnyAsync(x => x.UserId == userId && x.Role != null && x.Role.OrganizationId == organizationId && x.Role.NormalizedName == "OWNER", cancellationToken);
-        if (!isOwner)
+        if (isOwner)
         {
-            throw new UnauthorizedAccessException("Only organization owners can manage business administration.");
+            return;
         }
+
+        var isPlatformAdministrator = await dbContext.PlatformUsers
+            .AnyAsync(x => x.Id == userId && x.IsActive && x.Role == "Platform Administrator", cancellationToken);
+        if (isPlatformAdministrator)
+        {
+            return;
+        }
+
+        throw new UnauthorizedAccessException("Only organization owners or platform administrators can manage business administration.");
     }
 
     private async Task<Role> GetOrCreateRoleAsync(Guid organizationId, string roleName, CancellationToken cancellationToken)

@@ -24,6 +24,7 @@
     <article id="profile" class="page-band">
         <h2>Business Profile</h2>
         <form asp-action="Profile" method="post" class="form-grid">
+            <input type="hidden" name="organizationId" value="@Model.OrganizationId" />
             <label>Business Name <input name="BusinessName" value="@Model.Profile.BusinessName" /></label>
             <label>Legal Name <input name="LegalName" value="@Model.Profile.LegalName" /></label>
             <label>DBA <input name="Dba" value="@Model.Profile.Dba" /></label>
@@ -56,6 +57,7 @@
             }
         </div>
         <form asp-action="Location" method="post" class="form-grid single">
+            <input type="hidden" name="organizationId" value="@Model.OrganizationId" />
             <label>Name <input name="Name" /></label>
             <label>Code <input name="Code" /></label>
             <label>Phone <input name="Phone" /></label>
@@ -81,6 +83,7 @@
             }
         </div>
         <form asp-action="Employee" method="post" class="form-grid single">
+            <input type="hidden" name="organizationId" value="@Model.OrganizationId" />
             <label>Name <input name="Name" /></label>
             <label>Email <input name="Email" type="email" /></label>
             <label>Phone <input name="Phone" /></label>
@@ -120,6 +123,7 @@
     <article id="labor" class="page-band">
         <h2>Labor Configuration</h2>
         <form asp-action="Labor" method="post" class="form-grid">
+            <input type="hidden" name="organizationId" value="@Model.OrganizationId" />
             <label>Default Labor Rate <input name="DefaultLaborRate" type="number" step="0.01" value="@Model.Configuration.DefaultLaborRate" /></label>
             <label>Diagnostic Rate <input name="DiagnosticRate" type="number" step="0.01" value="@Model.Configuration.DiagnosticRate" /></label>
             <label>Emergency Rate <input name="EmergencyRate" type="number" step="0.01" value="@Model.Configuration.EmergencyRate" /></label>
@@ -133,6 +137,7 @@
     <article id="taxes" class="page-band">
         <h2>Taxes</h2>
         <form asp-action="Taxes" method="post" class="form-grid single">
+            <input type="hidden" name="organizationId" value="@Model.OrganizationId" />
             <label>Default Tax Rate <input name="DefaultTaxRate" type="number" step="0.0001" value="@Model.Configuration.DefaultTaxRate" /></label>
             <label>Regional Overrides JSON <input name="RegionalOverridesJson" value="@Model.Configuration.RegionalTaxOverridesJson" /></label>
             <button class="primary-action" type="submit">Save Taxes</button>
@@ -142,6 +147,7 @@
     <article id="notifications" class="page-band">
         <h2>Notification Preferences</h2>
         <form asp-action="Notifications" method="post" class="form-grid single">
+            <input type="hidden" name="organizationId" value="@Model.OrganizationId" />
             <label class="checkbox"><input name="EmailEnabled" type="checkbox" value="true" checked /> Email</label>
             <label class="checkbox"><input name="SmsEnabled" type="checkbox" value="true" /> SMS</label>
             <label class="checkbox"><input name="PushFutureEnabled" type="checkbox" value="true" /> Push Future</label>

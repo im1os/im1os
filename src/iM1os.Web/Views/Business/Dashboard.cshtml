@@ -1,6 +1,8 @@
 @model iM1os.Application.TenantIdentity.BusinessDashboardSummary
 @{
     var isOwner = User.IsInRole("Owner");
+    var isPlatformAdmin = User.IsInRole("Platform Administrator");
+    var organizationId = ViewBag.OrganizationId as Guid?;
 }
 
 @{
@@ -13,9 +15,9 @@
         <h1>@Model.BusinessName</h1>
         <p class="subtle">@(Model.SetupProgress >= 100 ? "Your business is now ready to begin operations." : "Finish business administration to prepare this shop for operations.")</p>
     </div>
-    @if (isOwner)
+    @if (isOwner || isPlatformAdmin)
     {
-        <a class="primary-action" asp-controller="Business" asp-action="Administration">Business Administration</a>
+        <a class="primary-action" asp-controller="Business" asp-action="Administration" asp-route-organizationId="@organizationId">Business Administration</a>
     }
 </section>
 
@@ -33,13 +35,13 @@
     </article>
     <article class="page-band">
         <h2>Quick Actions</h2>
-        @if (isOwner)
+        @if (isOwner || isPlatformAdmin)
         {
             <div class="action-row">
-                <a class="secondary-action" asp-controller="Business" asp-action="Administration" asp-fragment="employees">Invite Employee</a>
-                <a class="secondary-action" asp-controller="Business" asp-action="Administration" asp-fragment="connectors">Connect Supplier</a>
-                <a class="secondary-action" asp-controller="Business" asp-action="Administration" asp-fragment="labor">Configure Labor Rates</a>
-                <a class="secondary-action" asp-controller="Business" asp-action="Administration">Open Business Administration</a>
+                <a class="secondary-action" asp-controller="Business" asp-action="Administration" asp-route-organizationId="@organizationId" asp-fragment="employees">Invite Employee</a>
+                <a class="secondary-action" asp-controller="Business" asp-action="Administration" asp-route-organizationId="@organizationId" asp-fragment="connectors">Connect Supplier</a>
+                <a class="secondary-action" asp-controller="Business" asp-action="Administration" asp-route-organizationId="@organizationId" asp-fragment="labor">Configure Labor Rates</a>
+                <a class="secondary-action" asp-controller="Business" asp-action="Administration" asp-route-organizationId="@organizationId">Open Business Administration</a>
             </div>
         }
         else

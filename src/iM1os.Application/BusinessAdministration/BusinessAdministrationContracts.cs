@@ -1,6 +1,7 @@
 namespace iM1os.Application.BusinessAdministration;
 
 public sealed record BusinessAdministrationWorkspace(
+    Guid OrganizationId,
     BusinessProfileDto Profile,
     BusinessConfigurationDto Configuration,
     IReadOnlyCollection<LocationDto> Locations,

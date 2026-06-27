@@ -14,6 +14,7 @@ public sealed class BusinessController(
     [HttpGet]
     public async Task<IActionResult> Dashboard(CancellationToken cancellationToken)
     {
+        ViewBag.OrganizationId = OrganizationId();
         return View(await onboardingService.GetDashboardAsync(OrganizationId(), cancellationToken));
     }
 
@@ -22,7 +23,8 @@ public sealed class BusinessController(
     {
         try
         {
-            return View(await businessAdministrationService.GetWorkspaceAsync(OrganizationId(), UserId(), cancellationToken));
+            var workspace = await businessAdministrationService.GetWorkspaceAsync(OrganizationId(), UserId(), cancellationToken);
+            return View(workspace);
         }
         catch (UnauthorizedAccessException)
         {
@@ -39,7 +41,7 @@ public sealed class BusinessController(
             return View("AccessDenied");
         }
 
-        return RedirectToAction(nameof(Administration));
+        return RedirectToAdministration();
     }
 
     [HttpPost]
@@ -51,7 +53,7 @@ public sealed class BusinessController(
             return View("AccessDenied");
         }
 
-        return RedirectToAction(nameof(Administration));
+        return RedirectToAdministration();
     }
 
     [HttpPost]
@@ -63,7 +65,7 @@ public sealed class BusinessController(
             return View("AccessDenied");
         }
 
-        return RedirectToAction(nameof(Administration));
+        return RedirectToAdministration();
     }
 
     [HttpPost]
@@ -75,7 +77,7 @@ public sealed class BusinessController(
             return View("AccessDenied");
         }
 
-        return RedirectToAction(nameof(Administration));
+        return RedirectToAdministration();
     }
 
     [HttpPost]
@@ -87,7 +89,7 @@ public sealed class BusinessController(
             return View("AccessDenied");
         }
 
-        return RedirectToAction(nameof(Administration));
+        return RedirectToAdministration();
     }
 
     [HttpPost]
@@ -99,12 +101,36 @@ public sealed class BusinessController(
             return View("AccessDenied");
         }
 
-        return RedirectToAction(nameof(Administration));
+        return RedirectToAdministration();
     }
 
-    private Guid OrganizationId() => Guid.Parse(User.FindFirstValue("organization_id")!);
+    private Guid OrganizationId()
+    {
+        var organizationId = User.FindFirstValue("organization_id")
+            ?? Request.Query["organizationId"].FirstOrDefault()
+            ?? (Request.HasFormContentType ? Request.Form["organizationId"].FirstOrDefault() : null);
 
-    private Guid UserId() => Guid.Parse(User.FindFirstValue(ClaimTypes.NameIdentifier)!);
+        return Guid.TryParse(organizationId, out var parsed)
+            ? parsed
+            : throw new UnauthorizedAccessException("An organization context is required.");
+    }
+
+    private Guid UserId()
+    {
+        var userId = User.FindFirstValue(ClaimTypes.NameIdentifier)
+            ?? User.FindFirstValue("platform_user_id");
+
+        return Guid.TryParse(userId, out var parsed)
+            ? parsed
+            : throw new UnauthorizedAccessException("A user context is required.");
+    }
+
+    private IActionResult RedirectToAdministration()
+    {
+        return User.FindFirstValue("platform_user_id") is not null
+            ? RedirectToAction(nameof(Administration), new { organizationId = OrganizationId() })
+            : RedirectToAction(nameof(Administration));
+    }
 
     private static async Task<bool> RunOwnerActionAsync(Func<Task> action)
     {
