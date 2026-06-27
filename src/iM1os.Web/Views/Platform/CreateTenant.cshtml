@@ -1,0 +1,63 @@
+@model iM1os.Application.Platform.ProvisionTenantRequest
+
+@{
+    ViewData["Title"] = "Create IM1OS Instance";
+}
+
+<section class="dashboard-header">
+    <div>
+        <p class="eyebrow">Provisioning wizard</p>
+        <h1>Create New IM1OS Instance</h1>
+        <p class="subtle">This creates the organization, default location, owner user, subscription, modules, settings, welcome email, platform events, and audit trail.</p>
+    </div>
+</section>
+
+<form asp-action="CreateTenant" method="post" class="wizard">
+    <div asp-validation-summary="ModelOnly" class="validation"></div>
+
+    <fieldset>
+        <legend>1. Business</legend>
+        <label>Business Name <input asp-for="BusinessName" /></label>
+        <label>Business Email <input asp-for="BusinessEmail" /></label>
+        <label>Phone <input asp-for="Phone" /></label>
+    </fieldset>
+
+    <fieldset>
+        <legend>2. Owner</legend>
+        <label>Owner Name <input asp-for="OwnerName" /></label>
+        <label>Owner Email <input asp-for="OwnerEmail" /></label>
+    </fieldset>
+
+    <fieldset>
+        <legend>3. Location</legend>
+        <label>Address Line 1 <input asp-for="AddressLine1" /></label>
+        <label>Address Line 2 <input asp-for="AddressLine2" /></label>
+        <label>City <input asp-for="City" /></label>
+        <label>Region <input asp-for="Region" /></label>
+        <label>Postal Code <input asp-for="PostalCode" /></label>
+        <label>Country <input asp-for="Country" /></label>
+        <label>Time Zone <input asp-for="TimeZone" /></label>
+    </fieldset>
+
+    <fieldset>
+        <legend>4. Plan And Modules</legend>
+        <label>Subscription Plan
+            <select asp-for="SubscriptionPlan">
+                <option>Starter</option>
+                <option>Professional</option>
+                <option>Enterprise</option>
+            </select>
+        </label>
+        <label class="checkbox"><input asp-for="IsTrial" /> Trial</label>
+        <label>Default Language <input asp-for="DefaultLanguage" /></label>
+        <label>Default Currency <input asp-for="DefaultCurrency" /></label>
+        <div class="module-grid">
+            <label><input type="checkbox" name="DefaultModules" value="Service" checked /> Service</label>
+            <label><input type="checkbox" name="DefaultModules" value="Parts" checked /> Parts</label>
+            <label><input type="checkbox" name="DefaultModules" value="CustomerPortal" /> Customer Portal</label>
+            <label><input type="checkbox" name="DefaultModules" value="Reporting" /> Reporting</label>
+        </div>
+    </fieldset>
+
+    <button class="primary-action" type="submit">Provision</button>
+</form>

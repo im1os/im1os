@@ -1,0 +1,17 @@
+$ORIGIN im1os.com.
+$TTL 300
+
+; iM1 OS public/application endpoints
+@       300 IN A     209.126.5.249
+www     300 IN A     209.126.5.249
+app     300 IN A     209.126.5.249
+api     300 IN A     209.126.5.249
+admin   300 IN A     209.126.5.249
+status  300 IN A     209.126.5.249
+
+; Database endpoint. Keep this DNS-only in Cloudflare and firewall PostgreSQL.
+db      300 IN A     209.126.12.91
+
+; Email protection placeholders. Replace with your mail provider's SPF/DKIM/MX records.
+@       300 IN TXT   "v=spf1 -all"
+_dmarc  300 IN TXT   "v=DMARC1; p=reject; rua=mailto:dmarc@im1os.com"

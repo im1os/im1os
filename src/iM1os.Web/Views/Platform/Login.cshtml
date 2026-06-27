@@ -1,0 +1,24 @@
+@model iM1os.Application.Platform.PlatformLoginRequest
+
+@{
+    ViewData["Title"] = "Platform Login";
+}
+
+<section class="auth-panel">
+    <p class="eyebrow">IM1 Platform</p>
+    <h1>Platform Login</h1>
+    <p class="subtle">Platform users are separate from IM1OS tenant users.</p>
+
+    <form asp-action="Login" method="post" class="form-grid single">
+        <div asp-validation-summary="ModelOnly" class="validation"></div>
+        <label>
+            Email
+            <input asp-for="Email" autocomplete="username" />
+        </label>
+        <label>
+            Password
+            <input asp-for="Password" type="password" autocomplete="current-password" />
+        </label>
+        <button class="primary-action" type="submit">Log In</button>
+    </form>
+</section>

@@ -1,0 +1,40 @@
+@model iM1os.Application.Platform.TenantManagerDetail
+
+@{
+    ViewData["Title"] = Model.Tenant.OrganizationName;
+}
+
+<section class="dashboard-header">
+    <div>
+        <p class="eyebrow">Tenant Details</p>
+        <h1>@Model.Tenant.OrganizationName</h1>
+        <p class="subtle">@Model.Tenant.Status - @Model.Tenant.SubscriptionPlan - @Model.Tenant.HealthStatus</p>
+    </div>
+    <a class="primary-action" asp-action="Tenants">Tenant Manager</a>
+</section>
+
+<section class="metric-grid">
+    <article><span>Users</span><strong>@Model.Tenant.ActiveUsers</strong><p>Active tenant users.</p></article>
+    <article><span>Locations</span><strong>@Model.Tenant.Locations</strong><p>Provisioned locations.</p></article>
+    <article><span>Billing</span><strong>@Model.Tenant.BillingStatus</strong><p>Current billing state.</p></article>
+    <article><span>Version</span><strong>@Model.Tenant.CurrentVersion</strong><p>Tenant version.</p></article>
+</section>
+
+<section class="split-grid">
+    <article class="page-band">
+        <h2>Modules Enabled</h2>
+        <ul class="event-list">@foreach (var item in Model.ModulesEnabled) { <li>@item</li> }</ul>
+    </article>
+    <article class="page-band">
+        <h2>Provisioning History</h2>
+        <ul class="event-list">@foreach (var item in Model.ProvisioningHistory) { <li>@item</li> }</ul>
+    </article>
+    <article class="page-band">
+        <h2>Audit History</h2>
+        <ul class="event-list">@foreach (var item in Model.AuditHistory) { <li>@item</li> }</ul>
+    </article>
+    <article class="page-band">
+        <h2>Welcome Emails</h2>
+        <ul class="event-list">@foreach (var item in Model.WelcomeEmails) { <li>@item</li> }</ul>
+    </article>
+</section>

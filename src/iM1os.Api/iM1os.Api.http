@@ -1,0 +1,6 @@
+@iM1os.Api_HostAddress = http://localhost:5189
+
+GET {{iM1os.Api_HostAddress}}/api/v1/platform/status
+Accept: application/json
+
+###

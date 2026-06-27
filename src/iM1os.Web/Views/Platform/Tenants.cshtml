@@ -1,0 +1,58 @@
+@model IReadOnlyCollection<iM1os.Application.Platform.TenantManagerRow>
+
+@{
+    ViewData["Title"] = "Tenant Manager";
+}
+
+<section class="dashboard-header">
+    <div>
+        <p class="eyebrow">Tenant Manager</p>
+        <h1>IM1OS Instances</h1>
+    </div>
+    <a class="primary-action" asp-action="CreateTenant">Create New IM1OS Instance</a>
+</section>
+
+<form method="get" class="toolbar">
+    <input name="query" value="@ViewData["Query"]" placeholder="Search tenants" />
+    <select name="status">
+        <option value="">All statuses</option>
+        <option value="Trial">Trial</option>
+        <option value="Active">Active</option>
+        <option value="Suspended">Suspended</option>
+    </select>
+    <button class="secondary-action" type="submit">Search</button>
+</form>
+
+<section class="table-wrap">
+    <table>
+        <thead>
+            <tr>
+                <th>Organization</th>
+                <th>Status</th>
+                <th>Plan</th>
+                <th>Version</th>
+                <th>Users</th>
+                <th>Locations</th>
+                <th>Trial Ends</th>
+                <th>Billing</th>
+                <th>Health</th>
+            </tr>
+        </thead>
+        <tbody>
+            @foreach (var tenant in Model)
+            {
+                <tr>
+                    <td><a asp-action="Tenant" asp-route-organizationId="@tenant.OrganizationId">@tenant.OrganizationName</a></td>
+                    <td>@tenant.Status</td>
+                    <td>@tenant.SubscriptionPlan</td>
+                    <td>@tenant.CurrentVersion</td>
+                    <td>@tenant.ActiveUsers</td>
+                    <td>@tenant.Locations</td>
+                    <td>@(tenant.TrialExpiresAtUtc?.ToString("yyyy-MM-dd") ?? "-")</td>
+                    <td>@tenant.BillingStatus</td>
+                    <td>@tenant.HealthStatus</td>
+                </tr>
+            }
+        </tbody>
+    </table>
+</section>

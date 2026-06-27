@@ -1,0 +1,30 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>@ViewData["Title"] - IM1 Platform</title>
+    <link rel="stylesheet" href="~/css/site.css" asp-append-version="true" />
+</head>
+<body>
+    <header class="topbar">
+        <a class="brand" asp-controller="Platform" asp-action="Dashboard">IM1 Platform</a>
+        <nav>
+            <a asp-controller="Platform" asp-action="Dashboard">Dashboard</a>
+            <a asp-controller="Platform" asp-action="Tenants">Tenants</a>
+            <a asp-controller="Platform" asp-action="CreateTenant">Create Instance</a>
+            <a href="/health">Health</a>
+            @if (User.Identity?.IsAuthenticated == true)
+            {
+                <form asp-controller="Platform" asp-action="Logout" method="post">
+                    <button class="link-button" type="submit">Logout</button>
+                </form>
+            }
+        </nav>
+    </header>
+    <main class="shell">
+        @RenderBody()
+    </main>
+    @await RenderSectionAsync("Scripts", required: false)
+</body>
+</html>

@@ -1,0 +1,10 @@
+$ORIGIN im1os.com.
+$TTL 300
+
+; IM1 OS development application server
+saas    IN A    209.126.5.249
+im1-dev IN A    209.126.5.249
+
+; IM1 OS dedicated PostgreSQL server
+; Keep this DNS-only in Cloudflare. Do not proxy PostgreSQL through Cloudflare.
+im1-db  IN A    209.126.12.91

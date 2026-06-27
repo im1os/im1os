@@ -12,9 +12,9 @@
   </PropertyGroup>
 
   <PropertyGroup>
-    <Company>IM1 OS</Company>
-    <Product>IM1 OS</Product>
-    <Authors>IM1 OS</Authors>
+    <Company>iM1 OS</Company>
+    <Product>iM1 OS</Product>
+    <Authors>iM1 OS</Authors>
     <RepositoryUrl>https://github.com/im1os/im1os</RepositoryUrl>
   </PropertyGroup>
 </Project>

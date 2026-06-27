@@ -1,0 +1,42 @@
+@model iM1os.Application.Platform.PlatformDashboardSummary
+
+@{
+    ViewData["Title"] = "Platform Dashboard";
+}
+
+<section class="dashboard-header">
+    <div>
+        <p class="eyebrow">SaaS control plane</p>
+        <h1>IM1 Platform</h1>
+        <p class="subtle">Provision and manage IM1OS tenants from the platform control plane.</p>
+    </div>
+    <a class="primary-action" asp-action="CreateTenant">Create New IM1OS Instance</a>
+</section>
+
+<section class="metric-grid" aria-label="Tenant status">
+    <article><span>Total Tenants</span><strong>@Model.TotalTenants</strong><p>All provisioned tenants.</p></article>
+    <article><span>Trial Tenants</span><strong>@Model.TrialTenants</strong><p>Tenants currently in trial.</p></article>
+    <article><span>Active Tenants</span><strong>@Model.ActiveTenants</strong><p>Tenants currently active.</p></article>
+    <article><span>Suspended</span><strong>@Model.SuspendedTenants</strong><p>Tenants requiring attention.</p></article>
+</section>
+
+<section class="split-grid">
+    <article class="page-band">
+        <h2>Recent Provisioning Activity</h2>
+        <ul class="event-list">
+            @foreach (var item in Model.RecentProvisioningActivity)
+            {
+                <li>@item</li>
+            }
+        </ul>
+    </article>
+    <article class="page-band">
+        <h2>Latest Platform Events</h2>
+        <ul class="event-list">
+            @foreach (var item in Model.LatestPlatformEvents)
+            {
+                <li>@item</li>
+            }
+        </ul>
+    </article>
+</section>

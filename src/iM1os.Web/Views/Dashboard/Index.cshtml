@@ -1,0 +1,35 @@
+@{
+    ViewData["Title"] = "Dashboard";
+}
+
+<section class="dashboard-header">
+    <div>
+        <p class="eyebrow">im1os.com</p>
+        <h1>iM1 OS Platform</h1>
+        <p class="subtle">Foundation shell for authentication, tenancy, configuration, audit, background processing, and future modules.</p>
+    </div>
+    <a class="primary-action" href="/health">Health</a>
+</section>
+
+<section class="metric-grid" aria-label="Platform foundation status">
+    <article>
+        <span>Identity</span>
+        <strong>Ready</strong>
+        <p>JWT authentication, roles, permissions, and user management contracts.</p>
+    </article>
+    <article>
+        <span>Tenancy</span>
+        <strong>Ready</strong>
+        <p>Organization-first model with tenant-aware persistence boundaries.</p>
+    </article>
+    <article>
+        <span>Operations</span>
+        <strong>Ready</strong>
+        <p>Health checks, structured logging, audit logs, and worker host.</p>
+    </article>
+    <article>
+        <span>Extensibility</span>
+        <strong>Ready</strong>
+        <p>Feature flags and settings for future independently added modules.</p>
+    </article>
+</section>
