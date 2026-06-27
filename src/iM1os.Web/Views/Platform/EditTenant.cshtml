@@ -1,0 +1,62 @@
+@model iM1os.Application.Platform.UpdateTenantManagementRequest
+
+@{
+    ViewData["Title"] = "Edit Tenant";
+}
+
+<section class="dashboard-header">
+    <div>
+        <p class="eyebrow">Edit instance</p>
+        <h1>@Model.OrganizationName</h1>
+        <p class="subtle">Manage tenant lifecycle, billing status, plan, health, and version metadata.</p>
+    </div>
+    <a class="secondary-action" asp-action="Tenant" asp-route-organizationId="@Model.OrganizationId">Cancel</a>
+</section>
+
+<section class="page-band">
+    <form asp-action="EditTenant" method="post" class="form-grid">
+        <input asp-for="OrganizationId" type="hidden" />
+        <label>Organization Name <input asp-for="OrganizationName" /></label>
+        <label>Status
+            <select asp-for="Status">
+                <option>Trial</option>
+                <option>Active</option>
+                <option>Suspended</option>
+                <option>Cancelled</option>
+            </select>
+        </label>
+        <label>Subscription Plan
+            <select asp-for="SubscriptionPlan">
+                <option>Starter</option>
+                <option>Professional</option>
+                <option>Enterprise</option>
+            </select>
+        </label>
+        <label>Current Version <input asp-for="CurrentVersion" /></label>
+        <label>Health Status
+            <select asp-for="HealthStatus">
+                <option>Healthy</option>
+                <option>Degraded</option>
+                <option>Offline</option>
+            </select>
+        </label>
+        <label>Billing Status
+            <select asp-for="BillingStatus">
+                <option>Trial</option>
+                <option>Active</option>
+                <option>Past Due</option>
+                <option>Suspended</option>
+                <option>Cancelled</option>
+            </select>
+        </label>
+        <label>Provisioning Status
+            <select asp-for="ProvisioningStatus">
+                <option>Provisioned</option>
+                <option>Provisioning</option>
+                <option>Failed</option>
+            </select>
+        </label>
+        <label>Trial Expires At UTC <input asp-for="TrialExpiresAtUtc" type="datetime-local" /></label>
+        <button class="primary-action" type="submit">Save Instance</button>
+    </form>
+</section>

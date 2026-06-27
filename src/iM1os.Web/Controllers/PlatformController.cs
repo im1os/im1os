@@ -116,6 +116,58 @@ public sealed class PlatformController(
         return detail is null ? NotFound() : View(detail);
     }
 
+    [Authorize(Roles = "Platform Administrator")]
+    [HttpGet]
+    public async Task<IActionResult> EditTenant(Guid organizationId, CancellationToken cancellationToken)
+    {
+        var detail = await tenantManagerService.GetTenantDetailAsync(organizationId, cancellationToken);
+        if (detail is null)
+        {
+            return NotFound();
+        }
+
+        return View(new UpdateTenantManagementRequest(
+            detail.Tenant.OrganizationId,
+            detail.Tenant.OrganizationName,
+            detail.Tenant.Status,
+            detail.Tenant.SubscriptionPlan,
+            detail.Tenant.CurrentVersion,
+            detail.Tenant.HealthStatus,
+            detail.Tenant.BillingStatus,
+            detail.Tenant.ProvisioningStatus,
+            detail.Tenant.TrialExpiresAtUtc));
+    }
+
+    [Authorize(Roles = "Platform Administrator")]
+    [HttpPost]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> EditTenant(UpdateTenantManagementRequest request, CancellationToken cancellationToken)
+    {
+        if (!ModelState.IsValid)
+        {
+            return View(request);
+        }
+
+        var detail = await tenantManagerService.UpdateTenantAsync(request, PlatformUserId(), cancellationToken);
+        return detail is null
+            ? NotFound()
+            : RedirectToAction(nameof(Tenant), new { organizationId = detail.Tenant.OrganizationId });
+    }
+
+    [Authorize(Roles = "Platform Administrator")]
+    [HttpPost]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> ResendOwnerInvitation(Guid organizationId, CancellationToken cancellationToken)
+    {
+        var sent = await tenantManagerService.ResendOwnerInvitationAsync(organizationId, PlatformUserId(), cancellationToken);
+        if (!sent)
+        {
+            return NotFound();
+        }
+
+        return RedirectToAction(nameof(Tenant), new { organizationId });
+    }
+
     private string? PlatformUserId()
     {
         return User.FindFirstValue("platform_user_id");

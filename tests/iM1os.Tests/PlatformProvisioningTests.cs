@@ -117,6 +117,39 @@ public sealed class PlatformProvisioningTests
         Assert.Equal("Platform Administrator", platformLogin.Role);
     }
 
+    [Fact]
+    public async Task TenantManager_updates_tenant_and_resends_owner_invitation()
+    {
+        await using var dbContext = CreateContext();
+        var provisioning = CreateProvisioningService(dbContext);
+        var provisioned = await provisioning.ProvisionAsync(DefaultRequest(), "platform-user-1", CancellationToken.None);
+        var manager = new TenantManagerService(dbContext, new NoOpWelcomeEmailSender(), new SystemClock());
+
+        var updated = await manager.UpdateTenantAsync(
+            new UpdateTenantManagementRequest(
+                provisioned.OrganizationId,
+                "ABC Moto Updated",
+                "Active",
+                "Enterprise",
+                "v0.2.0",
+                "Healthy",
+                "Active",
+                "Provisioned",
+                null),
+            "platform-user-1",
+            CancellationToken.None);
+        var resent = await manager.ResendOwnerInvitationAsync(provisioned.OrganizationId, "platform-user-1", CancellationToken.None);
+
+        Assert.NotNull(updated);
+        Assert.Equal("ABC Moto Updated", updated.Tenant.OrganizationName);
+        Assert.Equal("Enterprise", await dbContext.PlatformSubscriptions.Where(x => x.OrganizationId == provisioned.OrganizationId).Select(x => x.Plan).SingleAsync());
+        Assert.True(resent);
+        Assert.Equal(2, await dbContext.WelcomeEmails.CountAsync(x => x.OrganizationId == provisioned.OrganizationId));
+        Assert.True(await dbContext.UserInvitations.IgnoreQueryFilters().CountAsync(x => x.OrganizationId == provisioned.OrganizationId) >= 2);
+        Assert.True(await dbContext.PlatformAuditEvents.AnyAsync(x => x.TargetOrganizationId == provisioned.OrganizationId && x.Action == "TenantUpdated"));
+        Assert.True(await dbContext.PlatformEvents.AnyAsync(x => x.TargetOrganizationId == provisioned.OrganizationId && x.EventType == "OwnerInvitationResent"));
+    }
+
     private static ProvisionTenantRequest DefaultRequest()
     {
         return new ProvisionTenantRequest(

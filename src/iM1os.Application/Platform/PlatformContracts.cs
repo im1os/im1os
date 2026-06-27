@@ -36,15 +36,30 @@ public sealed record TenantManagerRow(
     int ActiveUsers,
     int Locations,
     DateTimeOffset? TrialExpiresAtUtc,
-    string BillingStatus);
+    string BillingStatus,
+    string ProvisioningStatus);
 
 public sealed record TenantManagerDetail(
     TenantManagerRow Tenant,
+    string? OwnerName,
+    string? OwnerEmail,
+    bool OwnerActivated,
     IReadOnlyCollection<string> ModulesEnabled,
     IReadOnlyCollection<string> FeatureFlags,
     IReadOnlyCollection<string> ProvisioningHistory,
     IReadOnlyCollection<string> AuditHistory,
     IReadOnlyCollection<string> WelcomeEmails);
+
+public sealed record UpdateTenantManagementRequest(
+    Guid OrganizationId,
+    string OrganizationName,
+    string Status,
+    string SubscriptionPlan,
+    string CurrentVersion,
+    string HealthStatus,
+    string BillingStatus,
+    string ProvisioningStatus,
+    DateTimeOffset? TrialExpiresAtUtc);
 
 public sealed record PlatformDashboardSummary(
     int TotalTenants,

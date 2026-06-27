@@ -10,7 +10,10 @@
         <h1>@Model.Tenant.OrganizationName</h1>
         <p class="subtle">@Model.Tenant.Status - @Model.Tenant.SubscriptionPlan - @Model.Tenant.HealthStatus</p>
     </div>
-    <a class="primary-action" asp-action="Tenants">Tenant Manager</a>
+    <div class="action-row">
+        <a class="primary-action" asp-action="EditTenant" asp-route-organizationId="@Model.Tenant.OrganizationId">Edit Instance</a>
+        <a class="secondary-action" asp-action="Tenants">Tenant Manager</a>
+    </div>
 </section>
 
 <section class="metric-grid">
@@ -21,6 +24,16 @@
 </section>
 
 <section class="split-grid">
+    <article class="page-band">
+        <h2>Owner Access</h2>
+        <p><strong>@(Model.OwnerName ?? "No owner found")</strong></p>
+        <p>@(Model.OwnerEmail ?? "Owner email unavailable")</p>
+        <p>@(Model.OwnerActivated ? "Activated" : "Pending activation")</p>
+        <form asp-action="ResendOwnerInvitation" method="post">
+            <input type="hidden" name="organizationId" value="@Model.Tenant.OrganizationId" />
+            <button class="secondary-action" type="submit">Resend Owner Invitation</button>
+        </form>
+    </article>
     <article class="page-band">
         <h2>Modules Enabled</h2>
         <ul class="event-list">@foreach (var item in Model.ModulesEnabled) { <li>@item</li> }</ul>
