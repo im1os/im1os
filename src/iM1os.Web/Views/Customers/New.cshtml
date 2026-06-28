@@ -1,0 +1,114 @@
+@{
+    ViewData["Title"] = "New Customer";
+    var statusOptions = new[] { "Active", "Prospect", "Inactive", "Archived" };
+    var customerTypeOptions = new[] { "Individual", "Business", "Government", "Internal" };
+    var preferredContactOptions = new[] { "Phone", "Text", "Email", "Mail", "None" };
+    var referralSourceOptions = new[] { "Walk-In", "Website", "Referral", "Employee", "Event", "Social Media", "Advertising", "Other" };
+    var languageOptions = new[] { "English", "Spanish", "French", "Other" };
+    var stateOptions = new[] { "AL", "AK", "AZ", "AR", "CA", "CO", "CT", "DE", "FL", "GA", "HI", "IA", "ID", "IL", "IN", "KS", "KY", "LA", "MA", "MD", "ME", "MI", "MN", "MO", "MS", "MT", "NC", "ND", "NE", "NH", "NJ", "NM", "NV", "NY", "OH", "OK", "OR", "PA", "RI", "SC", "SD", "TN", "TX", "UT", "VA", "VT", "WA", "WI", "WV", "WY" };
+    var page = new IM1PageModel(
+        "New Customer",
+        "CRM / Customers",
+        "Create a shared customer master record.",
+        Breadcrumbs: new[]
+        {
+            new IM1BreadcrumbModel("Company", Url.Action("Dashboard", "Business")),
+            new IM1BreadcrumbModel("Customers", Url.Action("Index", "Customers")),
+            new IM1BreadcrumbModel("New Customer")
+        },
+        Toolbar: new IM1ToolbarModel(Actions: new[] { new IM1ActionModel("Back to Customers", Url.Action("Index", "Customers"), "secondary") }));
+}
+
+@await Html.PartialAsync("IM1Page", page)
+
+<section class="im1-page">
+    <form asp-action="Create" method="post" class="im1-form">
+        <div class="im1-form-grid">
+            <label>Customer Number <input value="Auto generated" readonly /></label>
+            <label>Customer Type
+                <select name="CustomerType">
+                    @foreach (var type in customerTypeOptions)
+                    {
+                        <option>@type</option>
+                    }
+                </select>
+            </label>
+            <label>Status
+                <select name="Status">
+                    @foreach (var status in statusOptions)
+                    {
+                        <option>@status</option>
+                    }
+                </select>
+            </label>
+            <label>Company Name <input name="CompanyName" maxlength="150" /></label>
+            <label>First Name <input name="FirstName" maxlength="100" /></label>
+            <label>Middle Name <input name="MiddleName" maxlength="100" /></label>
+            <label>Last Name <input name="LastName" maxlength="100" /></label>
+            <label>Nickname <input name="Nickname" maxlength="100" /></label>
+            <label>Display Name <input value="Auto generated" readonly /></label>
+            <label>Email <input name="Email" type="email" /></label>
+            <label>Secondary Email <input name="SecondaryEmail" type="email" /></label>
+            <label>Mobile Phone <input name="MobilePhone" /></label>
+            <label>Home Phone <input name="HomePhone" /></label>
+            <label>Work Phone <input name="WorkPhone" /></label>
+            <label>Lifecycle Stage <input name="LifecycleStage" /></label>
+            <label>Referral Source
+                <select name="Source">
+                    <option value="">Not Set</option>
+                    @foreach (var source in referralSourceOptions)
+                    {
+                        <option>@source</option>
+                    }
+                </select>
+            </label>
+            <label>Preferred Contact
+                <select name="PreferredContactMethod">
+                    <option value="">Not Set</option>
+                    @foreach (var method in preferredContactOptions)
+                    {
+                        <option>@method</option>
+                    }
+                </select>
+            </label>
+            <label>Preferred Language
+                <select name="PreferredLanguage">
+                    @foreach (var language in languageOptions)
+                    {
+                        <option>@language</option>
+                    }
+                </select>
+            </label>
+            <label>Date of Birth <input name="DateOfBirth" type="date" /></label>
+            <label>Anniversary <input name="Anniversary" type="date" /></label>
+            <label>Tax Exempt Number <input name="TaxExemptNumber" maxlength="50" /></label>
+            <label>Credit Limit <input name="CreditLimit" type="number" step="0.01" min="0" /></label>
+            <label>Address Line 1 <input name="Line1" /></label>
+            <label>Address Line 2 <input name="Line2" /></label>
+            <label>City <input name="City" /></label>
+            <label>State
+                <select name="Region">
+                    <option value="">Select</option>
+                    @foreach (var state in stateOptions)
+                    {
+                        <option>@state</option>
+                    }
+                </select>
+            </label>
+            <label>Postal Code <input name="PostalCode" /></label>
+            <label>Country
+                <select name="Country">
+                    <option value="US">USA</option>
+                </select>
+            </label>
+            <label class="im1-checkbox"><input name="AllowEmailMarketing" type="checkbox" value="true" checked /> Allow Email Marketing</label><input name="AllowEmailMarketing" type="hidden" value="false" />
+            <label class="im1-checkbox"><input name="AllowSmsMarketing" type="checkbox" value="true" checked /> Allow SMS Marketing</label><input name="AllowSmsMarketing" type="hidden" value="false" />
+            <label class="im1-checkbox"><input name="AllowPhoneCalls" type="checkbox" value="true" checked /> Allow Phone Calls</label><input name="AllowPhoneCalls" type="hidden" value="false" />
+            <label class="im1-checkbox"><input name="TaxExempt" type="checkbox" value="true" /> Tax Exempt</label><input name="TaxExempt" type="hidden" value="false" />
+            <label class="im1-full-span">Notes <textarea name="SummaryNotes" rows="3"></textarea></label>
+        </div>
+        <div class="im1-form-actions">
+            <button class="im1-button im1-button-primary" type="submit">Create Customer</button>
+        </div>
+    </form>
+</section>

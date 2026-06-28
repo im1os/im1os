@@ -22,6 +22,12 @@ public sealed class CustomersController(ICustomerCrmService customerService) : C
         return detail is null ? NotFound() : View(detail);
     }
 
+    [HttpGet]
+    public IActionResult New()
+    {
+        return View();
+    }
+
     [HttpPost]
     [ValidateAntiForgeryToken]
     public async Task<IActionResult> Create(CreateCustomerRequest request, CancellationToken cancellationToken)

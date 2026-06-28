@@ -61,6 +61,24 @@ public sealed class EmployeesController(IEmployeeService employeeService) : Cont
         }
     }
 
+    [HttpGet]
+    public async Task<IActionResult> New(CancellationToken cancellationToken)
+    {
+        try
+        {
+            var workspace = await employeeService.GetWorkspaceAsync(
+                OrganizationId(),
+                UserId(),
+                new EmployeeSearchRequest(null, null, null, null),
+                cancellationToken);
+            return View(workspace);
+        }
+        catch (UnauthorizedAccessException)
+        {
+            return RedirectToAction("AccessDenied", "Business");
+        }
+    }
+
     [HttpPost]
     [ValidateAntiForgeryToken]
     public async Task<IActionResult> Create(CreateEmployeeRequest request, CancellationToken cancellationToken)

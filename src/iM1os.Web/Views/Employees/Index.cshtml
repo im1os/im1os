@@ -2,7 +2,6 @@
 
 @{
     ViewData["Title"] = "Employees";
-    var showNewEmployee = Context.Request.Query["newEmployee"] == "true";
     var grid = new IM1DataGridModel(
         Columns: new[]
         {
@@ -29,7 +28,7 @@
             ["actions"] = new Microsoft.AspNetCore.Html.HtmlString($"<a class=\"im1-button im1-button-secondary\" href=\"{Url.Action("Edit", "Employees", new { employeeId = employee.Id })}\">Edit</a>")
         }).ToArray(),
         Toolbar: new IM1ToolbarModel(
-            Actions: new[] { new IM1ActionModel("New Employee", Url.Action("Index", "Employees", new { newEmployee = true }), "primary") },
+            Actions: new[] { new IM1ActionModel("New Employee", Url.Action("New", "Employees"), "primary") },
             SearchPlaceholder: "Search employees",
             ShowRefresh: true,
             ShowExport: true),
@@ -68,64 +67,3 @@
 </form>
 
 @await Html.PartialAsync("IM1DataGrid", grid)
-
-@if (showNewEmployee)
-{
-    <div class="im1-side-panel-backdrop is-open" data-side-panel="new-employee">
-        <aside class="im1-side-panel" aria-labelledby="new-employee-title">
-            <header class="im1-side-panel-header">
-                <div>
-                    <h2 id="new-employee-title">New Employee</h2>
-                    <p>Create the employee record first. Login access is optional.</p>
-                </div>
-                <a class="im1-dialog-close" asp-controller="Employees" asp-action="Index" aria-label="Close">X</a>
-            </header>
-            <div class="im1-side-panel-body">
-                <form asp-action="Create" method="post" class="im1-form">
-                    <div class="im1-form-grid">
-                        <label>Name <input name="Name" /></label>
-                        <label>Email <input name="Email" type="email" autocomplete="username" /></label>
-                        <label>Phone <input name="Phone" /></label>
-                        <label>Job Title <input name="JobTitle" /></label>
-                        <label>Department <input name="Department" /></label>
-                        <label>Employment Type
-                            <select name="EmploymentType">
-                                <option>Full Time</option>
-                                <option>Part Time</option>
-                                <option>Employee</option>
-                                <option>Contractor</option>
-                                <option>Seasonal</option>
-                                <option>Temporary</option>
-                            </select>
-                        </label>
-                        <label>Status
-                            <select name="Status">
-                                <option>Active</option>
-                                <option>Inactive</option>
-                                <option>On Leave</option>
-                                <option>Terminated</option>
-                            </select>
-                        </label>
-                    </div>
-                    <label class="im1-checkbox"><input name="EnableLoginAccount" type="checkbox" value="true" /> Enable Login Account</label>
-                    <div class="im1-form-grid">
-                        <label>Company Role
-                            <select name="RoleName">
-                                <option value="">No login role</option>
-                                @foreach (var role in Model.Roles)
-                                {
-                                    <option value="@role.Name">@role.Name</option>
-                                }
-                            </select>
-                        </label>
-                        <label>Initial Password <input name="InitialPassword" type="password" autocomplete="new-password" /></label>
-                    </div>
-                    <label class="im1-checkbox"><input name="SendInvitationEmail" type="checkbox" value="true" checked /> Send Invitation Email</label>
-                    <div class="im1-form-actions">
-                        <button class="im1-button im1-button-primary" type="submit">Create Employee</button>
-                    </div>
-                </form>
-            </div>
-        </aside>
-    </div>
-}
