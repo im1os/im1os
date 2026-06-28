@@ -22,6 +22,7 @@
         {
             new IM1TabItemModel("general", "General", true),
             new IM1TabItemModel("employment", "Employment"),
+            new IM1TabItemModel("compensation", "Compensation"),
             new IM1TabItemModel("login-account", "Login Account"),
             new IM1TabItemModel("permissions", "Permissions"),
             new IM1TabItemModel("security", "Security"),
@@ -88,6 +89,65 @@
         </div>
     </form>
 
+    <section class="tab-panel" id="compensation" role="tabpanel" hidden>
+        <form asp-action="Compensation" method="post" class="im1-form">
+            <input type="hidden" name="EmployeeId" value="@employee.Id" />
+            <div class="im1-form-grid">
+                <label>Payroll Type
+                    <select name="PayrollType">
+                        <option>Hourly</option>
+                        <option>Salary</option>
+                    </select>
+                </label>
+                <label>Hourly Rate <input name="HourlyRate" type="number" min="0" step="0.01" /></label>
+                <label>Salary Amount <input name="SalaryAmount" type="number" min="0" step="0.01" /></label>
+                <label>Work Order Commission Rate <input name="WorkOrderCommissionRate" type="number" min="0" step="0.0001" /></label>
+                <label>Sales Commission Rate <input name="SalesCommissionRate" type="number" min="0" step="0.0001" /></label>
+                <label>Effective Start <input name="EffectiveStartDate" type="date" required /></label>
+                <label>Effective End <input name="EffectiveEndDate" type="date" /></label>
+                <label>Notes <input name="Notes" /></label>
+            </div>
+            <div class="im1-form-actions">
+                <button class="im1-button im1-button-primary" type="submit">Add Compensation</button>
+            </div>
+        </form>
+
+        <div class="im1-data-grid">
+            <table>
+                <thead>
+                    <tr>
+                        <th>Payroll Type</th>
+                        <th>Hourly</th>
+                        <th>Salary</th>
+                        <th>Work Order Commission</th>
+                        <th>Sales Commission</th>
+                        <th>Effective Dates</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @if (employee.Compensation.Count == 0)
+                    {
+                        <tr><td colspan="6">No compensation records found.</td></tr>
+                    }
+                    else
+                    {
+                        @foreach (var compensation in employee.Compensation)
+                        {
+                            <tr>
+                                <td>@compensation.PayrollType</td>
+                                <td>@(compensation.HourlyRate?.ToString("C") ?? "")</td>
+                                <td>@(compensation.SalaryAmount?.ToString("C") ?? "")</td>
+                                <td>@(compensation.WorkOrderCommissionRate?.ToString("P2") ?? "")</td>
+                                <td>@(compensation.SalesCommissionRate?.ToString("P2") ?? "")</td>
+                                <td>@compensation.EffectiveStartDate.ToString("yyyy-MM-dd") - @(compensation.EffectiveEndDate?.ToString("yyyy-MM-dd") ?? "Current")</td>
+                            </tr>
+                        }
+                    }
+                </tbody>
+            </table>
+        </div>
+    </section>
+
     <section class="tab-panel" id="login-account" role="tabpanel" hidden>
         @if (login is null)
         {
@@ -118,7 +178,17 @@
                 <article><span>Email</span><strong>@login.Email</strong></article>
                 <article><span>Company Role</span><strong>@login.CompanyRole</strong></article>
                 <article><span>Login Status</span><strong>@login.Status</strong></article>
+                <article><span>PIN</span><strong>@(login.HasPin ? "Set" : "Not Set")</strong></article>
             </div>
+            <form asp-action="Pin" method="post" class="im1-form">
+                <input type="hidden" name="EmployeeId" value="@employee.Id" />
+                <div class="im1-form-grid">
+                    <label>Employee PIN <input name="Pin" type="password" inputmode="numeric" minlength="4" maxlength="4" pattern="[0-9]{4}" autocomplete="off" /></label>
+                </div>
+                <div class="im1-form-actions">
+                    <button class="im1-button im1-button-primary" type="submit">Save PIN</button>
+                </div>
+            </form>
         }
     </section>
 

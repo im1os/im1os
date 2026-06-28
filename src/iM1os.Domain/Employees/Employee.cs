@@ -34,4 +34,6 @@ public sealed class Employee : AuditableEntity, IOrganizationOwned
     public DateTimeOffset? DeletedAtUtc { get; set; }
 
     public ApplicationUser? LoginAccount { get; set; }
+
+    public ICollection<EmployeeCompensation> CompensationRecords { get; } = new List<EmployeeCompensation>();
 }

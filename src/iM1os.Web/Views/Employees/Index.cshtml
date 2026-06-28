@@ -52,9 +52,6 @@
 @await Html.PartialAsync("IM1Page", page)
 
 <form class="im1-toolbar" method="get" asp-controller="Employees" asp-action="Index">
-    <div class="im1-toolbar-main">
-        <input class="im1-toolbar-search" name="query" value="@Model.Query" placeholder="Search employees server-side" />
-    </div>
     <select name="status">
         <option value="">All statuses</option>
         @foreach (var status in new[] { "Active", "Inactive", "On Leave", "Terminated" })

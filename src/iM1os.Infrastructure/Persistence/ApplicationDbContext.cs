@@ -30,6 +30,8 @@ public sealed class ApplicationDbContext(
 
     public DbSet<Employee> Employees => Set<Employee>();
 
+    public DbSet<EmployeeCompensation> EmployeeCompensations => Set<EmployeeCompensation>();
+
     public DbSet<UserInvitation> UserInvitations => Set<UserInvitation>();
 
     public DbSet<PasswordResetRequest> PasswordResetRequests => Set<PasswordResetRequest>();
@@ -158,6 +160,7 @@ public sealed class ApplicationDbContext(
         {
             entity.ToTable("users");
             entity.HasIndex(x => new { x.OrganizationId, x.NormalizedEmail }).IsUnique();
+            entity.HasIndex(x => new { x.OrganizationId, x.PinHash }).IsUnique().HasFilter("\"PinHash\" IS NOT NULL");
             entity.HasIndex(x => x.EmployeeId).IsUnique();
             entity.Property(x => x.Email).HasMaxLength(320).IsRequired();
             entity.Property(x => x.NormalizedEmail).HasMaxLength(320).IsRequired();
@@ -193,6 +196,20 @@ public sealed class ApplicationDbContext(
             entity.Property(x => x.Department).HasMaxLength(120);
             entity.Property(x => x.EmploymentType).HasMaxLength(80).IsRequired();
             entity.Property(x => x.Status).HasMaxLength(80).IsRequired();
+            entity.HasQueryFilter(x => x.DeletedAtUtc == null && (tenantProvider.CurrentOrganizationId == null || x.OrganizationId == tenantProvider.CurrentOrganizationId));
+        });
+
+        modelBuilder.Entity<EmployeeCompensation>(entity =>
+        {
+            entity.ToTable("employee_compensations");
+            entity.HasIndex(x => new { x.OrganizationId, x.EmployeeId, x.EffectiveStartDate });
+            entity.Property(x => x.PayrollType).HasMaxLength(40).IsRequired();
+            entity.Property(x => x.HourlyRate).HasPrecision(12, 2);
+            entity.Property(x => x.SalaryAmount).HasPrecision(12, 2);
+            entity.Property(x => x.WorkOrderCommissionRate).HasPrecision(8, 4);
+            entity.Property(x => x.SalesCommissionRate).HasPrecision(8, 4);
+            entity.Property(x => x.Notes).HasMaxLength(500);
+            entity.HasOne(x => x.Employee).WithMany(x => x.CompensationRecords).HasForeignKey(x => x.EmployeeId);
             entity.HasQueryFilter(x => x.DeletedAtUtc == null && (tenantProvider.CurrentOrganizationId == null || x.OrganizationId == tenantProvider.CurrentOrganizationId));
         });
 

@@ -1,4 +1,5 @@
 using System.Security.Cryptography;
+using System.Text;
 using System.Text.Json;
 using iM1os.Application.Common;
 using iM1os.Application.Employees;
@@ -163,6 +164,101 @@ public sealed class EmployeeService(
         await dbContext.SaveChangesAsync(cancellationToken);
     }
 
+    public async Task SaveCompensationAsync(Guid organizationId, Guid actorUserId, SaveEmployeeCompensationRequest request, string? ipAddress, CancellationToken cancellationToken)
+    {
+        await EnsureCanManageEmployeesAsync(organizationId, actorUserId, cancellationToken);
+        var employee = await LoadEmployeeAsync(organizationId, request.EmployeeId, cancellationToken);
+        var payrollType = Required(request.PayrollType, "Payroll type");
+        if (payrollType is not ("Hourly" or "Salary"))
+        {
+            throw new InvalidOperationException("Payroll type must be Hourly or Salary.");
+        }
+
+        if (request.EffectiveEndDate is not null && request.EffectiveEndDate < request.EffectiveStartDate)
+        {
+            throw new InvalidOperationException("Effective end date must be after the start date.");
+        }
+
+        if (payrollType == "Hourly" && (request.HourlyRate is null or < 0))
+        {
+            throw new InvalidOperationException("Hourly rate is required for hourly payroll.");
+        }
+
+        if (payrollType == "Salary" && (request.SalaryAmount is null or < 0))
+        {
+            throw new InvalidOperationException("Salary amount is required for salary payroll.");
+        }
+
+        if (request.WorkOrderCommissionRate is < 0 || request.SalesCommissionRate is < 0)
+        {
+            throw new InvalidOperationException("Commission rates cannot be negative.");
+        }
+
+        var overlaps = await dbContext.EmployeeCompensations.IgnoreQueryFilters()
+            .AnyAsync(x =>
+                x.OrganizationId == organizationId &&
+                x.EmployeeId == employee.Id &&
+                x.DeletedAtUtc == null &&
+                (request.EffectiveEndDate == null || x.EffectiveStartDate <= request.EffectiveEndDate) &&
+                (x.EffectiveEndDate == null || x.EffectiveEndDate >= request.EffectiveStartDate),
+                cancellationToken);
+        if (overlaps)
+        {
+            throw new InvalidOperationException("Compensation effective dates cannot overlap an existing record.");
+        }
+
+        var compensation = new EmployeeCompensation
+        {
+            OrganizationId = organizationId,
+            EmployeeId = employee.Id,
+            PayrollType = payrollType,
+            HourlyRate = payrollType == "Hourly" ? request.HourlyRate : null,
+            SalaryAmount = payrollType == "Salary" ? request.SalaryAmount : null,
+            WorkOrderCommissionRate = request.WorkOrderCommissionRate,
+            SalesCommissionRate = request.SalesCommissionRate,
+            EffectiveStartDate = request.EffectiveStartDate,
+            EffectiveEndDate = request.EffectiveEndDate,
+            Notes = Clean(request.Notes)
+        };
+        dbContext.EmployeeCompensations.Add(compensation);
+        AddActivity(organizationId, employee.Id, actorUserId, "CompensationChanged", "Employee compensation changed", ipAddress, new
+        {
+            compensation.PayrollType,
+            compensation.HourlyRate,
+            compensation.SalaryAmount,
+            compensation.WorkOrderCommissionRate,
+            compensation.SalesCommissionRate,
+            compensation.EffectiveStartDate,
+            compensation.EffectiveEndDate
+        });
+        await dbContext.SaveChangesAsync(cancellationToken);
+    }
+
+    public async Task SavePinAsync(Guid organizationId, Guid actorUserId, SaveEmployeePinRequest request, string? ipAddress, CancellationToken cancellationToken)
+    {
+        await EnsureCanManageEmployeesAsync(organizationId, actorUserId, cancellationToken);
+        var employee = await LoadEmployeeAsync(organizationId, request.EmployeeId, cancellationToken);
+        var user = employee.LoginAccount ?? throw new InvalidOperationException("This employee does not have a login account.");
+        var pin = Required(request.Pin, "PIN");
+        if (pin.Length != 4 || pin.Any(x => !char.IsDigit(x)))
+        {
+            throw new InvalidOperationException("PIN must be exactly 4 digits.");
+        }
+
+        var pinHash = HashPin(organizationId, pin);
+        var pinExists = await dbContext.Users.IgnoreQueryFilters()
+            .AnyAsync(x => x.OrganizationId == organizationId && x.Id != user.Id && x.PinHash == pinHash && x.DeletedAtUtc == null, cancellationToken);
+        if (pinExists)
+        {
+            throw new InvalidOperationException("This PIN is already assigned in this company.");
+        }
+
+        user.PinHash = pinHash;
+        AddActivity(organizationId, employee.Id, actorUserId, "PinChanged", "Employee login PIN changed", ipAddress, new { HasPin = true });
+        AddIdentityEvent(organizationId, user.Id, "PinChanged", ipAddress, new { HasPin = true });
+        await dbContext.SaveChangesAsync(cancellationToken);
+    }
+
     public async Task SavePermissionOverridesAsync(Guid organizationId, Guid actorUserId, SaveEmployeePermissionOverridesRequest request, string? ipAddress, CancellationToken cancellationToken)
     {
         await EnsureCanManageEmployeesAsync(organizationId, actorUserId, cancellationToken);
@@ -288,6 +384,7 @@ public sealed class EmployeeService(
             .Include(x => x.LoginAccount!).ThenInclude(x => x.UserRoles).ThenInclude(x => x.Role).ThenInclude(x => x!.RolePermissions).ThenInclude(x => x.Permission)
             .Include(x => x.LoginAccount!).ThenInclude(x => x.PermissionOverrides).ThenInclude(x => x.Permission)
             .Include(x => x.LoginAccount!).ThenInclude(x => x.Sessions)
+            .Include(x => x.CompensationRecords)
             .SingleOrDefaultAsync(cancellationToken);
         if (employee is null)
         {
@@ -318,6 +415,7 @@ public sealed class EmployeeService(
                 user.Email,
                 role?.Name ?? "Unassigned",
                 LoginStatus(user),
+                !string.IsNullOrWhiteSpace(user.PinHash),
                 new EmployeeSecurity(
                     user.LastPasswordChangedAtUtc,
                     user.LastLoginAtUtc,
@@ -326,6 +424,20 @@ public sealed class EmployeeService(
                     user.LockoutEndAtUtc is not null && user.LockoutEndAtUtc > dateTimeProvider.UtcNow,
                     activeSessions,
                     user.MustChangePassword));
+        var compensation = employee.CompensationRecords
+            .Where(x => x.DeletedAtUtc == null)
+            .OrderByDescending(x => x.EffectiveStartDate)
+            .Select(x => new EmployeeCompensationItem(
+                x.Id,
+                x.PayrollType,
+                x.HourlyRate,
+                x.SalaryAmount,
+                x.WorkOrderCommissionRate,
+                x.SalesCommissionRate,
+                x.EffectiveStartDate,
+                x.EffectiveEndDate,
+                x.Notes))
+            .ToList();
 
         return new EmployeeEditor(
             employee.Id,
@@ -342,6 +454,7 @@ public sealed class EmployeeService(
             employee.HireDate,
             employee.TerminationDate,
             loginAccount,
+            compensation,
             permissionStates,
             activity);
     }
@@ -623,6 +736,12 @@ public sealed class EmployeeService(
     };
 
     private static string NewToken() => Convert.ToBase64String(RandomNumberGenerator.GetBytes(32)).TrimEnd('=').Replace('+', '-').Replace('/', '_');
+
+    private static string HashPin(Guid organizationId, string pin)
+    {
+        var bytes = SHA256.HashData(Encoding.UTF8.GetBytes($"{organizationId:N}:{pin}"));
+        return Convert.ToHexString(bytes);
+    }
 
     private static string NormalizeRole(string value) => Required(value, "Role").Trim().ToUpperInvariant().Replace(' ', '_');
 

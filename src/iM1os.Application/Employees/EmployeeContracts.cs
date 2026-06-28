@@ -37,6 +37,7 @@ public sealed record EmployeeEditor(
     DateOnly? HireDate,
     DateOnly? TerminationDate,
     EmployeeLoginAccount? LoginAccount,
+    IReadOnlyCollection<EmployeeCompensationItem> Compensation,
     IReadOnlyCollection<EmployeePermissionState> Permissions,
     IReadOnlyCollection<EmployeeActivity> Activity);
 
@@ -46,7 +47,19 @@ public sealed record EmployeeLoginAccount(
     string Email,
     string CompanyRole,
     string Status,
+    bool HasPin,
     EmployeeSecurity Security);
+
+public sealed record EmployeeCompensationItem(
+    Guid Id,
+    string PayrollType,
+    decimal? HourlyRate,
+    decimal? SalaryAmount,
+    decimal? WorkOrderCommissionRate,
+    decimal? SalesCommissionRate,
+    DateOnly EffectiveStartDate,
+    DateOnly? EffectiveEndDate,
+    string? Notes);
 
 public sealed record EmployeeRoleOption(Guid Id, string Name, bool IsSystemRole);
 
@@ -107,6 +120,19 @@ public sealed record EnableEmployeeLoginRequest(
     string RoleName,
     bool SendInvitationEmail,
     string? InitialPassword);
+
+public sealed record SaveEmployeeCompensationRequest(
+    Guid EmployeeId,
+    string PayrollType,
+    decimal? HourlyRate,
+    decimal? SalaryAmount,
+    decimal? WorkOrderCommissionRate,
+    decimal? SalesCommissionRate,
+    DateOnly EffectiveStartDate,
+    DateOnly? EffectiveEndDate,
+    string? Notes);
+
+public sealed record SaveEmployeePinRequest(Guid EmployeeId, string Pin);
 
 public sealed record SaveEmployeePermissionOverridesRequest(
     Guid EmployeeId,

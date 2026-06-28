@@ -97,6 +97,36 @@ public sealed class EmployeesController(IEmployeeService employeeService) : Cont
 
     [HttpPost]
     [ValidateAntiForgeryToken]
+    public async Task<IActionResult> Compensation(SaveEmployeeCompensationRequest request, CancellationToken cancellationToken)
+    {
+        try
+        {
+            await employeeService.SaveCompensationAsync(OrganizationId(), UserId(), request, RemoteIp(), cancellationToken);
+            return RedirectToAction(nameof(Edit), new { employeeId = request.EmployeeId });
+        }
+        catch (UnauthorizedAccessException)
+        {
+            return RedirectToAction("AccessDenied", "Business");
+        }
+    }
+
+    [HttpPost]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> Pin(SaveEmployeePinRequest request, CancellationToken cancellationToken)
+    {
+        try
+        {
+            await employeeService.SavePinAsync(OrganizationId(), UserId(), request, RemoteIp(), cancellationToken);
+            return RedirectToAction(nameof(Edit), new { employeeId = request.EmployeeId });
+        }
+        catch (UnauthorizedAccessException)
+        {
+            return RedirectToAction("AccessDenied", "Business");
+        }
+    }
+
+    [HttpPost]
+    [ValidateAntiForgeryToken]
     public async Task<IActionResult> Permissions(SaveEmployeePermissionOverridesRequest request, CancellationToken cancellationToken)
     {
         try

@@ -23,6 +23,8 @@ public interface IApplicationDbContext
 
     DbSet<Employee> Employees { get; }
 
+    DbSet<EmployeeCompensation> EmployeeCompensations { get; }
+
     DbSet<UserInvitation> UserInvitations { get; }
 
     DbSet<PasswordResetRequest> PasswordResetRequests { get; }
