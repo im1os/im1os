@@ -18,7 +18,7 @@ public sealed class MarketingAdminController(IMarketingCmsService marketingCmsSe
     {
         if (id is null)
         {
-            return View(new SaveMarketingPageRequest(null, string.Empty, string.Empty, string.Empty, null, null, null, null, null, false, 0));
+            return View(new SaveMarketingPageRequest(null, string.Empty, string.Empty, string.Empty, null, null, null, null, null, false, null, false, 0));
         }
 
         var page = await marketingCmsService.GetPageAsync(id.Value, cancellationToken);
@@ -28,7 +28,7 @@ public sealed class MarketingAdminController(IMarketingCmsService marketingCmsSe
         }
 
         ViewBag.PageBlocks = page.Blocks;
-        return View(new SaveMarketingPageRequest(page.Id, page.Slug, page.Title, page.NavigationLabel, page.MetaDescription, page.OpenGraphTitle, page.OpenGraphDescription, page.OpenGraphImageUrl, page.CanonicalUrl, page.IsPublished, page.SortOrder));
+        return View(new SaveMarketingPageRequest(page.Id, page.Slug, page.Title, page.NavigationLabel, page.MetaDescription, page.OpenGraphTitle, page.OpenGraphDescription, page.OpenGraphImageUrl, page.CanonicalUrl, page.UseRawHtmlBody, page.RawHtmlBody, page.IsPublished, page.SortOrder));
     }
 
     [HttpPost]

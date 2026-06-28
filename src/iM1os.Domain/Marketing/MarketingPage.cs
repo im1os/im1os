@@ -20,6 +20,10 @@ public sealed class MarketingPage : AuditableEntity
 
     public string? CanonicalUrl { get; set; }
 
+    public bool UseRawHtmlBody { get; set; }
+
+    public string? RawHtmlBody { get; set; }
+
     public bool IsPublished { get; set; }
 
     public int SortOrder { get; set; }

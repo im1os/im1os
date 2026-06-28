@@ -10,6 +10,8 @@ public sealed record MarketingPageDto(
     string? OpenGraphDescription,
     string? OpenGraphImageUrl,
     string? CanonicalUrl,
+    bool UseRawHtmlBody,
+    string? RawHtmlBody,
     bool IsPublished,
     int SortOrder,
     IReadOnlyCollection<MarketingContentBlockDto> Blocks);
@@ -40,6 +42,8 @@ public sealed record SaveMarketingPageRequest(
     string? OpenGraphDescription,
     string? OpenGraphImageUrl,
     string? CanonicalUrl,
+    bool UseRawHtmlBody,
+    string? RawHtmlBody,
     bool IsPublished,
     int SortOrder);
 

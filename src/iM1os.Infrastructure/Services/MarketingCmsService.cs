@@ -58,6 +58,8 @@ public sealed class MarketingCmsService(IApplicationDbContext dbContext) : IMark
         page.OpenGraphDescription = Clean(request.OpenGraphDescription);
         page.OpenGraphImageUrl = Clean(request.OpenGraphImageUrl);
         page.CanonicalUrl = Clean(request.CanonicalUrl);
+        page.UseRawHtmlBody = request.UseRawHtmlBody;
+        page.RawHtmlBody = Clean(request.RawHtmlBody);
         page.IsPublished = request.IsPublished;
         page.SortOrder = request.SortOrder;
 
@@ -145,6 +147,8 @@ public sealed class MarketingCmsService(IApplicationDbContext dbContext) : IMark
             page.OpenGraphDescription,
             page.OpenGraphImageUrl,
             page.CanonicalUrl,
+            page.UseRawHtmlBody,
+            page.RawHtmlBody,
             page.IsPublished,
             page.SortOrder,
             blocks);

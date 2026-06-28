@@ -37,6 +37,8 @@
             <label>OpenGraph Image URL <input asp-for="OpenGraphImageUrl" type="url" /></label>
         </div>
         <label>OpenGraph Description <textarea asp-for="OpenGraphDescription" rows="3"></textarea></label>
+        <label class="checkbox"><input asp-for="UseRawHtmlBody" /> Use Raw HTML Page Body</label>
+        <label>Raw HTML Page Body <textarea class="marketing-admin-code-editor" asp-for="RawHtmlBody" rows="22" spellcheck="false"></textarea></label>
         <label class="checkbox"><input asp-for="IsPublished" /> Published</label>
         <div class="im1-form-actions">
             <button class="im1-button im1-button-primary" type="submit">Save Page</button>

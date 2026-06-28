@@ -562,6 +562,7 @@ public sealed class ApplicationDbContext(
             entity.Property(x => x.OpenGraphDescription).HasMaxLength(500);
             entity.Property(x => x.OpenGraphImageUrl).HasMaxLength(1000);
             entity.Property(x => x.CanonicalUrl).HasMaxLength(1000);
+            entity.Property(x => x.RawHtmlBody).HasColumnType("text");
         });
 
         modelBuilder.Entity<MarketingContentBlock>(entity =>
