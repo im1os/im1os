@@ -2,10 +2,11 @@
 
 @{
     ViewData["Title"] = "Company Administration";
+    var administrationRoute = Model.OrganizationId;
     var pageToolbar = new IM1ToolbarModel(
         Actions: new[]
         {
-            new IM1ActionModel("Dashboard", Url.Action("Dashboard", "Business"), "secondary")
+            new IM1ActionModel("Dashboard", Url.Action("Dashboard", "Business", new { organizationId = administrationRoute }), "secondary")
         });
     var page = new IM1PageModel(
         Title: Model.Profile.BusinessName,
@@ -13,7 +14,7 @@
         Description: Model.IsReadyForOperations ? "Your company is now ready to begin operations." : "Configure identity, locations, employees, permissions, labor, taxes, notifications, and integration placeholders.",
         Breadcrumbs: new[]
         {
-            new IM1BreadcrumbModel("Company", Url.Action("Dashboard", "Business")),
+            new IM1BreadcrumbModel("Company", Url.Action("Dashboard", "Business", new { organizationId = administrationRoute })),
             new IM1BreadcrumbModel("Administration")
         },
         Toolbar: pageToolbar);
@@ -54,6 +55,15 @@
 
 @await Html.PartialAsync("IM1Page", page)
 
+@if (TempData["CompanyAdminStatus"] is string statusMessage)
+{
+    <div class="form-alert success">@statusMessage</div>
+}
+@if (TempData["CompanyAdminError"] is string errorMessage)
+{
+    <div class="form-alert error">@errorMessage</div>
+}
+
 <section class="im1-metric-grid">
     @await Html.PartialAsync("IM1Card", new IM1CardModel("Setup", $"{Model.SetupProgress}%", "Administration readiness."))
     @await Html.PartialAsync("IM1Card", new IM1CardModel("Locations", Model.Locations.Count.ToString(), "Configured shops."))
@@ -67,7 +77,7 @@
     <div class="tab-panel is-active" id="profile" role="tabpanel">
         <article class="page-band">
             <h2>Company Profile</h2>
-            <form asp-action="Profile" method="post" class="form-grid">
+            <form asp-action="Profile" asp-route-organizationId="@administrationRoute" method="post" class="form-grid">
                 <input type="hidden" name="organizationId" value="@Model.OrganizationId" />
                 <label>Company Name <input name="BusinessName" value="@Model.Profile.BusinessName" /></label>
                 <label>Legal Name <input name="LegalName" value="@Model.Profile.LegalName" /></label>
@@ -97,7 +107,7 @@
         <article class="page-band">
             <h2>Company Locations</h2>
             @await Html.PartialAsync("IM1DataGrid", locationGrid)
-            <form asp-action="Location" method="post" class="form-grid form-grid-spaced">
+            <form asp-action="Location" asp-route-organizationId="@administrationRoute" method="post" class="form-grid form-grid-spaced">
                 <input type="hidden" name="organizationId" value="@Model.OrganizationId" />
                 <label>Name <input name="Name" /></label>
                 <label>Code <input name="Code" /></label>
@@ -132,7 +142,7 @@
         <div class="split-grid">
             <article id="labor" class="page-band">
                 <h2>Labor Configuration</h2>
-                <form asp-action="Labor" method="post" class="form-grid">
+                <form asp-action="Labor" asp-route-organizationId="@administrationRoute" method="post" class="form-grid">
                     <input type="hidden" name="organizationId" value="@Model.OrganizationId" />
                     <label>Default Labor Rate <input name="DefaultLaborRate" type="number" step="0.01" value="@Model.Configuration.DefaultLaborRate" /></label>
                     <label>Diagnostic Rate <input name="DiagnosticRate" type="number" step="0.01" value="@Model.Configuration.DiagnosticRate" /></label>
@@ -146,7 +156,7 @@
 
             <article id="taxes" class="page-band">
                 <h2>Taxes</h2>
-                <form asp-action="Taxes" method="post" class="form-grid single">
+                <form asp-action="Taxes" asp-route-organizationId="@administrationRoute" method="post" class="form-grid single">
                     <input type="hidden" name="organizationId" value="@Model.OrganizationId" />
                     <label>Default Tax Rate <input name="DefaultTaxRate" type="number" step="0.0001" value="@Model.Configuration.DefaultTaxRate" /></label>
                     <label>Regional Overrides JSON <input name="RegionalOverridesJson" value="@Model.Configuration.RegionalTaxOverridesJson" /></label>
@@ -156,7 +166,7 @@
 
             <article id="notifications" class="page-band">
                 <h2>Notification Preferences</h2>
-                <form asp-action="Notifications" method="post" class="form-grid single">
+                <form asp-action="Notifications" asp-route-organizationId="@administrationRoute" method="post" class="form-grid single">
                     <input type="hidden" name="organizationId" value="@Model.OrganizationId" />
                     <label class="checkbox"><input name="EmailEnabled" type="checkbox" value="true" checked /> Email</label>
                     <label class="checkbox"><input name="SmsEnabled" type="checkbox" value="true" /> SMS</label>

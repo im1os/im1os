@@ -52,72 +52,92 @@ public sealed class BusinessController(
     [ValidateAntiForgeryToken]
     public async Task<IActionResult> Profile(UpdateBusinessProfileRequest request, CancellationToken cancellationToken)
     {
-        if (!await RunOwnerActionAsync(() => businessAdministrationService.UpdateBusinessProfileAsync(OrganizationId(), UserId(), request, cancellationToken)))
+        var organizationId = OrganizationId();
+        try
         {
-            return View("AccessDenied");
+            if (!await RunOwnerActionAsync(() => businessAdministrationService.UpdateBusinessProfileAsync(organizationId, UserId(), request, cancellationToken)))
+            {
+                return View("AccessDenied");
+            }
+        }
+        catch (InvalidOperationException ex)
+        {
+            TempData["CompanyAdminError"] = ex.Message;
+            return RedirectToAdministration(organizationId);
         }
 
-        return RedirectToAdministration();
+        TempData["CompanyAdminStatus"] = "Company profile saved.";
+        return RedirectToAdministration(organizationId);
     }
 
     [HttpPost]
     [ValidateAntiForgeryToken]
     public async Task<IActionResult> Location(UpsertLocationRequest request, CancellationToken cancellationToken)
     {
-        if (!await RunOwnerActionAsync(() => businessAdministrationService.UpsertLocationAsync(OrganizationId(), UserId(), request, cancellationToken)))
+        var organizationId = OrganizationId();
+        if (!await RunOwnerActionAsync(() => businessAdministrationService.UpsertLocationAsync(organizationId, UserId(), request, cancellationToken)))
         {
             return View("AccessDenied");
         }
 
-        return RedirectToAdministration();
+        TempData["CompanyAdminStatus"] = "Company location saved.";
+        return RedirectToAdministration(organizationId);
     }
 
     [HttpPost]
     [ValidateAntiForgeryToken]
     public async Task<IActionResult> Employee(InviteEmployeeRequest request, CancellationToken cancellationToken)
     {
-        if (!await RunOwnerActionAsync(() => businessAdministrationService.InviteEmployeeAsync(OrganizationId(), UserId(), request, cancellationToken)))
+        var organizationId = OrganizationId();
+        if (!await RunOwnerActionAsync(() => businessAdministrationService.InviteEmployeeAsync(organizationId, UserId(), request, cancellationToken)))
         {
             return View("AccessDenied");
         }
 
-        return RedirectToAdministration();
+        TempData["CompanyAdminStatus"] = "Employee invitation created.";
+        return RedirectToAdministration(organizationId);
     }
 
     [HttpPost]
     [ValidateAntiForgeryToken]
     public async Task<IActionResult> Labor(LaborConfigurationRequest request, CancellationToken cancellationToken)
     {
-        if (!await RunOwnerActionAsync(() => businessAdministrationService.SaveLaborConfigurationAsync(OrganizationId(), UserId(), request, cancellationToken)))
+        var organizationId = OrganizationId();
+        if (!await RunOwnerActionAsync(() => businessAdministrationService.SaveLaborConfigurationAsync(organizationId, UserId(), request, cancellationToken)))
         {
             return View("AccessDenied");
         }
 
-        return RedirectToAdministration();
+        TempData["CompanyAdminStatus"] = "Labor configuration saved.";
+        return RedirectToAdministration(organizationId);
     }
 
     [HttpPost]
     [ValidateAntiForgeryToken]
     public async Task<IActionResult> Taxes(TaxConfigurationRequest request, CancellationToken cancellationToken)
     {
-        if (!await RunOwnerActionAsync(() => businessAdministrationService.SaveTaxConfigurationAsync(OrganizationId(), UserId(), request, cancellationToken)))
+        var organizationId = OrganizationId();
+        if (!await RunOwnerActionAsync(() => businessAdministrationService.SaveTaxConfigurationAsync(organizationId, UserId(), request, cancellationToken)))
         {
             return View("AccessDenied");
         }
 
-        return RedirectToAdministration();
+        TempData["CompanyAdminStatus"] = "Tax configuration saved.";
+        return RedirectToAdministration(organizationId);
     }
 
     [HttpPost]
     [ValidateAntiForgeryToken]
     public async Task<IActionResult> Notifications(NotificationPreferencesRequest request, CancellationToken cancellationToken)
     {
-        if (!await RunOwnerActionAsync(() => businessAdministrationService.SaveNotificationPreferencesAsync(OrganizationId(), UserId(), request, cancellationToken)))
+        var organizationId = OrganizationId();
+        if (!await RunOwnerActionAsync(() => businessAdministrationService.SaveNotificationPreferencesAsync(organizationId, UserId(), request, cancellationToken)))
         {
             return View("AccessDenied");
         }
 
-        return RedirectToAdministration();
+        TempData["CompanyAdminStatus"] = "Notification preferences saved.";
+        return RedirectToAdministration(organizationId);
     }
 
     private Guid OrganizationId()
@@ -150,10 +170,10 @@ public sealed class BusinessController(
             : throw new UnauthorizedAccessException("A user context is required.");
     }
 
-    private IActionResult RedirectToAdministration()
+    private IActionResult RedirectToAdministration(Guid organizationId)
     {
         return User.FindFirstValue("platform_user_id") is not null
-            ? RedirectToAction(nameof(Administration), new { organizationId = OrganizationId() })
+            ? RedirectToAction(nameof(Administration), new { organizationId })
             : RedirectToAction(nameof(Administration));
     }
 

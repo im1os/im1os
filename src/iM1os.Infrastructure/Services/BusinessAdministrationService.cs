@@ -85,7 +85,7 @@ public sealed class BusinessAdministrationService(
         var organization = await dbContext.Organizations.IgnoreQueryFilters().SingleAsync(x => x.Id == organizationId, cancellationToken);
         var before = ToProfile(organization);
 
-        organization.Name = request.BusinessName.Trim();
+        organization.Name = Required(request.BusinessName, "Company name");
         organization.LegalName = Clean(request.LegalName);
         organization.Dba = Clean(request.Dba);
         organization.LogoUrl = Clean(request.LogoUrl);
@@ -99,11 +99,11 @@ public sealed class BusinessAdministrationService(
         organization.Region = Clean(request.Region);
         organization.PostalCode = Clean(request.PostalCode);
         organization.Country = Clean(request.Country);
-        organization.TimeZone = request.TimeZone.Trim();
-        organization.Language = request.Language.Trim();
-        organization.Currency = request.Currency.Trim();
-        organization.DateFormat = request.DateFormat.Trim();
-        organization.TimeFormat = request.TimeFormat.Trim();
+        organization.TimeZone = Defaulted(request.TimeZone, organization.TimeZone, "America/Chicago");
+        organization.Language = Defaulted(request.Language, organization.Language, "en-US");
+        organization.Currency = Defaulted(request.Currency, organization.Currency, "USD");
+        organization.DateFormat = Defaulted(request.DateFormat, organization.DateFormat, "MM/dd/yyyy");
+        organization.TimeFormat = Defaulted(request.TimeFormat, organization.TimeFormat, "h:mm tt");
 
         await RecordAdminChangeAsync(organizationId, userId, "BusinessProfileUpdated", "Organization", organization.Id.ToString(), before, ToProfile(organization), cancellationToken);
         await dbContext.SaveChangesAsync(cancellationToken);
@@ -374,6 +374,11 @@ public sealed class BusinessAdministrationService(
     }
 
     private static string? Clean(string? value) => string.IsNullOrWhiteSpace(value) ? null : value.Trim();
+
+    private static string Required(string value, string fieldName) => string.IsNullOrWhiteSpace(value) ? throw new InvalidOperationException($"{fieldName} is required.") : value.Trim();
+
+    private static string Defaulted(string? value, string? currentValue, string fallback) =>
+        !string.IsNullOrWhiteSpace(value) ? value.Trim() : !string.IsNullOrWhiteSpace(currentValue) ? currentValue.Trim() : fallback;
 
     private static string FirstName(string name) => name.Trim().Split(' ', StringSplitOptions.RemoveEmptyEntries).FirstOrDefault() ?? name.Trim();
 
