@@ -33,7 +33,7 @@
     </script>
 }
 
-@if (Model.UseRawHtmlBody)
+@if (Model.UseRawHtmlBody && !string.IsNullOrWhiteSpace(Model.RawHtmlBody))
 {
     @Html.Raw(Model.RawHtmlBody)
 }

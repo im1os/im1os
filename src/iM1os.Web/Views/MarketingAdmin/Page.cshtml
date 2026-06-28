@@ -3,6 +3,7 @@
 @{
     ViewData["Title"] = Model.Id is null ? "New Marketing Page" : Model.Title;
     var blocks = ViewBag.PageBlocks as IReadOnlyCollection<MarketingContentBlockDto> ?? Array.Empty<MarketingContentBlockDto>();
+    var publicPath = Model.Slug == "home" ? "/" : $"/{Model.Slug}";
     var page = new IM1PageModel(
         Title: Model.Id is null ? "New Marketing Page" : Model.Title,
         Eyebrow: "Marketing CMS",
@@ -25,6 +26,13 @@
         <div class="im1-form-header">
             <h2>Page Details</h2>
             <p>These fields control routing, navigation labels, publishing, and search/social previews.</p>
+            @if (Model.Id is not null)
+            {
+                <p>
+                    Status: <strong>@(Model.IsPublished ? "Published" : "Draft")</strong>
+                    · URL: <a href="@publicPath" target="_blank" rel="noopener">@publicPath</a>
+                </p>
+            }
         </div>
         <div class="im1-form-grid">
             <label>Slug <input asp-for="Slug" required /></label>
@@ -37,9 +45,17 @@
             <label>OpenGraph Image URL <input asp-for="OpenGraphImageUrl" type="url" /></label>
         </div>
         <label>OpenGraph Description <textarea asp-for="OpenGraphDescription" rows="3"></textarea></label>
+        <div class="im1-form-header">
+            <h2>Page Body</h2>
+            <p>Paste HTML here to replace the reusable block layout for this page. Saving non-empty HTML automatically enables raw HTML page body mode.</p>
+        </div>
         <label class="checkbox"><input asp-for="UseRawHtmlBody" /> Use Raw HTML Page Body</label>
         <label>Raw HTML Page Body <textarea class="marketing-admin-code-editor" asp-for="RawHtmlBody" rows="22" spellcheck="false"></textarea></label>
-        <label class="checkbox"><input asp-for="IsPublished" /> Published</label>
+        <div class="im1-form-header">
+            <h2>Publishing</h2>
+            <p>Published pages are public at their slug. Draft pages return 404.</p>
+        </div>
+        <label class="checkbox"><input asp-for="IsPublished" /> Publish this page</label>
         <div class="im1-form-actions">
             <button class="im1-button im1-button-primary" type="submit">Save Page</button>
             <a class="im1-button im1-button-secondary" asp-action="Index">Back</a>

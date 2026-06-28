@@ -58,8 +58,8 @@ public sealed class MarketingCmsService(IApplicationDbContext dbContext) : IMark
         page.OpenGraphDescription = Clean(request.OpenGraphDescription);
         page.OpenGraphImageUrl = Clean(request.OpenGraphImageUrl);
         page.CanonicalUrl = Clean(request.CanonicalUrl);
-        page.UseRawHtmlBody = request.UseRawHtmlBody;
         page.RawHtmlBody = Clean(request.RawHtmlBody);
+        page.UseRawHtmlBody = request.UseRawHtmlBody || page.RawHtmlBody is not null;
         page.IsPublished = request.IsPublished;
         page.SortOrder = request.SortOrder;
 
