@@ -9,16 +9,16 @@
         <img class="platform-logo" src="~/images/im1-logo.png" asp-append-version="true" alt="IM1" />
         <p class="eyebrow">SaaS control plane</p>
         <h1>IM1 Platform</h1>
-        <p class="subtle">Provision and manage IM1OS tenants from the platform control plane.</p>
+        <p class="subtle">Provision and manage IM1OS companies from the platform control plane.</p>
     </div>
-    <a class="primary-action" asp-action="CreateTenant">Create New IM1OS Tenant</a>
+    <a class="primary-action" asp-action="CreateTenant">Create New IM1OS Company</a>
 </section>
 
-<section class="metric-grid" aria-label="Tenant status">
-    <article><span>Total Tenants</span><strong>@Model.TotalTenants</strong><p>All provisioned tenants.</p></article>
-    <article><span>Trial Tenants</span><strong>@Model.TrialTenants</strong><p>Tenants currently in trial.</p></article>
-    <article><span>Active Tenants</span><strong>@Model.ActiveTenants</strong><p>Tenants currently active.</p></article>
-    <article><span>Suspended</span><strong>@Model.SuspendedTenants</strong><p>Tenants requiring attention.</p></article>
+<section class="metric-grid" aria-label="Company status">
+    <article><span>Total Companies</span><strong>@Model.TotalTenants</strong><p>All provisioned companies.</p></article>
+    <article><span>Trial Companies</span><strong>@Model.TrialTenants</strong><p>Companies currently in trial.</p></article>
+    <article><span>Active Companies</span><strong>@Model.ActiveTenants</strong><p>Companies currently active.</p></article>
+    <article><span>Suspended</span><strong>@Model.SuspendedTenants</strong><p>Companies requiring attention.</p></article>
 </section>
 
 <section class="split-grid">

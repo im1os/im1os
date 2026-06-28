@@ -98,7 +98,7 @@ public sealed record IM1ShellNavigationItemModel(
 
 public sealed record IM1ShellNavigationConfiguration(
     IReadOnlyCollection<IM1ShellNavigationItemModel> PlatformItems,
-    IReadOnlyCollection<IM1ShellNavigationItemModel> TenantItems);
+    IReadOnlyCollection<IM1ShellNavigationItemModel> CompanyItems);
 
 public static class IM1ShellNavigation
 {
@@ -113,11 +113,11 @@ public static class IM1ShellNavigation
                     new("Dashboard", "Platform", "Dashboard", "DB")
                 ]),
             new(
-                "Tenant Manager",
+                "Company Manager",
                 Icon: "TM",
                 Children:
                 [
-                    new("Organizations", "Platform", "Tenants", "OR")
+                    new("Companies", "Platform", "Tenants", "CO")
                 ]),
             new(
                 "Marketing CMS",
@@ -127,15 +127,15 @@ public static class IM1ShellNavigation
                     new("Pages", "MarketingAdmin", "Index", "PG")
                 ])
         ],
-        TenantItems:
+        CompanyItems:
         [
             new(
                 "Owner Admin",
                 Icon: "OA",
                 Children:
                 [
-                    new("Business Dashboard", "Business", "Dashboard", "BD"),
-                    new("Business Admin", "Business", "Administration", "BA"),
+                    new("Company Dashboard", "Business", "Dashboard", "CD"),
+                    new("Company Admin", "Business", "Administration", "CA"),
                     new("Profile", "Profile", "Index", "PR")
                 ])
         ]);

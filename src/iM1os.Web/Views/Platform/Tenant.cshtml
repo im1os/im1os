@@ -6,23 +6,23 @@
 
 <section class="dashboard-header">
     <div>
-        <p class="eyebrow">Tenant Details</p>
+        <p class="eyebrow">Company Details</p>
         <h1>@Model.Tenant.OrganizationName</h1>
         <p class="subtle">@Model.Tenant.Status - @Model.Tenant.SubscriptionPlan - @Model.Tenant.HealthStatus</p>
     </div>
     <div class="action-row">
-        <a class="primary-action" asp-action="EditTenant" asp-route-organizationId="@Model.Tenant.OrganizationId">Edit Tenant</a>
-        <a class="secondary-action" asp-controller="Business" asp-action="Dashboard" asp-route-organizationId="@Model.Tenant.OrganizationId">Open Tenant Dashboard</a>
-        <a class="secondary-action" asp-controller="Business" asp-action="Administration" asp-route-organizationId="@Model.Tenant.OrganizationId">Tenant Admin</a>
-        <a class="secondary-action" asp-action="Tenants">Tenant Manager</a>
+        <a class="primary-action" asp-action="EditTenant" asp-route-organizationId="@Model.Tenant.OrganizationId">Edit Company</a>
+        <a class="secondary-action" asp-controller="Business" asp-action="Dashboard" asp-route-organizationId="@Model.Tenant.OrganizationId">Open Company Dashboard</a>
+        <a class="secondary-action" asp-controller="Business" asp-action="Administration" asp-route-organizationId="@Model.Tenant.OrganizationId">Company Admin</a>
+        <a class="secondary-action" asp-action="Tenants">Company Manager</a>
     </div>
 </section>
 
 <section class="metric-grid">
-    <article><span>Users</span><strong>@Model.Tenant.ActiveUsers</strong><p>Active tenant users.</p></article>
+    <article><span>Users</span><strong>@Model.Tenant.ActiveUsers</strong><p>Active company users.</p></article>
     <article><span>Locations</span><strong>@Model.Tenant.Locations</strong><p>Provisioned locations.</p></article>
     <article><span>Billing</span><strong>@Model.Tenant.BillingStatus</strong><p>Current billing state.</p></article>
-    <article><span>Version</span><strong>@Model.Tenant.CurrentVersion</strong><p>Tenant version.</p></article>
+    <article><span>Version</span><strong>@Model.Tenant.CurrentVersion</strong><p>Company version.</p></article>
 </section>
 
 <section class="split-grid">

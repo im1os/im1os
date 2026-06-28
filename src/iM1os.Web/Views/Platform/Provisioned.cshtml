@@ -1,21 +1,21 @@
 @model iM1os.Application.Platform.TenantManagerDetail
 
 @{
-    ViewData["Title"] = "Tenant Provisioned";
+    ViewData["Title"] = "Company Provisioned";
 }
 
 <section class="success-panel">
     <p class="eyebrow">Provisioning complete</p>
     <h1>@Model.Tenant.OrganizationName is ready</h1>
     <ul class="check-list">
-        <li>Tenant Created</li>
+        <li>Company Created</li>
         <li>Owner Created</li>
         <li>Default Location Created</li>
         <li>Modules Enabled</li>
         <li>Welcome Email Sent</li>
     </ul>
     <div class="action-row">
-        <a class="primary-action" asp-action="Tenant" asp-route-organizationId="@Model.Tenant.OrganizationId">Open Tenant Details</a>
+        <a class="primary-action" asp-action="Tenant" asp-route-organizationId="@Model.Tenant.OrganizationId">Open Company Details</a>
         <a class="secondary-action" asp-controller="Dashboard" asp-action="Index">Open IM1OS</a>
     </div>
 </section>

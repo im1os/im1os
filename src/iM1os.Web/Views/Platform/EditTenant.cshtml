@@ -1,14 +1,14 @@
 @model iM1os.Application.Platform.UpdateTenantManagementRequest
 
 @{
-    ViewData["Title"] = "Edit Tenant";
+    ViewData["Title"] = "Edit Company";
 }
 
 <section class="dashboard-header">
     <div>
-        <p class="eyebrow">Edit tenant</p>
+        <p class="eyebrow">Edit company</p>
         <h1>@Model.OrganizationName</h1>
-        <p class="subtle">Manage tenant lifecycle, billing status, plan, health, and version metadata.</p>
+        <p class="subtle">Manage company lifecycle, billing status, plan, health, and version metadata.</p>
     </div>
     <a class="secondary-action" asp-action="Tenant" asp-route-organizationId="@Model.OrganizationId">Cancel</a>
 </section>
@@ -16,7 +16,7 @@
 <section class="page-band">
     <form asp-action="EditTenant" method="post" class="form-grid">
         <input asp-for="OrganizationId" type="hidden" />
-        <label>Organization Name <input asp-for="OrganizationName" /></label>
+        <label>Company Name <input asp-for="OrganizationName" /></label>
         <label>Status
             <select asp-for="Status">
                 <option>Trial</option>
@@ -57,6 +57,6 @@
             </select>
         </label>
         <label>Trial Expires At UTC <input asp-for="TrialExpiresAtUtc" type="datetime-local" /></label>
-        <button class="primary-action" type="submit">Save Tenant</button>
+        <button class="primary-action" type="submit">Save Company</button>
     </form>
 </section>

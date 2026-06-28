@@ -1,7 +1,7 @@
 @model iM1os.Application.BusinessAdministration.BusinessAdministrationWorkspace
 
 @{
-    ViewData["Title"] = "Business Administration";
+    ViewData["Title"] = "Company Administration";
     var pageToolbar = new IM1ToolbarModel(
         Actions: new[]
         {
@@ -9,16 +9,16 @@
         });
     var page = new IM1PageModel(
         Title: Model.Profile.BusinessName,
-        Eyebrow: "Business administration",
-        Description: Model.IsReadyForOperations ? "Your business is now ready to begin operations." : "Configure identity, locations, users, permissions, labor, taxes, notifications, and integration placeholders.",
+        Eyebrow: "Company administration",
+        Description: Model.IsReadyForOperations ? "Your company is now ready to begin operations." : "Configure identity, locations, users, permissions, labor, taxes, notifications, and integration placeholders.",
         Breadcrumbs: new[]
         {
-            new IM1BreadcrumbModel("Business", Url.Action("Dashboard", "Business")),
+            new IM1BreadcrumbModel("Company", Url.Action("Dashboard", "Business")),
             new IM1BreadcrumbModel("Administration")
         },
         Toolbar: pageToolbar);
     var tabs = new IM1TabsModel(
-        "Business administration sections",
+        "Company administration sections",
         new[]
         {
             new IM1TabItemModel("profile", "Profile", true),
@@ -49,7 +49,7 @@
             ["laborRate"] = location.DefaultLaborRate.ToString("C")
         }).ToArray(),
         Toolbar: new IM1ToolbarModel(SearchPlaceholder: "Search locations", ShowRefresh: true, ShowFilters: true, ShowExport: true),
-        EmptyText: "No business locations have been configured.",
+        EmptyText: "No company locations have been configured.",
         PageSize: 10);
     var usersGrid = new IM1DataGridModel(
         Columns: new[]
@@ -71,7 +71,7 @@
             ["status"] = employee.Status
         }).ToArray(),
         Toolbar: new IM1ToolbarModel(SearchPlaceholder: "Search users", ShowRefresh: true, ShowFilters: true, ShowExport: true),
-        EmptyText: "No business users have been invited.",
+        EmptyText: "No company users have been invited.",
         PageSize: 10);
 }
 
@@ -80,7 +80,7 @@
 <section class="im1-metric-grid">
     @await Html.PartialAsync("IM1Card", new IM1CardModel("Setup", $"{Model.SetupProgress}%", "Administration readiness."))
     @await Html.PartialAsync("IM1Card", new IM1CardModel("Locations", Model.Locations.Count.ToString(), "Configured shops."))
-    @await Html.PartialAsync("IM1Card", new IM1CardModel("Employees", Model.Employees.Count.ToString(), "Business users."))
+    @await Html.PartialAsync("IM1Card", new IM1CardModel("Employees", Model.Employees.Count.ToString(), "Company users."))
     @await Html.PartialAsync("IM1Card", new IM1CardModel("Status", Model.IsReadyForOperations ? "Ready" : "Setup", "Operational readiness."))
 </section>
 
@@ -89,10 +89,10 @@
 
     <div class="tab-panel is-active" id="profile" role="tabpanel">
         <article class="page-band">
-            <h2>Business Profile</h2>
+            <h2>Company Profile</h2>
             <form asp-action="Profile" method="post" class="form-grid">
                 <input type="hidden" name="organizationId" value="@Model.OrganizationId" />
-                <label>Business Name <input name="BusinessName" value="@Model.Profile.BusinessName" /></label>
+                <label>Company Name <input name="BusinessName" value="@Model.Profile.BusinessName" /></label>
                 <label>Legal Name <input name="LegalName" value="@Model.Profile.LegalName" /></label>
                 <label>DBA <input name="Dba" value="@Model.Profile.Dba" /></label>
                 <label>Logo URL <input name="LogoUrl" value="@Model.Profile.LogoUrl" /></label>
@@ -118,7 +118,7 @@
 
     <div class="tab-panel" id="locations" role="tabpanel" hidden>
         <article class="page-band">
-            <h2>Business Locations</h2>
+            <h2>Company Locations</h2>
             @await Html.PartialAsync("IM1DataGrid", locationGrid)
             <form asp-action="Location" method="post" class="form-grid form-grid-spaced">
                 <input type="hidden" name="organizationId" value="@Model.OrganizationId" />
@@ -141,7 +141,7 @@
 
     <div class="tab-panel" id="employees" role="tabpanel" hidden>
         <article class="page-band">
-            <h2>Business Users</h2>
+            <h2>Company Users</h2>
             @await Html.PartialAsync("IM1DataGrid", usersGrid)
             <form asp-action="Employee" method="post" class="form-grid form-grid-spaced">
                 <input type="hidden" name="organizationId" value="@Model.OrganizationId" />

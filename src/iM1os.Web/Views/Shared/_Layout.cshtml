@@ -7,11 +7,11 @@
     var isBusinessShell = isCustomerContext || isBusinessAuthPage;
     var isMarketingSite = ViewData["MarketingSite"] is true;
     var showShellNavigation = isAuthenticated;
-    var productName = isBusinessShell ? "iM1 Business" : "IM1 Platform";
+    var productName = isBusinessShell ? "iM1 Company" : "IM1 Platform";
     var brandController = isCustomerContext ? "Business" : isBusinessAuthPage ? "Account" : "Platform";
     var brandAction = isCustomerContext ? "Dashboard" : isBusinessAuthPage ? "Login" : "Dashboard";
     var navigationItems = isCustomerContext
-        ? IM1ShellNavigation.AppShell.TenantItems
+        ? IM1ShellNavigation.AppShell.CompanyItems
         : IM1ShellNavigation.AppShell.PlatformItems;
 }
 <!DOCTYPE html>

@@ -1,14 +1,14 @@
 @model iM1os.Application.Platform.ProvisionTenantRequest
 
 @{
-    ViewData["Title"] = "Create IM1OS Tenant";
+    ViewData["Title"] = "Create IM1OS Company";
 }
 
 <section class="dashboard-header">
     <div>
         <p class="eyebrow">Provisioning wizard</p>
-        <h1>Create New IM1OS Tenant</h1>
-        <p class="subtle">This creates the organization, default location, owner user, subscription, modules, settings, welcome email, platform events, and audit trail.</p>
+        <h1>Create New IM1OS Company</h1>
+        <p class="subtle">This creates the company, default location, owner user, subscription, modules, settings, welcome email, platform events, and audit trail.</p>
     </div>
 </section>
 
@@ -16,9 +16,9 @@
     <div asp-validation-summary="ModelOnly" class="validation"></div>
 
     <fieldset>
-        <legend>1. Business</legend>
-        <label>Business Name <input asp-for="BusinessName" /></label>
-        <label>Business Email <input asp-for="BusinessEmail" /></label>
+        <legend>1. Company</legend>
+        <label>Company Name <input asp-for="BusinessName" /></label>
+        <label>Company Email <input asp-for="BusinessEmail" /></label>
         <label>Phone <input asp-for="Phone" /></label>
     </fieldset>
 
