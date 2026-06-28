@@ -6,7 +6,6 @@
     var grid = new IM1DataGridModel(
         Columns: new[]
         {
-            new IM1DataGridColumnModel("avatar", "Avatar", false, false),
             new IM1DataGridColumnModel("name", "Name"),
             new IM1DataGridColumnModel("email", "Email"),
             new IM1DataGridColumnModel("jobTitle", "Job Title"),
@@ -19,7 +18,6 @@
         },
         Rows: Model.Employees.Select(employee => new Dictionary<string, object?>
         {
-            ["avatar"] = employee.Avatar,
             ["name"] = employee.Name,
             ["email"] = employee.Email ?? "",
             ["jobTitle"] = employee.JobTitle ?? "",

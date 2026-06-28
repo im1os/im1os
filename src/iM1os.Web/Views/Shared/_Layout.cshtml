@@ -7,7 +7,10 @@
     var isBusinessShell = isCustomerContext || isBusinessAuthPage;
     var isMarketingSite = ViewData["MarketingSite"] is true;
     var showShellNavigation = isAuthenticated;
-    var productName = isBusinessShell ? "iM1 Company" : "IM1 Platform";
+    var companyName = User.FindFirst("organization_name")?.Value;
+    var productName = isBusinessShell
+        ? !string.IsNullOrWhiteSpace(companyName) ? companyName : "iM1 Company"
+        : "IM1 Platform";
     var brandController = isCustomerContext ? "Business" : isBusinessAuthPage ? "Account" : "Platform";
     var brandAction = isCustomerContext ? "Dashboard" : isBusinessAuthPage ? "Login" : "Dashboard";
     var navigationItems = isCustomerContext
