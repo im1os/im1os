@@ -26,7 +26,7 @@ Scope:
 - Tenant status
 - Plan
 - Version
-- User count
+- Login account count
 - Location count
 - Last login
 - Health
@@ -50,7 +50,7 @@ Scope:
 - Initial database records
 - Storage setup
 - Subscription assignment
-- Admin user creation
+- Initial owner login account creation
 - Trial generation
 - Module enablement
 - Welcome communication
@@ -125,7 +125,7 @@ Scope:
 - ARR
 - Churn
 - Retention
-- Users
+- Login accounts
 - Transactions
 - Supplier orders
 - Merchant volume
@@ -146,7 +146,7 @@ Scope:
 
 - Organizations
 - Locations
-- User memberships
+- Login account memberships
 - Employees
 - Organization roles
 - Organization permissions
@@ -157,9 +157,35 @@ Tenancy:
 
 - `Organization` is the tenant.
 - `Organization` is the security boundary.
-- Users may belong to multiple organizations.
+- Login accounts may belong to multiple organizations through memberships.
 - Permissions are organization-specific.
 - Location permissions exist inside an organization.
+
+### Human Resources
+
+Owns employee master records and workforce operations.
+
+Scope:
+
+- Employees
+- Optional employee login accounts
+- Time clock
+- Schedules
+- Time off
+- Payroll integration
+- Commissions
+- Certifications
+- Employee documents
+- Issued assets
+- OSHA and safety
+- Performance history
+- Employee activity timeline
+
+Human Resources is a core iM1 OS module. Employee is the master record for people working for the company whether or not they have login access. Authentication, roles, permissions, MFA, password credentials, and sessions attach to an employee only when login is enabled.
+
+Formal specification:
+
+- `docs/specs/HUMAN_RESOURCES_SCOPE.md`
 
 ### Customers
 

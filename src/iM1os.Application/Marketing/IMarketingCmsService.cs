@@ -10,6 +10,8 @@ public interface IMarketingCmsService
 
     Task<MarketingPageDto> SavePageAsync(SaveMarketingPageRequest request, CancellationToken cancellationToken);
 
+    Task DeletePageAsync(Guid id, CancellationToken cancellationToken);
+
     Task<MarketingContentBlockDto> SaveBlockAsync(SaveMarketingContentBlockRequest request, CancellationToken cancellationToken);
 
     Task DeleteBlockAsync(Guid id, CancellationToken cancellationToken);

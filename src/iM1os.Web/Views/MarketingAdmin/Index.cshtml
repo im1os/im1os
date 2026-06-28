@@ -21,7 +21,13 @@
                     <strong>@item.Title</strong>
                     <span>@item.Slug · @item.NavigationLabel · @(item.IsPublished ? "Published" : "Draft") · Sort @item.SortOrder</span>
                 </div>
-                <a class="im1-button im1-button-secondary" asp-action="Page" asp-route-id="@item.Id">Edit</a>
+                <div class="im1-row-actions">
+                    <a class="im1-button im1-button-secondary" asp-action="Page" asp-route-id="@item.Id">Edit</a>
+                    <form asp-action="DeletePage" method="post" onsubmit="return confirm('Delete this marketing page and all of its content blocks?');">
+                        <input type="hidden" name="id" value="@item.Id" />
+                        <button class="im1-button im1-button-danger" type="submit">Delete</button>
+                    </form>
+                </div>
             </article>
         }
         @if (Model.Count == 0)

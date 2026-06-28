@@ -6,7 +6,7 @@ The legacy PHP/JavaScript implementation is the functional specification for wor
 
 The Parts Engine is governed by `docs/specs/PARTS_ENGINE_PRODUCT_SPEC.md`. Parts domain implementation should also follow `docs/PARTS_DOMAIN_IMPLEMENTATION_PROPOSAL.md` until that proposal is accepted or superseded.
 
-Service Intelligence is governed by `docs/specs/SERVICE_INTELLIGENCE_ENGINE_SPEC.md`. Data Intelligence and analytics readiness are governed by `docs/specs/DATA_INTELLIGENCE_SCOPE.md`.
+Service Intelligence is governed by `docs/specs/SERVICE_INTELLIGENCE_ENGINE_SPEC.md`. Human Resources and the Employee master record are governed by `docs/specs/HUMAN_RESOURCES_SCOPE.md`. Data Intelligence and analytics readiness are governed by `docs/specs/DATA_INTELLIGENCE_SCOPE.md`.
 
 Procurement Intelligence is governed by `docs/specs/PROCUREMENT_INTELLIGENCE_ENGINE_SPEC.md`. Supplier Promotion Intelligence is governed by `docs/specs/SUPPLIER_PROMOTION_INTELLIGENCE_ENGINE_SPEC.md`. Network Intelligence is governed by `docs/specs/NETWORK_INTELLIGENCE_ENGINE_SPEC.md`. Network Value Exchange is governed by `docs/specs/NETWORK_VALUE_EXCHANGE_SPEC.md`. Financial Intelligence is governed by `docs/specs/FINANCIAL_INTELLIGENCE_ENGINE_SPEC.md`. Commerce Network is governed by `docs/specs/COMMERCE_NETWORK_SPEC.md`. Social and Market Intelligence is governed by `docs/specs/SOCIAL_MARKET_INTELLIGENCE_ENGINE_SPEC.md`. Purchase Intelligence is transactional and per-work-order; Procurement Intelligence is strategic and inventory-planning oriented; Supplier Promotion Intelligence optimizes supplier programs and promotion-aware purchasing; Network Intelligence creates tenant-safe aggregate and explicitly shared opportunities across participating shops; Network Value Exchange rewards trusted participation with non-cash utility credits; Financial Intelligence explains payment, settlement, profitability, and benchmark-safe financial behavior; Commerce Network connects local-first dealer commerce, supplier availability, marketplace search, merchant services, and customer portal flows; Social and Market Intelligence is market-signal and trend oriented.
 
@@ -41,7 +41,7 @@ An organization contains:
 - Invoices
 - Reports
 
-Users may belong to multiple organizations. Permissions are organization-specific. Location permissions exist inside an organization.
+Employees are company worker records. Some employees have login accounts and some do not. Login accounts may belong to multiple organizations through memberships. Permissions are organization-specific. Location permissions exist inside an organization.
 
 Every tenant-owned table must contain `OrganizationId`. Most operational tables should also contain `LocationId`.
 
@@ -55,11 +55,40 @@ Related concepts:
 
 - Location
 - Employee
-- User membership
+- Login account
+- Organization membership
 - Organization role
 - Organization permission
 - Location permission
 - Organization settings
+
+### Employee
+
+Represents a person working for the company, whether or not that person can log in to iM1 OS.
+
+Employee is one of the system master records, alongside Customer, Vehicle, Vendor, Product, and Company. It connects to authentication, security, CRM, work orders, sales, estimates, scheduling, time clock, payroll, accounting, inventory, purchasing, asset management, document management, HR, OSHA, commissions, reporting, and audit logs.
+
+Related concepts:
+
+- Employee number
+- Personal and emergency contact information
+- Department, manager, and job title
+- Employment status, hire date, termination date, and rehire eligibility
+- Employment type
+- Pay type and effective-dated pay history
+- Optional login account
+- Organization role and permissions
+- Time clock records
+- Work schedules and holiday exceptions
+- Time off requests and approvals
+- Payroll integration identity
+- Sales and work order commissions
+- Certifications and expiration reminders
+- Employee document vault
+- Assigned assets
+- OSHA and safety records
+- Performance history
+- Activity timeline
 
 ### Customer
 

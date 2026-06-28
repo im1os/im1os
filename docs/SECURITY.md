@@ -2,9 +2,9 @@
 
 Security is a platform concern in iM1 OS. Authentication uses JWT bearer tokens. Authorization is role and permission based. Tenant isolation is enforced through organization-scoped data models and EF Core query filters.
 
-The tenant is `Organization`. `Organization` is the security boundary. Users may belong to multiple organizations, but every organization context must have its own membership, role, and permission evaluation.
+The tenant is `Organization`. `Organization` is the security boundary. Employee is the company worker master record. Login accounts may belong to multiple organizations, but every organization context must have its own membership, role, and permission evaluation.
 
-Location permissions exist inside an organization. A user who has access to one location must not automatically gain access to every service, parts, receiving, repair, invoice, or report workflow in the organization unless their organization permissions allow it.
+Location permissions exist inside an organization. A login account that has access to one location must not automatically gain access to every service, parts, receiving, repair, invoice, or report workflow in the organization unless its organization permissions allow it.
 
 Requirements:
 

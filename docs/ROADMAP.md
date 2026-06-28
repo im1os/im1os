@@ -1,6 +1,6 @@
 # Roadmap
 
-Phase 1 establishes the SaaS platform foundation and the service and parts operating system: authentication, authorization, users, organization memberships, organization-scoped roles and permissions, locations, location permissions, multi-tenancy, settings, feature flags, audit logging, health checks, logging, API versioning, workers, and documentation.
+Phase 1 establishes the SaaS platform foundation and the service and parts operating system: authentication, authorization, employee-aware login accounts, organization memberships, organization-scoped roles and permissions, locations, location permissions, multi-tenancy, settings, feature flags, audit logging, health checks, logging, API versioning, workers, and documentation.
 
 Phase 1A should define and begin the IM1 Platform control plane only where needed for onboarding and operating tenants: Tenant Manager scope, tenant lifecycle states, provisioning state, plan/entitlement model, tenant health indicators, and platform audit requirements.
 
@@ -19,6 +19,8 @@ Phase 7 should grow network effects: benchmark-safe shared intelligence, optiona
 Optional future modules may include vehicle sales, unit inventory, F&I, deal jackets, and floor planning. These are not core platform phases and must not shape the foundation.
 
 See `docs/DOMAIN_MODEL.md` and `docs/MODULE_DEFINITIONS.md` before designing or implementing business modules.
+
+Human Resources is core iM1 OS scope. Employee is a master record whether or not login access exists; do not design company worker workflows around "Users." See `docs/specs/HUMAN_RESOURCES_SCOPE.md`.
 
 The iM1 UI framework is now a foundation prerequisite for module UI. See `docs/specs/IM1_UI_FRAMEWORK_SPEC.md`. Business modules should compose iM1 UI primitives and must not directly consume third-party UI libraries.
 

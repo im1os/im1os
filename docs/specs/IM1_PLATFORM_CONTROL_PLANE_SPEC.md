@@ -44,6 +44,7 @@ IM1OS is the tenant operating system used by each independent shop.
 Scope:
 
 - Business administration
+- Human Resources
 - Customers
 - Vehicles
 - Work orders
@@ -83,7 +84,7 @@ Tenant list fields may include:
 - Status
 - Plan
 - Version
-- User count
+- Login account count
 - Location count
 - Last login
 - Health status
@@ -93,7 +94,7 @@ Tenant detail should expose:
 - Organization profile
 - Subscription
 - Billing
-- Users
+- Login accounts
 - Locations
 - Usage
 - Storage
@@ -118,7 +119,7 @@ Create Organization
   -> Create database records
   -> Create storage
   -> Assign subscription
-  -> Create admin user
+  -> Create initial owner login account
   -> Generate trial
   -> Enable modules
   -> Send welcome email
@@ -240,7 +241,7 @@ Potential metrics:
 - ARR
 - Churn
 - Retention
-- Users
+- Login accounts
 - Transactions
 - Supplier orders
 - Merchant volume
@@ -261,7 +262,7 @@ Platform analytics must not expose tenant confidential data to other tenants.
 ## Discovery Questions
 
 - Should IM1 Platform be a separate web app, separate API area, or separate module in the same deployment?
-- Which users are platform administrators, and how are they authenticated?
+- Which login accounts are platform administrators, and how are they authenticated?
 - What tenant lifecycle states are required: trial, active, suspended, canceled, archived?
 - Which provisioning steps must be automated for the first paid tenant?
 - Which billing provider or merchant provider should be used first?

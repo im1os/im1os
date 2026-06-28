@@ -2,7 +2,7 @@
 
 iM1 OS uses PostgreSQL through Entity Framework Core migrations. The initial schema is `platform`.
 
-Foundation tables include organizations, locations, users, organization memberships, roles, permissions, user-role links, role-permission links, location permission links, feature flags, application settings, and audit logs.
+Foundation tables include organizations, locations, employee-aware login accounts, organization memberships, roles, permissions, account-role links, role-permission links, location permission links, feature flags, application settings, and audit logs.
 
 The tenant is `Organization`. `Organization` is the security boundary for SaaS isolation.
 
@@ -13,7 +13,7 @@ Rules:
 - Every schema change must be represented by an EF Core migration.
 - Tenant-owned data must include `OrganizationId` unless it is explicitly global platform data.
 - Most operational tables should include `LocationId`, especially service, parts inventory, receiving, repair, invoice, and reporting data.
-- Users may belong to multiple organizations.
+- Employee is the company worker master record. Login accounts may belong to multiple organizations.
 - Permissions are organization-specific.
 - Location permissions exist inside an organization.
 - Tenant-owned unique constraints must include `OrganizationId` unless the value is intentionally globally unique.

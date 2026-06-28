@@ -26,7 +26,7 @@ Entities:
 
 - Organization
 - Location
-- User
+- LoginAccount
 - OrganizationMembership
 - Employee
 - Role
@@ -41,7 +41,7 @@ Rules:
 - `Organization` is the tenant and security boundary.
 - Every tenant-owned entity has `OrganizationId`.
 - Most operational entities have `LocationId`.
-- Users may belong to multiple organizations.
+- Employee is the company worker master record. Login accounts may belong to multiple organizations.
 - Permissions are organization-specific.
 - Location permissions exist inside an organization.
 

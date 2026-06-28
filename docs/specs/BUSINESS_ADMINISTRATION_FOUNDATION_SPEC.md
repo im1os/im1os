@@ -2,7 +2,7 @@
 
 Status: Sprint 2 implementation scope.
 
-Business Administration is the tenant-level operating system configuration area for an independent powersports business. It is intentionally separate from Platform Administration and from later operational modules.
+Business Administration is the tenant-level operating system configuration area for an independent powersports business. It is intentionally separate from Platform Administration. Human Resources begins inside Business Administration and grows into a core operating module.
 
 ## Definition Of Done
 
@@ -13,7 +13,7 @@ A new tenant owner can receive an invitation, activate the account, log in, comp
 - Owner-only Business Administration workspace inside the tenant application.
 - Business Profile fields for legal identity, DBA, logo, website, phone, email, tax ID, address, time zone, language, currency, date format, and time format.
 - Multiple location configuration with address, phone, time zone, default labor rate, default tax region, and status.
-- Employee invitation foundation backed by tenant users, organization memberships, and organization-scoped roles.
+- Employee invitation foundation backed by employee records, optional login accounts, organization memberships, and organization-scoped roles.
 - Flexible role and permission display using existing role and permission tables instead of hardcoded authorization types.
 - Labor configuration for default, diagnostic, emergency, weekend, environmental fee, and shop supplies percentage.
 - Tax configuration for a default rate and future regional overrides.
@@ -27,9 +27,11 @@ A new tenant owner can receive an invitation, activate the account, log in, comp
 - `Organization` remains the tenant security boundary.
 - `BusinessConfiguration` stores tenant-wide operational defaults consumed by future modules.
 - `Location` carries shop-level defaults that future work orders, inventory, and reporting can consume.
-- Employees are tenant users plus organization memberships and roles, not a separate identity store.
+- Employee is the tenant master record for people working for the company. Login accounts are optional access records attached to employees.
+- Do not model company workers as "Users" in business-facing scope. Some employees clock in, hold documents, receive assets, or require OSHA records without ever logging in.
 - Only the Owner role can access Business Administration in this sprint.
 - Future custom roles are supported by the existing role and permission model.
+- Human Resources scope is governed by `docs/specs/HUMAN_RESOURCES_SCOPE.md`.
 
 ## Out Of Scope
 
@@ -44,3 +46,4 @@ A new tenant owner can receive an invitation, activate the account, log in, comp
 - AI
 - Repair Orders
 - Purchasing
+- Full HR workflows beyond employee invitation and role assignment

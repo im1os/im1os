@@ -67,6 +67,20 @@ public sealed class MarketingCmsService(IApplicationDbContext dbContext) : IMark
         return ToDto(page, publishedOnly: false);
     }
 
+    public async Task DeletePageAsync(Guid id, CancellationToken cancellationToken)
+    {
+        var page = await dbContext.MarketingPages
+            .Include(x => x.Blocks)
+            .SingleOrDefaultAsync(x => x.Id == id, cancellationToken);
+        if (page is null)
+        {
+            return;
+        }
+
+        dbContext.MarketingPages.Remove(page);
+        await dbContext.SaveChangesAsync(cancellationToken);
+    }
+
     public async Task<MarketingContentBlockDto> SaveBlockAsync(SaveMarketingContentBlockRequest request, CancellationToken cancellationToken)
     {
         MarketingContentBlock block;

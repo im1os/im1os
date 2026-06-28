@@ -34,9 +34,9 @@ The tenant is now ready for Business Administration to be implemented.
 - Role and permission claims in tenant session context.
 - Owner-only onboarding wizard.
 - Business dashboard after onboarding.
-- Basic tenant user profile and password change.
+- Basic tenant login account profile and password change.
 - Tenant identity events for invitation, activation, login, logout, password, and onboarding milestones.
-- Future MFA architecture fields on tenant users.
+- Future MFA architecture fields on employee login accounts.
 
 ## Out Of Scope
 

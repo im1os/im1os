@@ -24,6 +24,7 @@ The foundation is:
 - Parts operations.
 - Supplier integrations.
 - Estimating.
+- Human Resources.
 - Purchasing intelligence.
 - Customer experience.
 
@@ -93,7 +94,8 @@ Confirmed architecture decisions:
 
 - Tenant is `Organization`.
 - `Organization` can have multiple `Locations`.
-- Users can belong to multiple `Organizations`.
+- Employee is the company worker master record.
+- Login accounts can belong to multiple `Organizations`.
 - Permissions are organization-specific.
 - Location permissions exist inside an organization.
 - Tenant-owned data must include `OrganizationId`.
@@ -107,6 +109,7 @@ Confirmed architecture decisions:
 - AI consumes structured data, events, permissions, and engine outputs. AI does not own the domain model.
 - IM1 Platform is above `Organization`; it manages tenants and platform lifecycle.
 - Tenant Business Administration lives inside each `Organization`.
+- Human Resources is core tenant scope. Employee exists whether or not login access exists.
 - Platform Administration and tenant administration must not be conflated.
 
 ## 5. Open Questions
@@ -244,6 +247,7 @@ Prioritized discovery backlog:
 20. Define tenant lifecycle states, plan model, and feature/module entitlement model.
 21. Define support impersonation audit and permission requirements.
 22. Define platform health metrics and tenant health indicators.
+23. Define the first-pass Employee and Human Resources model around optional login access, time clock, schedules, documents, assets, OSHA, payroll, and commissions.
 
 ## 8. Build-Now vs Decide-Later
 
@@ -251,7 +255,7 @@ Prioritized discovery backlog:
 
 Safe foundation work:
 
-- Organization, Location, User, Membership, Role, and Permission foundation.
+- Organization, Location, Employee, LoginAccount, Membership, Role, and Permission foundation.
 - Organization-scoped authorization.
 - Location-aware operational permissions.
 - Shared database/shared schema with strict tenant filters.

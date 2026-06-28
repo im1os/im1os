@@ -39,6 +39,14 @@ public sealed class MarketingAdminController(IMarketingCmsService marketingCmsSe
         return RedirectToAction(nameof(Page), new { id = page.Id });
     }
 
+    [HttpPost]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> DeletePage(Guid id, CancellationToken cancellationToken)
+    {
+        await marketingCmsService.DeletePageAsync(id, cancellationToken);
+        return RedirectToAction(nameof(Index));
+    }
+
     [HttpGet]
     public async Task<IActionResult> Block(Guid pageId, Guid? id, string? blockType, CancellationToken cancellationToken)
     {

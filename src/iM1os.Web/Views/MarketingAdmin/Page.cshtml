@@ -61,6 +61,13 @@
             <a class="im1-button im1-button-secondary" asp-action="Index">Back</a>
         </div>
     </form>
+    @if (Model.Id is not null)
+    {
+        <form class="im1-form-actions" asp-action="DeletePage" method="post" onsubmit="return confirm('Delete this marketing page and all of its content blocks?');">
+            <input type="hidden" name="id" value="@Model.Id" />
+            <button class="im1-button im1-button-danger" type="submit">Delete Page</button>
+        </form>
+    }
 </section>
 
 @if (Model.Id is not null)

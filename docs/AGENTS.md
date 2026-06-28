@@ -20,12 +20,13 @@ Core product assumptions:
 - The Commerce Network should be local-first and dealer-enabling. Do not make ecommerce platforms or marketplace pages the source of truth for parts identity, inventory, or customer ownership.
 - Social and Market Intelligence is an early warning system for demand signals. Do not treat it as marketing automation, and do not build scraping before the event and data foundation is ready.
 - The tenant is `Organization`. `Organization` is the security boundary.
-- Users may belong to multiple organizations.
+- Employee is the company worker master record. Some employees have login accounts and some do not.
+- Login accounts may belong to multiple organizations.
 - Permissions are organization-specific.
 - Location permissions exist inside an organization.
 - Every tenant-owned table must contain `OrganizationId`.
 - Most operational tables should also contain `LocationId`.
-- UI terminology is context-specific. Internal code, APIs, database schema, permissions, services, and business logic use `Organization` and `OrganizationId`. User-facing UI must standardize on Platform for iM1 control-plane surfaces and Company for customer entities. Do not expose Tenant or Organization in user-facing labels, headings, navigation, help text, buttons, or table headers.
+- UI terminology is context-specific. Internal code, APIs, database schema, permissions, services, and business logic use `Organization` and `OrganizationId`. User-facing UI must standardize on Platform for iM1 control-plane surfaces and Company for customer entities. Do not expose Tenant or Organization in user-facing labels, headings, navigation, help text, buttons, or table headers. Do not use "User" as the business-facing model for company workers; use Employee and attach login access only when enabled.
 - iM1 UI is the reusable application framework. Pages and modules must consume iM1-owned UI primitives and wrappers. Do not import AG Grid, MUI, Bootstrap, charting libraries, or other third-party UI libraries directly outside the iM1 UI component boundary.
 
 Do not add unrelated product assumptions, traditional DMS assumptions, or external platform dependencies.

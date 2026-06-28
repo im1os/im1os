@@ -66,6 +66,7 @@ IM1OS is the tenant operating system used by each shop.
 Scope:
 
 - Business administration
+- Human Resources
 - Customers
 - Vehicles
 - Work orders
@@ -161,7 +162,7 @@ An organization owns:
 - Invoices
 - Reports
 
-Users may belong to multiple organizations. Roles and permissions are scoped to an organization. Location permissions exist inside an organization for workflows that should be limited to one or more physical stores or service locations.
+Employee is the tenant master record for people working for the company. Some employees have login accounts and some do not. Login accounts may belong to multiple organizations. Roles and permissions are scoped to an organization and attach to the employee's login access when enabled. Location permissions exist inside an organization for workflows that should be limited to one or more physical stores or service locations.
 
 Every tenant-owned table must contain `OrganizationId`. Most operational tables should also contain `LocationId` because service, parts, receiving, repair, and invoicing workflows usually happen at a specific location.
 
@@ -180,7 +181,7 @@ Customer-facing examples include:
 - Business Profile
 - Business Settings
 - Business Locations
-- Business Users
+- Employees
 - Business Branding
 - Business Hours
 - Business Subscription
