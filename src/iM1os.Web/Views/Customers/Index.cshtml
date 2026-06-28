@@ -2,7 +2,7 @@
 
 @{
     ViewData["Title"] = "Customers";
-    var showNewCustomer = Context.Request.Query["newCustomer"] == "true";
+    var showNewCustomer = string.Equals(Context.Request.Query["newCustomer"].FirstOrDefault(), "true", StringComparison.OrdinalIgnoreCase);
     var statusOptions = new[] { "Active", "Prospect", "Inactive", "Archived" };
     var customerTypeOptions = new[] { "Individual", "Business", "Government", "Internal" };
     var preferredContactOptions = new[] { "Phone", "Text", "Email", "Mail", "None" };
@@ -37,7 +37,7 @@
             ["actions"] = new Microsoft.AspNetCore.Html.HtmlString($"<a class=\"im1-button im1-button-secondary\" href=\"{Url.Action("Detail", "Customers", new { customerId = customer.Id })}\">Open</a>")
         }).ToArray(),
         Toolbar: new IM1ToolbarModel(
-            Actions: new[] { new IM1ActionModel("New Customer", Url.Action("Index", "Customers", new { newCustomer = true }), "primary") },
+            Actions: new[] { new IM1ActionModel("New Customer", Url.Action("Index", "Customers", new { newCustomer = "true" }), "primary") },
             SearchPlaceholder: "Search customers",
             ShowRefresh: true,
             ShowExport: true),
@@ -53,7 +53,7 @@
             new IM1BreadcrumbModel("CRM"),
             new IM1BreadcrumbModel("Customers")
         },
-        Toolbar: new IM1ToolbarModel(Actions: new[] { new IM1ActionModel("New Customer", Url.Action("Index", "Customers", new { newCustomer = true }), "primary") }));
+        Toolbar: new IM1ToolbarModel(Actions: new[] { new IM1ActionModel("New Customer", Url.Action("Index", "Customers", new { newCustomer = "true" }), "primary") }));
 }
 
 @await Html.PartialAsync("IM1Page", page)

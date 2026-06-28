@@ -151,6 +151,7 @@
 
 .im1-sidebar-icon {
   color: var(--im1-color-accent);
+  display: none;
   font-size: var(--im1-font-size-caption);
   min-width: 24px;
 }

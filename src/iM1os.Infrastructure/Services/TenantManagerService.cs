@@ -178,7 +178,7 @@ public sealed class TenantManagerService(
         tenant.HealthStatus = Required(request.HealthStatus, "Health status");
         tenant.BillingStatus = Required(request.BillingStatus, "Billing status");
         tenant.ProvisioningStatus = Required(request.ProvisioningStatus, "Provisioning status");
-        tenant.TrialExpiresAtUtc = request.TrialExpiresAtUtc;
+        tenant.TrialExpiresAtUtc = AsUtc(request.TrialExpiresAtUtc);
         organization.Name = tenant.OrganizationName;
         organization.IsActive = !tenant.Status.Equals("Suspended", StringComparison.OrdinalIgnoreCase);
 
@@ -294,5 +294,12 @@ public sealed class TenantManagerService(
         return string.IsNullOrWhiteSpace(value)
             ? throw new ArgumentException($"{fieldName} is required.")
             : value.Trim();
+    }
+
+    private static DateTimeOffset? AsUtc(DateTimeOffset? value)
+    {
+        return value is null
+            ? null
+            : new DateTimeOffset(value.Value.DateTime, TimeSpan.Zero);
     }
 }
