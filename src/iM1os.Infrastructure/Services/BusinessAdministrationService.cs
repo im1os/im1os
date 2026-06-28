@@ -2,6 +2,7 @@ using System.Text.Json;
 using iM1os.Application.BusinessAdministration;
 using iM1os.Application.Common;
 using iM1os.Domain.Audit;
+using iM1os.Domain.Employees;
 using iM1os.Domain.Identity;
 using iM1os.Domain.Tenancy;
 using Microsoft.AspNetCore.Identity;
@@ -43,19 +44,19 @@ public sealed class BusinessAdministrationService(
                 x.IsSystemRole,
                 x.RolePermissions.Select(rp => rp.Permission!.Key).OrderBy(key => key).ToList()))
             .ToListAsync(cancellationToken);
-        var employeeRows = await dbContext.Users.IgnoreQueryFilters()
+        var employeeRows = await dbContext.Employees.IgnoreQueryFilters()
             .Where(x => x.OrganizationId == organizationId)
-            .Include(x => x.UserRoles).ThenInclude(x => x.Role)
-            .Include(x => x.OrganizationMemberships)
+            .Include(x => x.LoginAccount!).ThenInclude(x => x.UserRoles).ThenInclude(x => x.Role)
+            .Include(x => x.LoginAccount!).ThenInclude(x => x.OrganizationMemberships)
             .OrderBy(x => x.DisplayName)
             .ToListAsync(cancellationToken);
         var locationNames = locations.ToDictionary(x => x.Id, x => x.Name);
         var employees = employeeRows.Select(x =>
         {
-            var membership = x.OrganizationMemberships.FirstOrDefault(m => m.OrganizationId == organizationId);
-            var role = x.UserRoles.Select(ur => ur.Role?.Name).FirstOrDefault(name => !string.IsNullOrWhiteSpace(name)) ?? "Unassigned";
+            var membership = x.LoginAccount?.OrganizationMemberships.FirstOrDefault(m => m.OrganizationId == organizationId);
+            var role = x.LoginAccount?.UserRoles.Select(ur => ur.Role?.Name).FirstOrDefault(name => !string.IsNullOrWhiteSpace(name)) ?? "No Login";
             var primaryLocation = membership?.PrimaryLocationId is Guid locationId && locationNames.TryGetValue(locationId, out var name) ? name : null;
-            return new EmployeeDto(x.Id, x.DisplayName, x.Email, x.Phone, role, membership?.Status ?? (x.IsActive ? "Active" : "Inactive"), primaryLocation);
+            return new EmployeeDto(x.Id, x.DisplayName, x.Email ?? x.LoginAccount?.Email ?? string.Empty, x.Phone, role, x.Status, primaryLocation);
         }).ToList();
         var recentActivity = await dbContext.TimelineEvents.IgnoreQueryFilters()
             .Where(x => x.OrganizationId == organizationId)
@@ -150,10 +151,23 @@ public sealed class BusinessAdministrationService(
         }
 
         var role = await GetOrCreateRoleAsync(organizationId, request.RoleName, cancellationToken);
-        var employee = new ApplicationUser
+        var employee = new Employee
         {
             OrganizationId = organizationId,
             DisplayName = request.Name.Trim(),
+            Email = request.Email.Trim(),
+            FirstName = FirstName(request.Name),
+            LastName = LastName(request.Name),
+            Phone = Clean(request.Phone),
+            Status = "Active"
+        };
+        dbContext.Employees.Add(employee);
+
+        var loginAccount = new ApplicationUser
+        {
+            OrganizationId = organizationId,
+            EmployeeId = employee.Id,
+            DisplayName = employee.DisplayName,
             Email = request.Email.Trim(),
             NormalizedEmail = normalizedEmail,
             Phone = Clean(request.Phone),
@@ -161,20 +175,21 @@ public sealed class BusinessAdministrationService(
             IsActive = false,
             MustChangePassword = true
         };
-        employee.PasswordHash = passwordHasher.HashPassword(employee, Guid.NewGuid().ToString("N"));
-        employee.UserRoles.Add(new UserRole { UserId = employee.Id, RoleId = role.Id });
-        employee.OrganizationMemberships.Add(new OrganizationMembership
+        loginAccount.PasswordHash = passwordHasher.HashPassword(loginAccount, Guid.NewGuid().ToString("N"));
+        loginAccount.UserRoles.Add(new UserRole { UserId = loginAccount.Id, RoleId = role.Id });
+        loginAccount.OrganizationMemberships.Add(new OrganizationMembership
         {
             OrganizationId = organizationId,
-            UserId = employee.Id,
+            UserId = loginAccount.Id,
             DisplayName = employee.DisplayName,
             PrimaryLocationId = request.PrimaryLocationId,
             Status = "Invited",
             IsActive = false
         });
-        dbContext.Users.Add(employee);
+        dbContext.Users.Add(loginAccount);
+        employee.LoginAccount = loginAccount;
 
-        await RecordAdminChangeAsync(organizationId, userId, "EmployeeInvited", "ApplicationUser", employee.Id.ToString(), null, new { employee.DisplayName, employee.Email, Role = role.Name }, cancellationToken);
+        await RecordAdminChangeAsync(organizationId, userId, "EmployeeInvited", "Employee", employee.Id.ToString(), null, new { employee.DisplayName, employee.Email, Role = role.Name }, cancellationToken);
         await dbContext.SaveChangesAsync(cancellationToken);
     }
 
@@ -354,6 +369,14 @@ public sealed class BusinessAdministrationService(
     }
 
     private static string? Clean(string? value) => string.IsNullOrWhiteSpace(value) ? null : value.Trim();
+
+    private static string FirstName(string name) => name.Trim().Split(' ', StringSplitOptions.RemoveEmptyEntries).FirstOrDefault() ?? name.Trim();
+
+    private static string? LastName(string name)
+    {
+        var parts = name.Trim().Split(' ', StringSplitOptions.RemoveEmptyEntries);
+        return parts.Length > 1 ? string.Join(' ', parts.Skip(1)) : null;
+    }
 
     private static string ToTitleCase(string normalized) => string.Join(' ', normalized.Split('_').Select(word => word[..1] + word[1..].ToLowerInvariant()));
 }

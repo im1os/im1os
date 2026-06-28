@@ -1,4 +1,5 @@
 using iM1os.Domain.Configuration;
+using iM1os.Domain.Employees;
 using iM1os.Domain.Identity;
 using iM1os.Domain.Marketing;
 using iM1os.Domain.Platform;
@@ -66,9 +67,20 @@ public sealed class ApplicationDbInitializer(
             adminRole.RolePermissions.Add(new RolePermission { RoleId = adminRole.Id, PermissionId = permission.Id });
         }
 
+        var employee = new Employee
+        {
+            OrganizationId = organization.Id,
+            Email = "admin@im1os.com",
+            DisplayName = "Platform Administrator",
+            JobTitle = "Platform Administrator",
+            EmploymentType = "Employee",
+            Status = "Active"
+        };
+
         var user = new ApplicationUser
         {
             OrganizationId = organization.Id,
+            EmployeeId = employee.Id,
             Email = "admin@im1os.com",
             NormalizedEmail = "admin@im1os.com".ToUpperInvariant(),
             DisplayName = "Platform Administrator",
@@ -80,7 +92,9 @@ public sealed class ApplicationDbInitializer(
         dbContext.Organizations.Add(organization);
         dbContext.Permissions.AddRange(permissions);
         dbContext.Roles.Add(adminRole);
+        dbContext.Employees.Add(employee);
         dbContext.Users.Add(user);
+        employee.LoginAccount = user;
         dbContext.FeatureFlags.Add(new FeatureFlag { Key = "dashboard.shell", IsEnabled = true, Description = "Enables the initial dashboard shell." });
 
         await dbContext.SaveChangesAsync(cancellationToken);

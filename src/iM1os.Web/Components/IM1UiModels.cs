@@ -143,7 +143,7 @@ public static class IM1ShellNavigation
                 [
                     new("Company Dashboard", "Business", "Dashboard", "CD"),
                     new("Company Admin", "Business", "Administration", "CA"),
-                    new("Company Users", "CompanyUsers", "Index", "CU"),
+                    new("Employees", "Employees", "Index", "EM"),
                     new("Profile", "Profile", "Index", "PR")
                 ])
         ]);

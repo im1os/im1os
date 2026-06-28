@@ -72,6 +72,7 @@ app.Use(async (context, next) =>
             "/account/activate" => $"/company/activate{queryString}",
             "/business/dashboard" => $"/company{queryString}",
             "/business/administration" => $"/company/admin{queryString}",
+            "/company/users" => $"/company/employees{queryString}",
             "/profile" => "/company/profile",
             "/profile/index" => "/company/profile",
             "/onboarding" => "/company/setup",
@@ -158,9 +159,13 @@ app.MapControllerRoute(
     pattern: "company/admin/{action=Administration}",
     defaults: new { controller = "Business" });
 app.MapControllerRoute(
-    name: "company-users",
+    name: "company-users-legacy",
     pattern: "company/users/{action=Index}",
-    defaults: new { controller = "CompanyUsers" });
+    defaults: new { controller = "Employees" });
+app.MapControllerRoute(
+    name: "company-employees",
+    pattern: "company/employees/{action=Index}",
+    defaults: new { controller = "Employees" });
 app.MapControllerRoute(
     name: "company-profile",
     pattern: "company/profile/{action=Index}",

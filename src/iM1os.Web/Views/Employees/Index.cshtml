@@ -1,0 +1,334 @@
+@model iM1os.Application.Employees.EmployeesWorkspace
+
+@{
+    ViewData["Title"] = "Employees";
+    var showNewEmployee = Context.Request.Query["newEmployee"] == "true";
+    var grid = new IM1DataGridModel(
+        Columns: new[]
+        {
+            new IM1DataGridColumnModel("avatar", "Avatar", false, false),
+            new IM1DataGridColumnModel("name", "Name"),
+            new IM1DataGridColumnModel("email", "Email"),
+            new IM1DataGridColumnModel("jobTitle", "Job Title"),
+            new IM1DataGridColumnModel("status", "Status"),
+            new IM1DataGridColumnModel("login", "Login"),
+            new IM1DataGridColumnModel("role", "Company Role"),
+            new IM1DataGridColumnModel("lastLogin", "Last Login"),
+            new IM1DataGridColumnModel("created", "Created Date")
+        },
+        Rows: Model.Employees.Select(employee => new Dictionary<string, object?>
+        {
+            ["__url"] = Url.Action("Index", "Employees", new { employeeId = employee.Id, query = Model.Query, status = Model.Status, role = Model.Role }),
+            ["avatar"] = employee.Avatar,
+            ["name"] = employee.Name,
+            ["email"] = employee.Email ?? "",
+            ["jobTitle"] = employee.JobTitle ?? "",
+            ["status"] = employee.Status,
+            ["login"] = employee.LoginStatus,
+            ["role"] = employee.CompanyRole,
+            ["lastLogin"] = employee.LastLoginAtUtc?.ToString("yyyy-MM-dd HH:mm") ?? "Never",
+            ["created"] = employee.CreatedAtUtc.ToString("yyyy-MM-dd")
+        }).ToArray(),
+        Toolbar: new IM1ToolbarModel(
+            Actions: new[] { new IM1ActionModel("New Employee", Url.Action("Index", "Employees", new { newEmployee = true }), "primary") },
+            SearchPlaceholder: "Search employees",
+            ShowRefresh: true,
+            ShowExport: true),
+        EmptyText: "No employees found.",
+        PageSize: 10);
+    var page = new IM1PageModel(
+        "Employees",
+        "Administration",
+        "Manage employee records, employment details, optional login accounts, permissions, security, and activity.",
+        Breadcrumbs: new[]
+        {
+            new IM1BreadcrumbModel("Company", Url.Action("Dashboard", "Business")),
+            new IM1BreadcrumbModel("Administration", Url.Action("Administration", "Business")),
+            new IM1BreadcrumbModel("Employees")
+        });
+    var editorTabs = new IM1TabsModel(
+        "Employee editor sections",
+        new[]
+        {
+            new IM1TabItemModel("general", "General", true),
+            new IM1TabItemModel("employment", "Employment"),
+            new IM1TabItemModel("login-account", "Login Account"),
+            new IM1TabItemModel("permissions", "Permissions"),
+            new IM1TabItemModel("security", "Security"),
+            new IM1TabItemModel("activity", "Activity")
+        });
+}
+
+@await Html.PartialAsync("IM1Page", page)
+
+<form class="im1-toolbar" method="get" asp-controller="Employees" asp-action="Index">
+    <div class="im1-toolbar-main">
+        <input class="im1-toolbar-search" name="query" value="@Model.Query" placeholder="Search employees server-side" />
+    </div>
+    <select name="status">
+        <option value="">All statuses</option>
+        @foreach (var status in new[] { "Active", "Inactive", "On Leave", "Terminated" })
+        {
+            <option value="@status" selected="@(Model.Status == status)">@status</option>
+        }
+    </select>
+    <select name="role">
+        <option value="">All login roles</option>
+        @foreach (var role in Model.Roles)
+        {
+            <option value="@role.Name" selected="@(Model.Role == role.Name)">@role.Name</option>
+        }
+    </select>
+    <button class="im1-button im1-button-secondary" type="submit">Apply Filters</button>
+</form>
+
+@await Html.PartialAsync("IM1DataGrid", grid)
+
+@if (showNewEmployee)
+{
+    <div class="im1-side-panel-backdrop is-open" data-side-panel="new-employee">
+        <aside class="im1-side-panel" aria-labelledby="new-employee-title">
+            <header class="im1-side-panel-header">
+                <div>
+                    <h2 id="new-employee-title">New Employee</h2>
+                    <p>Create the employee record first. Login access is optional.</p>
+                </div>
+                <a class="im1-dialog-close" asp-controller="Employees" asp-action="Index" aria-label="Close">X</a>
+            </header>
+            <div class="im1-side-panel-body">
+                <form asp-action="Create" method="post" class="im1-form">
+                    <div class="im1-form-grid">
+                        <label>Name <input name="Name" /></label>
+                        <label>Email <input name="Email" type="email" autocomplete="username" /></label>
+                        <label>Phone <input name="Phone" /></label>
+                        <label>Job Title <input name="JobTitle" /></label>
+                        <label>Department <input name="Department" /></label>
+                        <label>Employment Type
+                            <select name="EmploymentType">
+                                <option>Employee</option>
+                                <option>Contractor</option>
+                                <option>Seasonal</option>
+                                <option>Temporary</option>
+                            </select>
+                        </label>
+                        <label>Status
+                            <select name="Status">
+                                <option>Active</option>
+                                <option>Inactive</option>
+                                <option>On Leave</option>
+                                <option>Terminated</option>
+                            </select>
+                        </label>
+                    </div>
+                    <label class="im1-checkbox"><input name="EnableLoginAccount" type="checkbox" value="true" /> Enable Login Account</label>
+                    <div class="im1-form-grid">
+                        <label>Company Role
+                            <select name="RoleName">
+                                <option value="">No login role</option>
+                                @foreach (var role in Model.Roles)
+                                {
+                                    <option value="@role.Name">@role.Name</option>
+                                }
+                            </select>
+                        </label>
+                        <label>Initial Password <input name="InitialPassword" type="password" autocomplete="new-password" /></label>
+                    </div>
+                    <label class="im1-checkbox"><input name="SendInvitationEmail" type="checkbox" value="true" checked /> Send Invitation Email</label>
+                    <div class="im1-form-actions">
+                        <button class="im1-button im1-button-primary" type="submit">Create Employee</button>
+                    </div>
+                </form>
+            </div>
+        </aside>
+    </div>
+}
+
+@if (Model.SelectedEmployee is not null)
+{
+    var employee = Model.SelectedEmployee;
+    var login = employee.LoginAccount;
+    <div class="im1-side-panel-backdrop is-open" data-side-panel="employee-editor">
+        <aside class="im1-side-panel" aria-labelledby="employee-editor-title">
+            <header class="im1-side-panel-header">
+                <div>
+                    <h2 id="employee-editor-title">@employee.DisplayName</h2>
+                    <p>@(employee.JobTitle ?? employee.Email ?? "Employee")</p>
+                </div>
+                <a class="im1-dialog-close" asp-controller="Employees" asp-action="Index" aria-label="Close">X</a>
+            </header>
+            <div class="im1-side-panel-body">
+                @await Html.PartialAsync("IM1Tabs", editorTabs)
+
+                <form asp-action="Update" method="post" class="im1-form">
+                    <input type="hidden" name="EmployeeId" value="@employee.Id" />
+                    <section class="tab-panel is-active" id="general" role="tabpanel">
+                        <div class="im1-form-grid">
+                            <label>First Name <input name="FirstName" value="@employee.FirstName" /></label>
+                            <label>Last Name <input name="LastName" value="@employee.LastName" /></label>
+                            <label>Display Name <input name="DisplayName" value="@employee.DisplayName" /></label>
+                            <label>Email <input name="Email" value="@employee.Email" type="email" /></label>
+                            <label>Phone <input name="Phone" value="@employee.Phone" /></label>
+                            <label>Employee Number <input name="EmployeeNumber" value="@employee.EmployeeNumber" /></label>
+                        </div>
+                    </section>
+
+                    <section class="tab-panel" id="employment" role="tabpanel" hidden>
+                        <div class="im1-form-grid">
+                            <label>Job Title <input name="JobTitle" value="@employee.JobTitle" /></label>
+                            <label>Department <input name="Department" value="@employee.Department" /></label>
+                            <label>Employment Type
+                                <select name="EmploymentType">
+                                    @foreach (var type in new[] { "Employee", "Contractor", "Seasonal", "Temporary" })
+                                    {
+                                        <option value="@type" selected="@(type == employee.EmploymentType)">@type</option>
+                                    }
+                                </select>
+                            </label>
+                            <label>Status
+                                <select name="Status">
+                                    @foreach (var status in new[] { "Active", "Inactive", "On Leave", "Terminated" })
+                                    {
+                                        <option value="@status" selected="@(status == employee.Status)">@status</option>
+                                    }
+                                </select>
+                            </label>
+                            <label>Hire Date <input name="HireDate" type="date" value="@employee.HireDate?.ToString("yyyy-MM-dd")" /></label>
+                            <label>Termination Date <input name="TerminationDate" type="date" value="@employee.TerminationDate?.ToString("yyyy-MM-dd")" /></label>
+                            @if (login is not null)
+                            {
+                                <label>Company Role
+                                    <select name="RoleName">
+                                        @foreach (var role in Model.Roles)
+                                        {
+                                            <option value="@role.Name" selected="@(role.Name == login.CompanyRole)">@role.Name</option>
+                                        }
+                                    </select>
+                                </label>
+                            }
+                        </div>
+                    </section>
+
+                    <div class="im1-form-actions">
+                        <button class="im1-button im1-button-primary" type="submit">Save Employee</button>
+                    </div>
+                </form>
+
+                <section class="tab-panel" id="login-account" role="tabpanel" hidden>
+                    @if (login is null)
+                    {
+                        <form asp-action="EnableLogin" method="post" class="im1-form">
+                            <input type="hidden" name="EmployeeId" value="@employee.Id" />
+                            <div class="im1-form-grid">
+                                <label>Email <input name="Email" value="@employee.Email" type="email" autocomplete="username" /></label>
+                                <label>Company Role
+                                    <select name="RoleName">
+                                        @foreach (var role in Model.Roles)
+                                        {
+                                            <option value="@role.Name">@role.Name</option>
+                                        }
+                                    </select>
+                                </label>
+                                <label>Initial Password <input name="InitialPassword" type="password" autocomplete="new-password" /></label>
+                            </div>
+                            <label class="im1-checkbox"><input name="SendInvitationEmail" type="checkbox" value="true" checked /> Send Invitation Email</label>
+                            <div class="im1-form-actions">
+                                <button class="im1-button im1-button-primary" type="submit">Enable Login Account</button>
+                            </div>
+                        </form>
+                    }
+                    else
+                    {
+                        <div class="company-security-grid">
+                            <article><span>Username</span><strong>@login.Username</strong></article>
+                            <article><span>Email</span><strong>@login.Email</strong></article>
+                            <article><span>Company Role</span><strong>@login.CompanyRole</strong></article>
+                            <article><span>Login Status</span><strong>@login.Status</strong></article>
+                        </div>
+                    }
+                </section>
+
+                <section class="tab-panel" id="permissions" role="tabpanel" hidden>
+                    @if (login is null)
+                    {
+                        <p class="im1-page-status">This employee does not have a login account.</p>
+                    }
+                    else
+                    {
+                        <form asp-action="Permissions" method="post" class="im1-form">
+                            <input type="hidden" name="EmployeeId" value="@employee.Id" />
+                            <div class="company-permission-list">
+                                @for (var i = 0; i < employee.Permissions.Count; i++)
+                                {
+                                    var permission = employee.Permissions.ElementAt(i);
+                                    <article>
+                                        <input type="hidden" name="Overrides[@i].PermissionId" value="@permission.PermissionId" />
+                                        <strong>@permission.Key</strong>
+                                        <span>@permission.Description</span>
+                                        <em>Role: @(permission.RoleAllows ? "Allowed" : "Not allowed")</em>
+                                        <label class="im1-checkbox"><input name="Overrides[@i].IsOverridden" type="checkbox" value="true" checked="@(permission.OverrideAllows is not null)" /> Override</label>
+                                        <select name="Overrides[@i].IsAllowed">
+                                            <option value="true" selected="@(permission.OverrideAllows == true)">Allow</option>
+                                            <option value="false" selected="@(permission.OverrideAllows == false)">Deny</option>
+                                        </select>
+                                    </article>
+                                }
+                            </div>
+                            <div class="im1-form-actions">
+                                <button class="im1-button im1-button-primary" type="submit">Save Permissions</button>
+                            </div>
+                        </form>
+                    }
+                </section>
+
+                <section class="tab-panel" id="security" role="tabpanel" hidden>
+                    @if (login is null)
+                    {
+                        <p class="im1-page-status">Security is available after login is enabled.</p>
+                    }
+                    else
+                    {
+                        <div class="company-security-grid">
+                            <article><span>Password</span><strong>********</strong></article>
+                            <article><span>Last Password Change</span><strong>@(login.Security.LastPasswordChangedAtUtc?.ToString("yyyy-MM-dd HH:mm") ?? "Never")</strong></article>
+                            <article><span>Last Login</span><strong>@(login.Security.LastLoginAtUtc?.ToString("yyyy-MM-dd HH:mm") ?? "Never")</strong></article>
+                            <article><span>Failed Login Attempts</span><strong>@login.Security.FailedLoginAttempts</strong></article>
+                            <article><span>MFA Status</span><strong>@(login.Security.MfaEnabled ? "Enabled" : "Disabled")</strong></article>
+                            <article><span>Account Locked</span><strong>@(login.Security.AccountLocked ? "Yes" : "No")</strong></article>
+                            <article><span>Active Sessions</span><strong>@login.Security.ActiveSessions</strong></article>
+                            <article><span>Must Change Password</span><strong>@(login.Security.MustChangePassword ? "Yes" : "No")</strong></article>
+                        </div>
+                        <div class="action-row company-security-actions">
+                            <form asp-action="Security" method="post">
+                                <input type="hidden" name="EmployeeId" value="@employee.Id" />
+                                <input type="hidden" name="Action" value="ResetPassword" />
+                                <input name="NewPassword" type="password" autocomplete="new-password" placeholder="New password" />
+                                <button class="im1-button im1-button-secondary" type="submit">Reset Password</button>
+                            </form>
+                            @foreach (var action in new[] { ("SendPasswordResetEmail", "Send Password Reset Email"), ("UnlockAccount", "Unlock Account"), ("ForcePasswordChange", "Force Password Change"), ("SignOutAllSessions", "Sign Out All Sessions"), (login.Status == "Active" ? "DisableLogin" : "EnableLogin", login.Status == "Active" ? "Disable Login" : "Enable Login") })
+                            {
+                                <form asp-action="Security" method="post">
+                                    <input type="hidden" name="EmployeeId" value="@employee.Id" />
+                                    <input type="hidden" name="Action" value="@action.Item1" />
+                                    <button class="im1-button im1-button-secondary" type="submit">@action.Item2</button>
+                                </form>
+                            }
+                        </div>
+                    }
+                </section>
+
+                <section class="tab-panel" id="activity" role="tabpanel" hidden>
+                    <ol class="company-activity-list">
+                        @foreach (var item in employee.Activity)
+                        {
+                            <li>
+                                <strong>@item.EventType</strong>
+                                <span>@item.OccurredAtUtc.ToString("yyyy-MM-dd HH:mm")</span>
+                                <p>@item.Summary</p>
+                            </li>
+                        }
+                    </ol>
+                </section>
+            </div>
+        </aside>
+    </div>
+}

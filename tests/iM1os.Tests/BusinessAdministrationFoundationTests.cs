@@ -62,7 +62,8 @@ public sealed class BusinessAdministrationFoundationTests
 
         Assert.Equal("ABC Motorsports LLC", workspace.Profile.LegalName);
         Assert.Contains(workspace.Locations, x => x.Code == "NORTH" && x.DefaultLaborRate == 135m);
-        Assert.Contains(workspace.Employees, x => x.Email == "sam@abcmoto.test" && x.Role == "Technician" && x.Status == "Invited");
+        Assert.Contains(workspace.Employees, x => x.Email == "sam@abcmoto.test" && x.Role == "Technician" && x.Status == "Active");
+        Assert.True(await dbContext.Employees.IgnoreQueryFilters().AnyAsync(x => x.OrganizationId == seeded.OrganizationId && x.Email == "sam@abcmoto.test"));
         Assert.Equal(135m, workspace.Configuration.DefaultLaborRate);
         Assert.True(await dbContext.AuditLogs.AnyAsync(x => x.OrganizationId == seeded.OrganizationId && x.Action == "EmployeeInvited"));
         Assert.True(await dbContext.TimelineEvents.IgnoreQueryFilters().AnyAsync(x => x.OrganizationId == seeded.OrganizationId && x.EventType == "LaborConfigurationUpdated"));

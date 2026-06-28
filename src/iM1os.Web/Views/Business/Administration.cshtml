@@ -10,7 +10,7 @@
     var page = new IM1PageModel(
         Title: Model.Profile.BusinessName,
         Eyebrow: "Company administration",
-        Description: Model.IsReadyForOperations ? "Your company is now ready to begin operations." : "Configure identity, locations, users, permissions, labor, taxes, notifications, and integration placeholders.",
+        Description: Model.IsReadyForOperations ? "Your company is now ready to begin operations." : "Configure identity, locations, employees, permissions, labor, taxes, notifications, and integration placeholders.",
         Breadcrumbs: new[]
         {
             new IM1BreadcrumbModel("Company", Url.Action("Dashboard", "Business")),
@@ -23,7 +23,7 @@
         {
             new IM1TabItemModel("profile", "Profile", true),
             new IM1TabItemModel("locations", "Locations"),
-            new IM1TabItemModel("employees", "Users"),
+            new IM1TabItemModel("employees", "Employees"),
             new IM1TabItemModel("roles", "Roles"),
             new IM1TabItemModel("operations", "Operations"),
             new IM1TabItemModel("connectors", "Connectors"),
@@ -70,8 +70,8 @@
             ["primaryLocation"] = employee.PrimaryLocation ?? "Unassigned",
             ["status"] = employee.Status
         }).ToArray(),
-        Toolbar: new IM1ToolbarModel(SearchPlaceholder: "Search users", ShowRefresh: true, ShowFilters: true, ShowExport: true),
-        EmptyText: "No company users have been invited.",
+        Toolbar: new IM1ToolbarModel(SearchPlaceholder: "Search employees", ShowRefresh: true, ShowFilters: true, ShowExport: true),
+        EmptyText: "No employees have been invited.",
         PageSize: 10);
 }
 
@@ -80,7 +80,7 @@
 <section class="im1-metric-grid">
     @await Html.PartialAsync("IM1Card", new IM1CardModel("Setup", $"{Model.SetupProgress}%", "Administration readiness."))
     @await Html.PartialAsync("IM1Card", new IM1CardModel("Locations", Model.Locations.Count.ToString(), "Configured shops."))
-    @await Html.PartialAsync("IM1Card", new IM1CardModel("Employees", Model.Employees.Count.ToString(), "Company users."))
+    @await Html.PartialAsync("IM1Card", new IM1CardModel("Employees", Model.Employees.Count.ToString(), "People records."))
     @await Html.PartialAsync("IM1Card", new IM1CardModel("Status", Model.IsReadyForOperations ? "Ready" : "Setup", "Operational readiness."))
 </section>
 
@@ -141,7 +141,7 @@
 
     <div class="tab-panel" id="employees" role="tabpanel" hidden>
         <article class="page-band">
-            <h2>Company Users</h2>
+            <h2>Employees</h2>
             @await Html.PartialAsync("IM1DataGrid", usersGrid)
             <form asp-action="Employee" method="post" class="form-grid form-grid-spaced">
                 <input type="hidden" name="organizationId" value="@Model.OrganizationId" />
@@ -167,7 +167,7 @@
                         }
                     </select>
                 </label>
-                <button class="primary-action" type="submit">Invite User</button>
+                <button class="primary-action" type="submit">Invite Employee</button>
             </form>
         </article>
     </div>

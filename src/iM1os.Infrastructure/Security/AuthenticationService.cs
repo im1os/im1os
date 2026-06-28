@@ -1,5 +1,6 @@
 using iM1os.Application.Authentication;
 using iM1os.Application.Common;
+using iM1os.Domain.Employees;
 using iM1os.Domain.Identity;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
@@ -65,9 +66,17 @@ public sealed class AuthenticationService(
             return Result.Failure("A user with this email already exists in the organization.");
         }
 
+        var employee = new Employee
+        {
+            OrganizationId = request.OrganizationId,
+            Email = request.Email.Trim(),
+            DisplayName = request.DisplayName.Trim(),
+            Status = "Active"
+        };
         var user = new ApplicationUser
         {
             OrganizationId = request.OrganizationId,
+            EmployeeId = employee.Id,
             Email = request.Email.Trim(),
             NormalizedEmail = normalizedEmail,
             DisplayName = request.DisplayName.Trim(),
@@ -89,7 +98,9 @@ public sealed class AuthenticationService(
             DisplayName = request.DisplayName.Trim()
         });
 
+        dbContext.Employees.Add(employee);
         dbContext.Users.Add(user);
+        employee.LoginAccount = user;
         await dbContext.SaveChangesAsync(cancellationToken);
 
         return Result.Success();

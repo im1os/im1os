@@ -3,9 +3,10 @@ window.IM1 = window.IM1 || {};
 window.IM1.activateTabs = function activateTabs(root) {
   const tabs = root || document;
 
-  tabs.querySelectorAll("[data-tabs]").forEach((tabRoot) => {
+  tabs.querySelectorAll("[data-im1-tabs], [data-tabs]").forEach((tabRoot) => {
+    const panelScope = tabRoot.matches("[data-im1-tabs]") ? tabRoot.parentElement || tabRoot : tabRoot;
     const buttons = Array.from(tabRoot.querySelectorAll("[data-tab-target]"));
-    const panels = Array.from(tabRoot.querySelectorAll(".tab-panel"));
+    const panels = Array.from(panelScope.querySelectorAll(".tab-panel"));
 
     const activate = (id, updateHash) => {
       const panel = panels.find((item) => item.id === id);

@@ -1,8 +1,8 @@
 using iM1os.Application.Authentication;
 using iM1os.Application.BusinessAdministration;
 using iM1os.Application.Common;
-using iM1os.Application.CompanyUsers;
 using iM1os.Application.Configuration;
+using iM1os.Application.Employees;
 using iM1os.Application.Marketing;
 using iM1os.Application.Platform;
 using iM1os.Application.Tenancy;
@@ -51,7 +51,7 @@ public static class DependencyInjection
         services.AddScoped<ITenantIdentityService, TenantIdentityService>();
         services.AddScoped<IBusinessOnboardingService, BusinessOnboardingService>();
         services.AddScoped<IBusinessAdministrationService, BusinessAdministrationService>();
-        services.AddScoped<ICompanyUserService, CompanyUserService>();
+        services.AddScoped<IEmployeeService, EmployeeService>();
         services.AddScoped<IMarketingCmsService, MarketingCmsService>();
         services.AddScoped<ITenantProfileService, TenantProfileService>();
         services.AddScoped<IWelcomeEmailSender, NoOpWelcomeEmailSender>();

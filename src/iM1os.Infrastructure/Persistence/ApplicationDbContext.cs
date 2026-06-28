@@ -4,6 +4,7 @@ using iM1os.Domain.Audit;
 using iM1os.Domain.Common;
 using iM1os.Domain.Configuration;
 using iM1os.Domain.Customers;
+using iM1os.Domain.Employees;
 using iM1os.Domain.Identity;
 using iM1os.Domain.Marketing;
 using iM1os.Domain.Parts;
@@ -26,6 +27,8 @@ public sealed class ApplicationDbContext(
     public DbSet<Location> Locations => Set<Location>();
 
     public DbSet<ApplicationUser> Users => Set<ApplicationUser>();
+
+    public DbSet<Employee> Employees => Set<Employee>();
 
     public DbSet<UserInvitation> UserInvitations => Set<UserInvitation>();
 
@@ -155,6 +158,7 @@ public sealed class ApplicationDbContext(
         {
             entity.ToTable("users");
             entity.HasIndex(x => new { x.OrganizationId, x.NormalizedEmail }).IsUnique();
+            entity.HasIndex(x => x.EmployeeId).IsUnique();
             entity.Property(x => x.Email).HasMaxLength(320).IsRequired();
             entity.Property(x => x.NormalizedEmail).HasMaxLength(320).IsRequired();
             entity.Property(x => x.FirstName).HasMaxLength(120);
@@ -169,6 +173,26 @@ public sealed class ApplicationDbContext(
             entity.Property(x => x.PinHash).HasMaxLength(1000);
             entity.Property(x => x.Language).HasMaxLength(20).IsRequired();
             entity.Property(x => x.TimeZone).HasMaxLength(120).IsRequired();
+            entity.HasOne(x => x.Employee).WithOne(x => x.LoginAccount).HasForeignKey<ApplicationUser>(x => x.EmployeeId);
+            entity.HasQueryFilter(x => x.DeletedAtUtc == null && (tenantProvider.CurrentOrganizationId == null || x.OrganizationId == tenantProvider.CurrentOrganizationId));
+        });
+
+        modelBuilder.Entity<Employee>(entity =>
+        {
+            entity.ToTable("employees");
+            entity.HasIndex(x => new { x.OrganizationId, x.DisplayName });
+            entity.HasIndex(x => new { x.OrganizationId, x.Email });
+            entity.HasIndex(x => new { x.OrganizationId, x.EmployeeNumber }).IsUnique();
+            entity.Property(x => x.EmployeeNumber).HasMaxLength(80);
+            entity.Property(x => x.FirstName).HasMaxLength(120);
+            entity.Property(x => x.LastName).HasMaxLength(120);
+            entity.Property(x => x.DisplayName).HasMaxLength(160).IsRequired();
+            entity.Property(x => x.Email).HasMaxLength(320);
+            entity.Property(x => x.Phone).HasMaxLength(40);
+            entity.Property(x => x.JobTitle).HasMaxLength(160);
+            entity.Property(x => x.Department).HasMaxLength(120);
+            entity.Property(x => x.EmploymentType).HasMaxLength(80).IsRequired();
+            entity.Property(x => x.Status).HasMaxLength(80).IsRequired();
             entity.HasQueryFilter(x => x.DeletedAtUtc == null && (tenantProvider.CurrentOrganizationId == null || x.OrganizationId == tenantProvider.CurrentOrganizationId));
         });
 

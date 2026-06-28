@@ -1,10 +1,15 @@
 using iM1os.Domain.Common;
+using iM1os.Domain.Employees;
 
 namespace iM1os.Domain.Identity;
 
 public sealed class ApplicationUser : AuditableEntity
 {
     public Guid OrganizationId { get; set; }
+
+    public Guid? EmployeeId { get; set; }
+
+    public Employee? Employee { get; set; }
 
     public string? FirstName { get; set; }
 

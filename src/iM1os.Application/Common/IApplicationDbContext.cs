@@ -1,6 +1,7 @@
 using iM1os.Domain.Audit;
 using iM1os.Domain.Configuration;
 using iM1os.Domain.Customers;
+using iM1os.Domain.Employees;
 using iM1os.Domain.Identity;
 using iM1os.Domain.Marketing;
 using iM1os.Domain.Parts;
@@ -19,6 +20,8 @@ public interface IApplicationDbContext
     DbSet<Location> Locations { get; }
 
     DbSet<ApplicationUser> Users { get; }
+
+    DbSet<Employee> Employees { get; }
 
     DbSet<UserInvitation> UserInvitations { get; }
 

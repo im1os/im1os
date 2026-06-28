@@ -2,6 +2,7 @@ using System.Text.Json;
 using iM1os.Application.Common;
 using iM1os.Application.Platform;
 using iM1os.Domain.Configuration;
+using iM1os.Domain.Employees;
 using iM1os.Domain.Identity;
 using iM1os.Domain.Platform;
 using iM1os.Domain.Tenancy;
@@ -67,12 +68,28 @@ public sealed class TenantProvisioningService(
             IsSystemRole = true
         };
 
+        var ownerEmployee = new Employee
+        {
+            OrganizationId = organization.Id,
+            DisplayName = Required(request.OwnerName, "Owner name"),
+            FirstName = FirstName(request.OwnerName),
+            LastName = LastName(request.OwnerName),
+            Email = Required(request.OwnerEmail, "Owner email"),
+            JobTitle = "Owner",
+            EmploymentType = "Owner",
+            Status = "Active"
+        };
+
         var owner = new ApplicationUser
         {
             OrganizationId = organization.Id,
+            EmployeeId = ownerEmployee.Id,
             Email = Required(request.OwnerEmail, "Owner email"),
             NormalizedEmail = normalizedOwnerEmail,
-            DisplayName = Required(request.OwnerName, "Owner name"),
+            DisplayName = ownerEmployee.DisplayName,
+            FirstName = ownerEmployee.FirstName,
+            LastName = ownerEmployee.LastName,
+            JobTitle = ownerEmployee.JobTitle,
             PasswordHash = string.Empty,
             IsActive = false,
             MustChangePassword = true,
@@ -120,7 +137,9 @@ public sealed class TenantProvisioningService(
         dbContext.Organizations.Add(organization);
         dbContext.Locations.Add(location);
         dbContext.Roles.Add(ownerRole);
+        dbContext.Employees.Add(ownerEmployee);
         dbContext.Users.Add(owner);
+        ownerEmployee.LoginAccount = owner;
         dbContext.PlatformTenants.Add(platformTenant);
         dbContext.PlatformSubscriptions.Add(subscription);
 
@@ -239,5 +258,13 @@ public sealed class TenantProvisioningService(
     private static string? Clean(string? value)
     {
         return string.IsNullOrWhiteSpace(value) ? null : value.Trim();
+    }
+
+    private static string FirstName(string name) => name.Trim().Split(' ', StringSplitOptions.RemoveEmptyEntries).FirstOrDefault() ?? name.Trim();
+
+    private static string? LastName(string name)
+    {
+        var parts = name.Trim().Split(' ', StringSplitOptions.RemoveEmptyEntries);
+        return parts.Length > 1 ? string.Join(' ', parts.Skip(1)) : null;
     }
 }
