@@ -26,6 +26,30 @@ public sealed class EmployeesController(IEmployeeService employeeService) : Cont
         }
     }
 
+    [HttpGet]
+    public async Task<IActionResult> Edit(Guid employeeId, CancellationToken cancellationToken)
+    {
+        try
+        {
+            var workspace = await employeeService.GetWorkspaceAsync(
+                OrganizationId(),
+                UserId(),
+                new EmployeeSearchRequest(null, null, null, employeeId),
+                cancellationToken);
+
+            if (workspace.SelectedEmployee is null)
+            {
+                return NotFound();
+            }
+
+            return View(workspace);
+        }
+        catch (UnauthorizedAccessException)
+        {
+            return RedirectToAction("AccessDenied", "Business");
+        }
+    }
+
     [HttpPost]
     [ValidateAntiForgeryToken]
     public async Task<IActionResult> Create(CreateEmployeeRequest request, CancellationToken cancellationToken)
@@ -33,7 +57,7 @@ public sealed class EmployeesController(IEmployeeService employeeService) : Cont
         try
         {
             var employeeId = await employeeService.CreateEmployeeAsync(OrganizationId(), UserId(), request, RemoteIp(), cancellationToken);
-            return RedirectToAction(nameof(Index), new { employeeId });
+            return RedirectToAction(nameof(Edit), new { employeeId });
         }
         catch (UnauthorizedAccessException)
         {
@@ -48,7 +72,7 @@ public sealed class EmployeesController(IEmployeeService employeeService) : Cont
         try
         {
             await employeeService.UpdateEmployeeAsync(OrganizationId(), UserId(), request, RemoteIp(), cancellationToken);
-            return RedirectToAction(nameof(Index), new { employeeId = request.EmployeeId });
+            return RedirectToAction(nameof(Edit), new { employeeId = request.EmployeeId });
         }
         catch (UnauthorizedAccessException)
         {
@@ -63,7 +87,7 @@ public sealed class EmployeesController(IEmployeeService employeeService) : Cont
         try
         {
             await employeeService.EnableLoginAccountAsync(OrganizationId(), UserId(), request, RemoteIp(), cancellationToken);
-            return RedirectToAction(nameof(Index), new { employeeId = request.EmployeeId });
+            return RedirectToAction(nameof(Edit), new { employeeId = request.EmployeeId });
         }
         catch (UnauthorizedAccessException)
         {
@@ -78,7 +102,7 @@ public sealed class EmployeesController(IEmployeeService employeeService) : Cont
         try
         {
             await employeeService.SavePermissionOverridesAsync(OrganizationId(), UserId(), request, RemoteIp(), cancellationToken);
-            return RedirectToAction(nameof(Index), new { employeeId = request.EmployeeId });
+            return RedirectToAction(nameof(Edit), new { employeeId = request.EmployeeId });
         }
         catch (UnauthorizedAccessException)
         {
@@ -93,7 +117,7 @@ public sealed class EmployeesController(IEmployeeService employeeService) : Cont
         try
         {
             await employeeService.RunSecurityActionAsync(OrganizationId(), UserId(), request, RemoteIp(), cancellationToken);
-            return RedirectToAction(nameof(Index), new { employeeId = request.EmployeeId });
+            return RedirectToAction(nameof(Edit), new { employeeId = request.EmployeeId });
         }
         catch (UnauthorizedAccessException)
         {
