@@ -10,15 +10,29 @@ public sealed class Customer : AuditableEntity, IOrganizationOwned, ILocationSco
 
     public required string DisplayName { get; set; }
 
+    public string? CustomerNumber { get; set; }
+
     public string? FirstName { get; set; }
 
+    public string? MiddleName { get; set; }
+
     public string? LastName { get; set; }
+
+    public string? Nickname { get; set; }
 
     public string? CompanyName { get; set; }
 
     public string? Email { get; set; }
 
+    public string? SecondaryEmail { get; set; }
+
     public string? Phone { get; set; }
+
+    public string? MobilePhone { get; set; }
+
+    public string? HomePhone { get; set; }
+
+    public string? WorkPhone { get; set; }
 
     public string CustomerType { get; set; } = "Individual";
 
@@ -29,6 +43,36 @@ public sealed class Customer : AuditableEntity, IOrganizationOwned, ILocationSco
     public string? Source { get; set; }
 
     public string? PreferredContactMethod { get; set; }
+
+    public bool AllowEmailMarketing { get; set; } = true;
+
+    public bool AllowSmsMarketing { get; set; } = true;
+
+    public bool AllowPhoneCalls { get; set; } = true;
+
+    public bool TaxExempt { get; set; }
+
+    public string? TaxExemptNumber { get; set; }
+
+    public DateOnly? DateOfBirth { get; set; }
+
+    public DateOnly? Anniversary { get; set; }
+
+    public string? PreferredLanguage { get; set; }
+
+    public DateOnly? CustomerSince { get; set; }
+
+    public DateTimeOffset? LastPurchaseAtUtc { get; set; }
+
+    public decimal LifetimeSales { get; set; }
+
+    public decimal? CreditLimit { get; set; }
+
+    public decimal CurrentBalance { get; set; }
+
+    public decimal StoreCredit { get; set; }
+
+    public string? SummaryNotes { get; set; }
 
     public DateTimeOffset? DeletedAtUtc { get; set; }
 

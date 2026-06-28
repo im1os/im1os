@@ -21,9 +21,18 @@ public sealed class CustomerCrmService(
             var search = request.Query.Trim().ToUpperInvariant();
             query = query.Where(x =>
                 x.DisplayName.ToUpper().Contains(search) ||
+                (x.CustomerNumber != null && x.CustomerNumber.ToUpper().Contains(search)) ||
+                (x.FirstName != null && x.FirstName.ToUpper().Contains(search)) ||
+                (x.MiddleName != null && x.MiddleName.ToUpper().Contains(search)) ||
+                (x.LastName != null && x.LastName.ToUpper().Contains(search)) ||
+                (x.Nickname != null && x.Nickname.ToUpper().Contains(search)) ||
                 (x.CompanyName != null && x.CompanyName.ToUpper().Contains(search)) ||
                 (x.Email != null && x.Email.ToUpper().Contains(search)) ||
-                (x.Phone != null && x.Phone.ToUpper().Contains(search)));
+                (x.SecondaryEmail != null && x.SecondaryEmail.ToUpper().Contains(search)) ||
+                (x.Phone != null && x.Phone.ToUpper().Contains(search)) ||
+                (x.MobilePhone != null && x.MobilePhone.ToUpper().Contains(search)) ||
+                (x.HomePhone != null && x.HomePhone.ToUpper().Contains(search)) ||
+                (x.WorkPhone != null && x.WorkPhone.ToUpper().Contains(search)));
         }
 
         if (!string.IsNullOrWhiteSpace(request.Status))
@@ -35,10 +44,11 @@ public sealed class CustomerCrmService(
             .OrderBy(x => x.DisplayName)
             .Select(x => new CustomerRow(
                 x.Id,
+                x.CustomerNumber,
                 x.DisplayName,
                 x.CompanyName,
                 x.Email,
-                x.Phone,
+                x.MobilePhone ?? x.Phone,
                 x.Status,
                 x.LifecycleStage,
                 x.Source,
@@ -86,19 +96,52 @@ public sealed class CustomerCrmService(
             .Select(x => new CustomerTimelineItem(x.OccurredAtUtc, x.EventType, x.Summary))
             .ToListAsync(cancellationToken);
 
+        var squareCustomerId = customer.ExternalLinks
+            .Where(x => x.Provider == "Square" && x.IsActive)
+            .OrderByDescending(x => x.CreatedAtUtc)
+            .Select(x => x.ExternalCustomerId)
+            .FirstOrDefault();
+
         return new CustomerDetail(
             customer.Id,
+            customer.CustomerNumber,
             customer.DisplayName,
             customer.FirstName,
+            customer.MiddleName,
             customer.LastName,
+            customer.Nickname,
             customer.CompanyName,
             customer.Email,
+            customer.SecondaryEmail,
             customer.Phone,
+            customer.MobilePhone,
+            customer.HomePhone,
+            customer.WorkPhone,
             customer.CustomerType,
             customer.Status,
             customer.LifecycleStage,
             customer.Source,
             customer.PreferredContactMethod,
+            customer.AllowEmailMarketing,
+            customer.AllowSmsMarketing,
+            customer.AllowPhoneCalls,
+            customer.TaxExempt,
+            customer.TaxExemptNumber,
+            customer.DateOfBirth,
+            customer.Anniversary,
+            customer.PreferredLanguage,
+            customer.CustomerSince,
+            customer.LastPurchaseAtUtc,
+            customer.LifetimeSales,
+            customer.CreditLimit,
+            customer.CurrentBalance,
+            customer.StoreCredit,
+            customer.SummaryNotes,
+            squareCustomerId,
+            customer.CreatedByUserId,
+            customer.CreatedAtUtc,
+            customer.UpdatedByUserId,
+            customer.UpdatedAtUtc,
             customer.Addresses.Where(x => x.DeletedAtUtc == null).OrderByDescending(x => x.IsPrimary).ThenBy(x => x.AddressType).Select(x => new CustomerAddressItem(x.Id, x.AddressType, x.Line1, x.Line2, x.City, x.Region, x.PostalCode, x.Country, x.IsPrimary, x.IsBilling, x.IsShipping)).ToList(),
             customer.PhoneNumbers.Where(x => x.DeletedAtUtc == null).OrderByDescending(x => x.IsPrimary).ThenBy(x => x.PhoneType).Select(x => new CustomerPhoneItem(x.Id, x.PhoneType, x.PhoneNumber, x.Extension, x.IsPrimary, x.CanText)).ToList(),
             units,
@@ -112,24 +155,63 @@ public sealed class CustomerCrmService(
 
     public async Task<Guid> CreateCustomerAsync(Guid organizationId, Guid actorUserId, CreateCustomerRequest request, string? ipAddress, CancellationToken cancellationToken)
     {
+        var now = dateTimeProvider.UtcNow;
         var customer = new Customer
         {
             OrganizationId = organizationId,
-            DisplayName = Required(request.DisplayName, "Display name"),
+            CustomerNumber = await GenerateCustomerNumberAsync(organizationId, cancellationToken),
+            DisplayName = BuildDisplayName(request.FirstName, request.MiddleName, request.LastName, request.CompanyName, request.Email, request.MobilePhone ?? request.HomePhone ?? request.WorkPhone),
             FirstName = Clean(request.FirstName),
+            MiddleName = Clean(request.MiddleName),
             LastName = Clean(request.LastName),
+            Nickname = Clean(request.Nickname),
             CompanyName = Clean(request.CompanyName),
             Email = Clean(request.Email),
-            Phone = Clean(request.Phone),
+            SecondaryEmail = Clean(request.SecondaryEmail),
+            Phone = Clean(request.MobilePhone),
+            MobilePhone = Clean(request.MobilePhone),
+            HomePhone = Clean(request.HomePhone),
+            WorkPhone = Clean(request.WorkPhone),
             CustomerType = Required(request.CustomerType, "Customer type"),
             Status = Required(request.Status, "Status"),
             LifecycleStage = Clean(request.LifecycleStage),
             Source = Clean(request.Source),
             PreferredContactMethod = Clean(request.PreferredContactMethod),
+            AllowEmailMarketing = request.AllowEmailMarketing,
+            AllowSmsMarketing = request.AllowSmsMarketing,
+            AllowPhoneCalls = request.AllowPhoneCalls,
+            TaxExempt = request.TaxExempt,
+            TaxExemptNumber = Clean(request.TaxExemptNumber),
+            DateOfBirth = request.DateOfBirth,
+            Anniversary = request.Anniversary,
+            PreferredLanguage = Clean(request.PreferredLanguage),
+            CustomerSince = DateOnly.FromDateTime(now.DateTime),
+            CreditLimit = request.CreditLimit,
+            SummaryNotes = Clean(request.SummaryNotes),
             IsActive = request.Status.Equals("Active", StringComparison.OrdinalIgnoreCase)
         };
 
         dbContext.Customers.Add(customer);
+        if (!string.IsNullOrWhiteSpace(request.Line1) ||
+            !string.IsNullOrWhiteSpace(request.City) ||
+            !string.IsNullOrWhiteSpace(request.PostalCode))
+        {
+            dbContext.CustomerAddresses.Add(new CustomerAddress
+            {
+                OrganizationId = organizationId,
+                CustomerId = customer.Id,
+                AddressType = "Primary",
+                Line1 = Clean(request.Line1),
+                Line2 = Clean(request.Line2),
+                City = Clean(request.City),
+                Region = Clean(request.Region),
+                PostalCode = Clean(request.PostalCode),
+                Country = Clean(request.Country) ?? "US",
+                IsPrimary = true,
+                IsBilling = true,
+                IsShipping = true
+            });
+        }
         AddActivity(organizationId, customer.Id, actorUserId, "CustomerCreated", "Customer created", ipAddress, new { customer.DisplayName, customer.Email, customer.Phone });
         await dbContext.SaveChangesAsync(cancellationToken);
         return customer.Id;
@@ -139,17 +221,33 @@ public sealed class CustomerCrmService(
     {
         var customer = await LoadCustomerAsync(organizationId, request.CustomerId, cancellationToken);
         var before = Snapshot(customer);
-        customer.DisplayName = Required(request.DisplayName, "Display name");
+        customer.DisplayName = BuildDisplayName(request.FirstName, request.MiddleName, request.LastName, request.CompanyName, request.Email, request.MobilePhone ?? request.HomePhone ?? request.WorkPhone);
         customer.FirstName = Clean(request.FirstName);
+        customer.MiddleName = Clean(request.MiddleName);
         customer.LastName = Clean(request.LastName);
+        customer.Nickname = Clean(request.Nickname);
         customer.CompanyName = Clean(request.CompanyName);
         customer.Email = Clean(request.Email);
-        customer.Phone = Clean(request.Phone);
+        customer.SecondaryEmail = Clean(request.SecondaryEmail);
+        customer.Phone = Clean(request.MobilePhone);
+        customer.MobilePhone = Clean(request.MobilePhone);
+        customer.HomePhone = Clean(request.HomePhone);
+        customer.WorkPhone = Clean(request.WorkPhone);
         customer.CustomerType = Required(request.CustomerType, "Customer type");
         customer.Status = Required(request.Status, "Status");
         customer.LifecycleStage = Clean(request.LifecycleStage);
         customer.Source = Clean(request.Source);
         customer.PreferredContactMethod = Clean(request.PreferredContactMethod);
+        customer.AllowEmailMarketing = request.AllowEmailMarketing;
+        customer.AllowSmsMarketing = request.AllowSmsMarketing;
+        customer.AllowPhoneCalls = request.AllowPhoneCalls;
+        customer.TaxExempt = request.TaxExempt;
+        customer.TaxExemptNumber = Clean(request.TaxExemptNumber);
+        customer.DateOfBirth = request.DateOfBirth;
+        customer.Anniversary = request.Anniversary;
+        customer.PreferredLanguage = Clean(request.PreferredLanguage);
+        customer.CreditLimit = request.CreditLimit;
+        customer.SummaryNotes = Clean(request.SummaryNotes);
         customer.IsActive = customer.Status.Equals("Active", StringComparison.OrdinalIgnoreCase);
 
         AddActivity(organizationId, customer.Id, actorUserId, "CustomerUpdated", "Customer updated", ipAddress, new { before, after = Snapshot(customer) });
@@ -332,18 +430,65 @@ public sealed class CustomerCrmService(
 
     private static object Snapshot(Customer customer) => new
     {
+        customer.CustomerNumber,
         customer.DisplayName,
         customer.FirstName,
+        customer.MiddleName,
         customer.LastName,
+        customer.Nickname,
         customer.CompanyName,
         customer.Email,
+        customer.SecondaryEmail,
         customer.Phone,
+        customer.MobilePhone,
+        customer.HomePhone,
+        customer.WorkPhone,
         customer.CustomerType,
         customer.Status,
         customer.LifecycleStage,
         customer.Source,
-        customer.PreferredContactMethod
+        customer.PreferredContactMethod,
+        customer.AllowEmailMarketing,
+        customer.AllowSmsMarketing,
+        customer.AllowPhoneCalls,
+        customer.TaxExempt,
+        customer.TaxExemptNumber,
+        customer.DateOfBirth,
+        customer.Anniversary,
+        customer.PreferredLanguage,
+        customer.CreditLimit,
+        customer.SummaryNotes
     };
+
+    private async Task<string> GenerateCustomerNumberAsync(Guid organizationId, CancellationToken cancellationToken)
+    {
+        var customerNumbers = await dbContext.Customers.IgnoreQueryFilters()
+            .Where(x => x.OrganizationId == organizationId && x.CustomerNumber != null)
+            .Select(x => x.CustomerNumber!)
+            .ToListAsync(cancellationToken);
+
+        var next = customerNumbers
+            .Where(x => x.StartsWith("CUS-", StringComparison.OrdinalIgnoreCase) && int.TryParse(x[4..], out _))
+            .Select(x => int.Parse(x[4..]))
+            .DefaultIfEmpty(0)
+            .Max() + 1;
+
+        string candidate;
+        do
+        {
+            candidate = $"CUS-{next:000000}";
+            next++;
+        }
+        while (customerNumbers.Contains(candidate, StringComparer.OrdinalIgnoreCase));
+
+        return candidate;
+    }
+
+    private static string BuildDisplayName(string? firstName, string? middleName, string? lastName, string? companyName, string? email, string? phone)
+    {
+        var personName = string.Join(" ", new[] { Clean(firstName), Clean(middleName), Clean(lastName) }.Where(x => !string.IsNullOrWhiteSpace(x)));
+        return Clean(companyName) ?? Clean(personName) ?? Clean(email) ?? Clean(phone) ?? "New Customer";
+    }
 
     private static string Required(string value, string fieldName) => string.IsNullOrWhiteSpace(value) ? throw new InvalidOperationException($"{fieldName} is required.") : value.Trim();
 

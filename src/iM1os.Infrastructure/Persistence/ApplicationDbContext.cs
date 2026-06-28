@@ -423,21 +423,36 @@ public sealed class ApplicationDbContext(
         {
             entity.ToTable("customers");
             entity.HasIndex(x => new { x.OrganizationId, x.DisplayName });
+            entity.HasIndex(x => new { x.OrganizationId, x.CustomerNumber }).IsUnique();
             entity.HasIndex(x => new { x.OrganizationId, x.Email });
             entity.HasIndex(x => new { x.OrganizationId, x.Phone });
             entity.HasIndex(x => new { x.OrganizationId, x.Status });
             entity.HasIndex(x => new { x.OrganizationId, x.LifecycleStage });
+            entity.Property(x => x.CustomerNumber).HasMaxLength(40);
             entity.Property(x => x.DisplayName).HasMaxLength(220).IsRequired();
             entity.Property(x => x.FirstName).HasMaxLength(120);
+            entity.Property(x => x.MiddleName).HasMaxLength(100);
             entity.Property(x => x.LastName).HasMaxLength(120);
+            entity.Property(x => x.Nickname).HasMaxLength(100);
             entity.Property(x => x.CompanyName).HasMaxLength(220);
             entity.Property(x => x.Email).HasMaxLength(320);
+            entity.Property(x => x.SecondaryEmail).HasMaxLength(320);
             entity.Property(x => x.Phone).HasMaxLength(40);
+            entity.Property(x => x.MobilePhone).HasMaxLength(40);
+            entity.Property(x => x.HomePhone).HasMaxLength(40);
+            entity.Property(x => x.WorkPhone).HasMaxLength(40);
             entity.Property(x => x.CustomerType).HasMaxLength(80).IsRequired();
             entity.Property(x => x.Status).HasMaxLength(80).IsRequired();
             entity.Property(x => x.LifecycleStage).HasMaxLength(80);
             entity.Property(x => x.Source).HasMaxLength(120);
             entity.Property(x => x.PreferredContactMethod).HasMaxLength(80);
+            entity.Property(x => x.TaxExemptNumber).HasMaxLength(50);
+            entity.Property(x => x.PreferredLanguage).HasMaxLength(80);
+            entity.Property(x => x.SummaryNotes).HasMaxLength(4000);
+            entity.Property(x => x.LifetimeSales).HasPrecision(18, 2);
+            entity.Property(x => x.CreditLimit).HasPrecision(18, 2);
+            entity.Property(x => x.CurrentBalance).HasPrecision(18, 2);
+            entity.Property(x => x.StoreCredit).HasPrecision(18, 2);
             entity.HasQueryFilter(x => x.DeletedAtUtc == null && (tenantProvider.CurrentOrganizationId == null || x.OrganizationId == tenantProvider.CurrentOrganizationId));
         });
 
