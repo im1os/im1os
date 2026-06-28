@@ -105,6 +105,8 @@
                         <label>Department <input name="Department" /></label>
                         <label>Employment Type
                             <select name="EmploymentType">
+                                <option>Full Time</option>
+                                <option>Part Time</option>
                                 <option>Employee</option>
                                 <option>Contractor</option>
                                 <option>Seasonal</option>
@@ -178,7 +180,7 @@
                             <label>Department <input name="Department" value="@employee.Department" /></label>
                             <label>Employment Type
                                 <select name="EmploymentType">
-                                    @foreach (var type in new[] { "Employee", "Contractor", "Seasonal", "Temporary" })
+                                    @foreach (var type in new[] { "Full Time", "Part Time", "Employee", "Contractor", "Seasonal", "Temporary" })
                                     {
                                         <option value="@type" selected="@(type == employee.EmploymentType)">@type</option>
                                     }

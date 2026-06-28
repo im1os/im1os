@@ -142,9 +142,25 @@ public static class IM1ShellNavigation
                 Children:
                 [
                     new("Company Dashboard", "Business", "Dashboard", "CD"),
-                    new("Company Admin", "Business", "Administration", "CA"),
+                    new("Company Admin", "Business", "Administration", "CA")
+                ]),
+            new(
+                "HR",
+                Icon: "HR",
+                Children:
+                [
                     new("Employees", "Employees", "Index", "EM"),
-                    new("Profile", "Profile", "Index", "PR")
+                    new("Time Clock", Icon: "TC"),
+                    new("Work Schedule", Icon: "WS"),
+                    new("Time Off", Icon: "TO"),
+                    new("Payroll", Icon: "PY"),
+                    new("Sales Commissions", Icon: "SC"),
+                    new("Work Order Commissions", Icon: "WC"),
+                    new("Certifications", Icon: "CE"),
+                    new("Documents", Icon: "DC"),
+                    new("OSHA / Safety", Icon: "OS"),
+                    new("Company Assets", Icon: "AS"),
+                    new("Performance Reviews", Icon: "PR")
                 ])
         ]);
 }

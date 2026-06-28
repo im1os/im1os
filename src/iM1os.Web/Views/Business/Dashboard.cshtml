@@ -39,7 +39,7 @@
         @if (isOwner || isCompanyAdmin || isPlatformAdmin)
         {
             <div class="action-row">
-                <a class="secondary-action" asp-controller="Business" asp-action="Administration" asp-route-organizationId="@organizationId" asp-fragment="employees">Invite Employee</a>
+                <a class="secondary-action" asp-controller="Employees" asp-action="Index" asp-route-newEmployee="true">Invite Employee</a>
                 <a class="secondary-action" asp-controller="Business" asp-action="Administration" asp-route-organizationId="@organizationId" asp-fragment="connectors">Connect Supplier</a>
                 <a class="secondary-action" asp-controller="Business" asp-action="Administration" asp-route-organizationId="@organizationId" asp-fragment="labor">Configure Labor Rates</a>
                 <a class="secondary-action" asp-controller="Business" asp-action="Administration" asp-route-organizationId="@organizationId">Open Company Administration</a>

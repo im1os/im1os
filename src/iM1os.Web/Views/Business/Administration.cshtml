@@ -23,7 +23,6 @@
         {
             new IM1TabItemModel("profile", "Profile", true),
             new IM1TabItemModel("locations", "Locations"),
-            new IM1TabItemModel("employees", "Employees"),
             new IM1TabItemModel("roles", "Roles"),
             new IM1TabItemModel("operations", "Operations"),
             new IM1TabItemModel("connectors", "Connectors"),
@@ -50,28 +49,6 @@
         }).ToArray(),
         Toolbar: new IM1ToolbarModel(SearchPlaceholder: "Search locations", ShowRefresh: true, ShowFilters: true, ShowExport: true),
         EmptyText: "No company locations have been configured.",
-        PageSize: 10);
-    var usersGrid = new IM1DataGridModel(
-        Columns: new[]
-        {
-            new IM1DataGridColumnModel("name", "Name"),
-            new IM1DataGridColumnModel("email", "Email"),
-            new IM1DataGridColumnModel("phone", "Phone"),
-            new IM1DataGridColumnModel("role", "Role"),
-            new IM1DataGridColumnModel("primaryLocation", "Primary Location"),
-            new IM1DataGridColumnModel("status", "Status")
-        },
-        Rows: Model.Employees.Select(employee => new Dictionary<string, object?>
-        {
-            ["name"] = employee.Name,
-            ["email"] = employee.Email,
-            ["phone"] = employee.Phone ?? "-",
-            ["role"] = employee.Role,
-            ["primaryLocation"] = employee.PrimaryLocation ?? "Unassigned",
-            ["status"] = employee.Status
-        }).ToArray(),
-        Toolbar: new IM1ToolbarModel(SearchPlaceholder: "Search employees", ShowRefresh: true, ShowFilters: true, ShowExport: true),
-        EmptyText: "No employees have been invited.",
         PageSize: 10);
 }
 
@@ -135,39 +112,6 @@
                 <label>Default Tax Region <input name="DefaultTaxRegion" /></label>
                 <label>Status <input name="Status" value="Active" /></label>
                 <button class="primary-action" type="submit">Add Location</button>
-            </form>
-        </article>
-    </div>
-
-    <div class="tab-panel" id="employees" role="tabpanel" hidden>
-        <article class="page-band">
-            <h2>Employees</h2>
-            @await Html.PartialAsync("IM1DataGrid", usersGrid)
-            <form asp-action="Employee" method="post" class="form-grid form-grid-spaced">
-                <input type="hidden" name="organizationId" value="@Model.OrganizationId" />
-                <label>Name <input name="Name" /></label>
-                <label>Email <input name="Email" type="email" /></label>
-                <label>Phone <input name="Phone" /></label>
-                <label>Role
-                    <select name="RoleName">
-                        <option>General Manager</option>
-                        <option>Service Manager</option>
-                        <option>Technician</option>
-                        <option>Parts Manager</option>
-                        <option>Accounting</option>
-                        <option>Administration</option>
-                    </select>
-                </label>
-                <label>Primary Location
-                    <select name="PrimaryLocationId">
-                        <option value="">Unassigned</option>
-                        @foreach (var location in Model.Locations)
-                        {
-                            <option value="@location.Id">@location.Name</option>
-                        }
-                    </select>
-                </label>
-                <button class="primary-action" type="submit">Invite Employee</button>
             </form>
         </article>
     </div>

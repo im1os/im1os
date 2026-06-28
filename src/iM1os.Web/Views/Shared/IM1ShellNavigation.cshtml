@@ -29,10 +29,20 @@
                     @foreach (var child in item.Children!)
                     {
                         var isChildActive = IsActive(Model, child);
-                        <a class="im1-sidebar-link im1-sidebar-child-link @(isChildActive ? "is-active" : null)" asp-controller="@child.Controller" asp-action="@child.Action">
-                            <span class="im1-sidebar-icon" aria-hidden="true">@child.Icon</span>
-                            <span>@child.Label</span>
-                        </a>
+                        @if (!string.IsNullOrWhiteSpace(child.Controller) && !string.IsNullOrWhiteSpace(child.Action))
+                        {
+                            <a class="im1-sidebar-link im1-sidebar-child-link @(isChildActive ? "is-active" : null)" asp-controller="@child.Controller" asp-action="@child.Action">
+                                <span class="im1-sidebar-icon" aria-hidden="true">@child.Icon</span>
+                                <span>@child.Label</span>
+                            </a>
+                        }
+                        else
+                        {
+                            <span class="im1-sidebar-link im1-sidebar-child-link is-disabled">
+                                <span class="im1-sidebar-icon" aria-hidden="true">@child.Icon</span>
+                                <span>@child.Label</span>
+                            </span>
+                        }
                     }
                 </div>
             </details>
