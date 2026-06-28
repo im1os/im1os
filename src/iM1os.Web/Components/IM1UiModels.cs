@@ -117,8 +117,7 @@ public static class IM1ShellNavigation
                 Icon: "TM",
                 Children:
                 [
-                    new("Organizations", "Platform", "Tenants", "OR"),
-                    new("Create Organization", "Platform", "CreateTenant", "CO")
+                    new("Organizations", "Platform", "Tenants", "OR")
                 ]),
             new(
                 "Marketing CMS",
