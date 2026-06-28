@@ -1,0 +1,69 @@
+@model SaveMarketingPageRequest
+
+@{
+    ViewData["Title"] = Model.Id is null ? "New Marketing Page" : Model.Title;
+    var blocks = ViewBag.PageBlocks as IReadOnlyCollection<MarketingContentBlockDto> ?? Array.Empty<MarketingContentBlockDto>();
+    var page = new IM1PageModel(
+        Title: Model.Id is null ? "New Marketing Page" : Model.Title,
+        Eyebrow: "Marketing CMS",
+        Description: "Edit the public website page settings, publishing status, and SEO metadata.",
+        Breadcrumbs: new[] { new IM1BreadcrumbModel("Marketing CMS", Url.Action("Index", "MarketingAdmin")), new IM1BreadcrumbModel(Model.Id is null ? "New Page" : Model.Title) },
+        Toolbar: new IM1ToolbarModel(Actions: Model.Id is null ? Array.Empty<IM1ActionModel>() : new[] { new IM1ActionModel("Add Block", Url.Action("Block", "MarketingAdmin", new { pageId = Model.Id }), "primary") }));
+}
+
+@await Html.PartialAsync("IM1Page", page)
+
+<section class="im1-card">
+    <form class="im1-form" asp-action="Page" method="post">
+        <input asp-for="Id" type="hidden" />
+        <div class="im1-form-header">
+            <h2>Page Details</h2>
+            <p>These fields control routing, navigation labels, publishing, and search/social previews.</p>
+        </div>
+        <div class="im1-form-grid">
+            <label>Slug <input asp-for="Slug" required /></label>
+            <label>Title <input asp-for="Title" required /></label>
+            <label>Navigation Label <input asp-for="NavigationLabel" required /></label>
+            <label>Sort Order <input asp-for="SortOrder" type="number" /></label>
+            <label>Meta Description <input asp-for="MetaDescription" /></label>
+            <label>Canonical URL <input asp-for="CanonicalUrl" type="url" /></label>
+            <label>OpenGraph Title <input asp-for="OpenGraphTitle" /></label>
+            <label>OpenGraph Image URL <input asp-for="OpenGraphImageUrl" type="url" /></label>
+        </div>
+        <label>OpenGraph Description <textarea asp-for="OpenGraphDescription" rows="3"></textarea></label>
+        <label class="checkbox"><input asp-for="IsPublished" /> Published</label>
+        <div class="im1-form-actions">
+            <button class="im1-button im1-button-primary" type="submit">Save Page</button>
+            <a class="im1-button im1-button-secondary" asp-action="Index">Back</a>
+        </div>
+    </form>
+</section>
+
+@if (Model.Id is not null)
+{
+    <section class="im1-card">
+        <div class="im1-form-header">
+            <h2>Content Blocks</h2>
+            <p>Blocks render in sort order and keep marketing content separate from application code.</p>
+        </div>
+        <div class="marketing-admin-block-list">
+            @foreach (var block in blocks.OrderBy(x => x.SortOrder))
+            {
+                <article>
+                    <div>
+                        <strong>@block.Heading</strong>
+                        <span>@block.BlockType · @(block.IsPublished ? "Published" : "Draft") · Sort @block.SortOrder</span>
+                    </div>
+                    <div class="im1-row-actions">
+                        <a class="im1-button im1-button-secondary" asp-action="Block" asp-route-pageId="@Model.Id" asp-route-id="@block.Id">Edit</a>
+                        <form asp-action="DeleteBlock" method="post">
+                            <input type="hidden" name="id" value="@block.Id" />
+                            <input type="hidden" name="pageId" value="@Model.Id" />
+                            <button class="im1-button im1-button-danger" type="submit">Delete</button>
+                        </form>
+                    </div>
+                </article>
+            }
+        </div>
+    </section>
+}

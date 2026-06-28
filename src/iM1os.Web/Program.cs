@@ -54,7 +54,7 @@ app.UseAuthorization();
 app.MapHealthChecks("/health");
 app.MapControllerRoute(
     name: "default",
-    pattern: "{controller=Platform}/{action=Dashboard}/{id?}");
+    pattern: "{controller=Home}/{action=Index}/{id?}");
 
 if (app.Configuration.GetValue("Database:AutoMigrate", false))
 {

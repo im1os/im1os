@@ -1,14 +1,38 @@
 using System.Diagnostics;
+using iM1os.Application.Marketing;
 using iM1os.Web.Models;
 using Microsoft.AspNetCore.Mvc;
 
 namespace iM1os.Web.Controllers;
 
-public class HomeController : Controller
+public class HomeController(IMarketingCmsService marketingCmsService) : Controller
 {
-    public IActionResult Index()
+    [HttpGet]
+    public async Task<IActionResult> Index(CancellationToken cancellationToken)
     {
-        return View();
+        var page = await marketingCmsService.GetPublishedPageAsync("home", cancellationToken);
+        if (page is null)
+        {
+            return NotFound();
+        }
+
+        ViewData["MarketingSite"] = true;
+        return View(page);
+    }
+
+    [HttpPost]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> RequestDemo(MarketingLeadRequest request, CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrWhiteSpace(request.Name) || string.IsNullOrWhiteSpace(request.Email))
+        {
+            TempData["MarketingLeadStatus"] = "Please provide your name and email.";
+            return RedirectToAction(nameof(Index), null, null, "contact");
+        }
+
+        await marketingCmsService.CaptureLeadAsync(request with { Source = "request-demo" }, cancellationToken);
+        TempData["MarketingLeadStatus"] = "Thanks. The iM1 team will follow up shortly.";
+        return RedirectToAction(nameof(Index), null, null, "contact");
     }
 
     public IActionResult Privacy()

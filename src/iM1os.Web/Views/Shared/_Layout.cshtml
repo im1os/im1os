@@ -1,5 +1,6 @@
 @{
     var isCustomerContext = User.FindFirst("auth_context")?.Value == "tenant";
+    var isMarketingSite = ViewData["MarketingSite"] is true;
     var productName = isCustomerContext ? "iM1 OS" : "IM1 Platform";
     var brandController = isCustomerContext ? "Business" : "Platform";
     var brandAction = isCustomerContext ? "Dashboard" : "Dashboard";
@@ -16,7 +17,8 @@
         {
             new IM1ShellNavigationItemModel("Dashboard", "Platform", "Dashboard", "DB"),
             new IM1ShellNavigationItemModel("Organizations", "Platform", "Tenants", "OR"),
-            new IM1ShellNavigationItemModel("Create Organization", "Platform", "CreateTenant", "CO")
+            new IM1ShellNavigationItemModel("Create Organization", "Platform", "CreateTenant", "CO"),
+            new IM1ShellNavigationItemModel("Marketing CMS", "MarketingAdmin", "Index", "MC")
         };
 }
 <!DOCTYPE html>
@@ -25,44 +27,71 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>@ViewData["Title"] - @productName</title>
+    @await RenderSectionAsync("Head", required: false)
     <link rel="stylesheet" href="~/css/im1-ui.css" asp-append-version="true" />
     <link rel="stylesheet" href="~/css/site.css" asp-append-version="true" />
 </head>
 <body>
-    <div class="im1-app-shell">
-        <header class="im1-shell-header">
-            <a class="im1-shell-brand" asp-controller="@brandController" asp-action="@brandAction" aria-label="@productName">
+    @if (isMarketingSite)
+    {
+        <header class="marketing-header">
+            <a class="marketing-brand" asp-controller="Home" asp-action="Index">
                 <span class="brand-mark">
                     <img src="~/images/im1-logo.png" asp-append-version="true" alt="" />
                 </span>
-                <span>@productName</span>
+                <span>iM1 OS</span>
             </a>
-            <div class="im1-shell-status">
-                <span>Healthy</span>
-            </div>
-            <div class="im1-shell-account">
-                @if (isCustomerContext)
-                {
-                    <form asp-controller="Account" asp-action="Logout" method="post">
-                        <button class="link-button" type="submit">Logout</button>
-                    </form>
-                }
-                else if (User.Identity?.IsAuthenticated == true)
-                {
-                    <form asp-controller="Platform" asp-action="Logout" method="post">
-                        <button class="link-button" type="submit">Logout</button>
-                    </form>
-                }
-            </div>
+            <nav class="marketing-nav" aria-label="Public navigation">
+                <a href="/">Home</a>
+                <a href="/#platform">Platform</a>
+                <a href="/#products">Products</a>
+                <a href="/#integrations">Integrations</a>
+                <a href="/#about">About</a>
+                <a href="/#contact">Contact</a>
+            </nav>
+            <a class="im1-button im1-button-primary" href="/#contact">Request Demo</a>
         </header>
-        <aside class="im1-sidebar">
-            @await Html.PartialAsync("IM1ShellNavigation", new IM1ShellNavigationModel(productName, navigationItems, currentController, currentAction))
-        </aside>
-        <main class="im1-main-content">
+        <main class="marketing-main">
             @RenderBody()
         </main>
-        <section class="im1-notifications" aria-live="polite"></section>
-    </div>
+    }
+    else
+    {
+        <div class="im1-app-shell">
+            <header class="im1-shell-header">
+                <a class="im1-shell-brand" asp-controller="@brandController" asp-action="@brandAction" aria-label="@productName">
+                    <span class="brand-mark">
+                        <img src="~/images/im1-logo.png" asp-append-version="true" alt="" />
+                    </span>
+                    <span>@productName</span>
+                </a>
+                <div class="im1-shell-status">
+                    <span>Healthy</span>
+                </div>
+                <div class="im1-shell-account">
+                    @if (isCustomerContext)
+                    {
+                        <form asp-controller="Account" asp-action="Logout" method="post">
+                            <button class="link-button" type="submit">Logout</button>
+                        </form>
+                    }
+                    else if (User.Identity?.IsAuthenticated == true)
+                    {
+                        <form asp-controller="Platform" asp-action="Logout" method="post">
+                            <button class="link-button" type="submit">Logout</button>
+                        </form>
+                    }
+                </div>
+            </header>
+            <aside class="im1-sidebar">
+                @await Html.PartialAsync("IM1ShellNavigation", new IM1ShellNavigationModel(productName, navigationItems, currentController, currentAction))
+            </aside>
+            <main class="im1-main-content">
+                @RenderBody()
+            </main>
+            <section class="im1-notifications" aria-live="polite"></section>
+        </div>
+    }
     <script src="~/js/im1-ui.js" asp-append-version="true"></script>
     <script src="~/js/site.js" asp-append-version="true"></script>
     @await RenderSectionAsync("Scripts", required: false)

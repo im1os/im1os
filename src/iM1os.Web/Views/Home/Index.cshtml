@@ -1,8 +1,93 @@
+@model MarketingPageDto
+
 @{
-    ViewData["Title"] = "Home";
+    ViewData["Title"] = Model.OpenGraphTitle ?? Model.Title;
+    var metaDescription = Model.MetaDescription ?? "iM1 OS is a modern cloud operating system for powersports dealerships.";
+    var canonicalUrl = Model.CanonicalUrl ?? "https://im1os.com/";
+    var ogTitle = Model.OpenGraphTitle ?? Model.Title;
+    var ogDescription = Model.OpenGraphDescription ?? metaDescription;
 }
 
-<section class="page-band">
-    <h1>iM1 OS</h1>
-    <p>The powersports operating system foundation is ready.</p>
+@section Head {
+    <meta name="description" content="@metaDescription" />
+    <link rel="canonical" href="@canonicalUrl" />
+    <meta property="og:type" content="website" />
+    <meta property="og:title" content="@ogTitle" />
+    <meta property="og:description" content="@ogDescription" />
+    <meta property="og:url" content="@canonicalUrl" />
+    @if (!string.IsNullOrWhiteSpace(Model.OpenGraphImageUrl))
+    {
+        <meta property="og:image" content="@Model.OpenGraphImageUrl" />
+    }
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="@ogTitle" />
+    <meta name="twitter:description" content="@ogDescription" />
+    <script type="application/ld+json">
+        {
+          "@@context": "https://schema.org",
+          "@@type": "Organization",
+          "name": "iM1 OS",
+          "url": "https://im1os.com/",
+          "description": "@metaDescription"
+        }
+    </script>
+}
+
+@foreach (var block in Model.Blocks)
+{
+    @await Html.PartialAsync("IM1MarketingBlock", block)
+}
+
+<section class="marketing-section marketing-contact-section" id="contact" aria-labelledby="contact-title">
+    <div class="marketing-section-copy">
+        <span class="marketing-eyebrow">Contact</span>
+        <h2 id="contact-title">Request a demo</h2>
+        <p>Talk with the iM1 team about dealership operations, growth goals, and the right starting point for your business.</p>
+        <div class="marketing-contact-links">
+            <a href="mailto:hello@im1os.com">hello@im1os.com</a>
+            <a href="https://status.im1os.com">Status</a>
+        </div>
+    </div>
+    <form class="im1-card im1-form marketing-contact-form" id="contact-form" asp-controller="Home" asp-action="RequestDemo" method="post">
+        @if (TempData["MarketingLeadStatus"] is string status)
+        {
+            <p class="marketing-form-status">@status</p>
+        }
+        <input type="hidden" name="Source" value="request-demo" />
+        <div class="im1-form-grid">
+            <label>
+                <span>Name</span>
+                <input name="Name" required autocomplete="name" />
+            </label>
+            <label>
+                <span>Email</span>
+                <input name="Email" type="email" required autocomplete="email" />
+            </label>
+            <label>
+                <span>Dealership</span>
+                <input name="Company" autocomplete="organization" />
+            </label>
+            <label>
+                <span>Phone</span>
+                <input name="Phone" autocomplete="tel" />
+            </label>
+        </div>
+        <label>
+            <span>Message</span>
+            <textarea name="Message" rows="5"></textarea>
+        </label>
+        <div class="im1-form-actions">
+            <button class="im1-button im1-button-primary" type="submit">Request Demo</button>
+        </div>
+    </form>
 </section>
+
+<footer class="marketing-footer">
+    <span>&copy; @DateTime.UtcNow.Year iM1 OS. All rights reserved.</span>
+    <nav aria-label="Footer navigation">
+        <a asp-controller="Home" asp-action="Privacy">Privacy</a>
+        <a href="/terms">Terms</a>
+        <a href="https://status.im1os.com">Status</a>
+        <a href="/docs">Documentation</a>
+    </nav>
+</footer>

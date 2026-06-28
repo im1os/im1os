@@ -1,0 +1,32 @@
+@model IReadOnlyCollection<MarketingPageSummary>
+
+@{
+    ViewData["Title"] = "Marketing CMS";
+    var page = new IM1PageModel(
+        Title: "Marketing CMS",
+        Eyebrow: "Platform administration",
+        Description: "Manage public website pages, content blocks, publishing, and SEO metadata.",
+        Breadcrumbs: new[] { new IM1BreadcrumbModel("Platform", Url.Action("Dashboard", "Platform")), new IM1BreadcrumbModel("Marketing CMS") },
+        Toolbar: new IM1ToolbarModel(Actions: new[] { new IM1ActionModel("New Page", Url.Action("Page", "MarketingAdmin"), "primary") }));
+}
+
+@await Html.PartialAsync("IM1Page", page)
+
+<section class="im1-card">
+    <div class="marketing-admin-block-list">
+        @foreach (var item in Model.OrderBy(x => x.SortOrder))
+        {
+            <article>
+                <div>
+                    <strong>@item.Title</strong>
+                    <span>@item.Slug · @item.NavigationLabel · @(item.IsPublished ? "Published" : "Draft") · Sort @item.SortOrder</span>
+                </div>
+                <a class="im1-button im1-button-secondary" asp-action="Page" asp-route-id="@item.Id">Edit</a>
+            </article>
+        }
+        @if (Model.Count == 0)
+        {
+            <p class="im1-page-description">No marketing pages have been created.</p>
+        }
+    </div>
+</section>

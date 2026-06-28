@@ -2,6 +2,7 @@ using iM1os.Domain.Audit;
 using iM1os.Domain.Configuration;
 using iM1os.Domain.Customers;
 using iM1os.Domain.Identity;
+using iM1os.Domain.Marketing;
 using iM1os.Domain.Parts;
 using iM1os.Domain.Platform;
 using iM1os.Domain.Service;
@@ -82,6 +83,12 @@ public interface IApplicationDbContext
     DbSet<PlatformAuditEvent> PlatformAuditEvents { get; }
 
     DbSet<WelcomeEmail> WelcomeEmails { get; }
+
+    DbSet<MarketingPage> MarketingPages { get; }
+
+    DbSet<MarketingContentBlock> MarketingContentBlocks { get; }
+
+    DbSet<MarketingLead> MarketingLeads { get; }
 
     Task<int> SaveChangesAsync(CancellationToken cancellationToken = default);
 }

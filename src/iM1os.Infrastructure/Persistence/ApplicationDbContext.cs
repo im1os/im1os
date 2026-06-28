@@ -5,6 +5,7 @@ using iM1os.Domain.Common;
 using iM1os.Domain.Configuration;
 using iM1os.Domain.Customers;
 using iM1os.Domain.Identity;
+using iM1os.Domain.Marketing;
 using iM1os.Domain.Parts;
 using iM1os.Domain.Platform;
 using iM1os.Domain.Service;
@@ -89,6 +90,12 @@ public sealed class ApplicationDbContext(
     public DbSet<PlatformAuditEvent> PlatformAuditEvents => Set<PlatformAuditEvent>();
 
     public DbSet<WelcomeEmail> WelcomeEmails => Set<WelcomeEmail>();
+
+    public DbSet<MarketingPage> MarketingPages => Set<MarketingPage>();
+
+    public DbSet<MarketingContentBlock> MarketingContentBlocks => Set<MarketingContentBlock>();
+
+    public DbSet<MarketingLead> MarketingLeads => Set<MarketingLead>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -540,6 +547,50 @@ public sealed class ApplicationDbContext(
             entity.Property(x => x.RecipientName).HasMaxLength(160).IsRequired();
             entity.Property(x => x.Subject).HasMaxLength(200).IsRequired();
             entity.Property(x => x.Body).HasMaxLength(4000).IsRequired();
+        });
+
+        modelBuilder.Entity<MarketingPage>(entity =>
+        {
+            entity.ToTable("marketing_pages");
+            entity.HasIndex(x => x.Slug).IsUnique();
+            entity.HasIndex(x => new { x.IsPublished, x.SortOrder });
+            entity.Property(x => x.Slug).HasMaxLength(160).IsRequired();
+            entity.Property(x => x.Title).HasMaxLength(240).IsRequired();
+            entity.Property(x => x.NavigationLabel).HasMaxLength(120).IsRequired();
+            entity.Property(x => x.MetaDescription).HasMaxLength(500);
+            entity.Property(x => x.OpenGraphTitle).HasMaxLength(240);
+            entity.Property(x => x.OpenGraphDescription).HasMaxLength(500);
+            entity.Property(x => x.OpenGraphImageUrl).HasMaxLength(1000);
+            entity.Property(x => x.CanonicalUrl).HasMaxLength(1000);
+        });
+
+        modelBuilder.Entity<MarketingContentBlock>(entity =>
+        {
+            entity.ToTable("marketing_content_blocks");
+            entity.HasIndex(x => new { x.MarketingPageId, x.SortOrder });
+            entity.Property(x => x.BlockType).HasMaxLength(80).IsRequired();
+            entity.Property(x => x.Eyebrow).HasMaxLength(120);
+            entity.Property(x => x.Heading).HasMaxLength(260).IsRequired();
+            entity.Property(x => x.Body).HasMaxLength(4000);
+            entity.Property(x => x.PrimaryActionLabel).HasMaxLength(120);
+            entity.Property(x => x.PrimaryActionUrl).HasMaxLength(1000);
+            entity.Property(x => x.SecondaryActionLabel).HasMaxLength(120);
+            entity.Property(x => x.SecondaryActionUrl).HasMaxLength(1000);
+            entity.Property(x => x.ItemsJson).HasColumnType("jsonb");
+            entity.HasOne<MarketingPage>().WithMany(x => x.Blocks).HasForeignKey(x => x.MarketingPageId);
+        });
+
+        modelBuilder.Entity<MarketingLead>(entity =>
+        {
+            entity.ToTable("marketing_leads");
+            entity.HasIndex(x => x.CreatedAtUtc);
+            entity.Property(x => x.Name).HasMaxLength(160).IsRequired();
+            entity.Property(x => x.Email).HasMaxLength(320).IsRequired();
+            entity.Property(x => x.Company).HasMaxLength(220);
+            entity.Property(x => x.Phone).HasMaxLength(40);
+            entity.Property(x => x.Message).HasMaxLength(2000);
+            entity.Property(x => x.Source).HasMaxLength(160).IsRequired();
+            entity.Property(x => x.Status).HasMaxLength(80).IsRequired();
         });
     }
 

@@ -1,0 +1,187 @@
+@model MarketingContentBlockDto
+@using System.Text.Json
+
+@functions {
+    private sealed record MarketingItem(IReadOnlyDictionary<string, string> Values);
+
+    private static IReadOnlyCollection<MarketingItem> ReadItems(string? itemsJson)
+    {
+        if (string.IsNullOrWhiteSpace(itemsJson))
+        {
+            return Array.Empty<MarketingItem>();
+        }
+
+        try
+        {
+            var rows = JsonSerializer.Deserialize<List<Dictionary<string, string>>>(itemsJson) ?? [];
+            return rows.Select(x => new MarketingItem(x)).ToArray();
+        }
+        catch (JsonException)
+        {
+            return Array.Empty<MarketingItem>();
+        }
+    }
+
+    private static string Value(MarketingItem item, string key)
+    {
+        return item.Values.TryGetValue(key, out var value) ? value : string.Empty;
+    }
+}
+
+@{
+    var items = ReadItems(Model.ItemsJson);
+    var sectionId = Model.BlockType switch
+    {
+        "platform" => "platform",
+        "products" => "products",
+        "integrations" => "integrations",
+        "ecommerce" => "integrations",
+        "vision" => "about",
+        _ => Model.BlockType
+    };
+}
+
+@if (Model.BlockType == "hero")
+{
+    <section class="marketing-hero" id="home" aria-labelledby="hero-title">
+        <div class="marketing-hero-copy">
+            @if (!string.IsNullOrWhiteSpace(Model.Eyebrow))
+            {
+                <span class="marketing-eyebrow">@Model.Eyebrow</span>
+            }
+            <h1 id="hero-title">@Model.Heading</h1>
+            @if (!string.IsNullOrWhiteSpace(Model.Body))
+            {
+                <p>@Model.Body</p>
+            }
+            <div class="marketing-actions">
+                @if (!string.IsNullOrWhiteSpace(Model.PrimaryActionLabel) && !string.IsNullOrWhiteSpace(Model.PrimaryActionUrl))
+                {
+                    <a class="im1-button im1-button-primary" href="@Model.PrimaryActionUrl">@Model.PrimaryActionLabel</a>
+                }
+                @if (!string.IsNullOrWhiteSpace(Model.SecondaryActionLabel) && !string.IsNullOrWhiteSpace(Model.SecondaryActionUrl))
+                {
+                    <a class="im1-button im1-button-secondary" href="@Model.SecondaryActionUrl">@Model.SecondaryActionLabel</a>
+                }
+            </div>
+        </div>
+        <div class="marketing-hero-visual" aria-hidden="true">
+            <div class="marketing-platform-panel">
+                <span>Inventory</span>
+                <strong>Connected</strong>
+            </div>
+            <div class="marketing-platform-panel">
+                <span>Service</span>
+                <strong>Scheduled</strong>
+            </div>
+            <div class="marketing-platform-panel">
+                <span>eCommerce</span>
+                <strong>Synced</strong>
+            </div>
+            <div class="marketing-platform-panel">
+                <span>Customers</span>
+                <strong>Growing</strong>
+            </div>
+        </div>
+    </section>
+}
+else if (Model.BlockType is "comparison")
+{
+    <section class="marketing-section" id="@sectionId" aria-labelledby="@($"{Model.BlockType}-title")">
+        <div class="marketing-section-copy">
+            <span class="marketing-eyebrow">@Model.Eyebrow</span>
+            <h2 id="@($"{Model.BlockType}-title")">@Model.Heading</h2>
+            <p>@Model.Body</p>
+        </div>
+        <div class="marketing-comparison">
+            <div class="marketing-comparison-heading">Traditional Software</div>
+            <div class="marketing-comparison-heading">iM1 OS</div>
+            @foreach (var item in items)
+            {
+                <div>@Value(item, "traditional")</div>
+                <div>@Value(item, "im1")</div>
+            }
+        </div>
+    </section>
+}
+else if (Model.BlockType is "faq")
+{
+    <section class="marketing-section" id="@sectionId" aria-labelledby="@($"{Model.BlockType}-title")">
+        <div class="marketing-section-copy">
+            <span class="marketing-eyebrow">@Model.Eyebrow</span>
+            <h2 id="@($"{Model.BlockType}-title")">@Model.Heading</h2>
+            <p>@Model.Body</p>
+        </div>
+        <div class="marketing-faq-list">
+            @foreach (var item in items)
+            {
+                <details class="im1-card">
+                    <summary>@Value(item, "question")</summary>
+                    <p>@Value(item, "answer")</p>
+                </details>
+            }
+        </div>
+    </section>
+}
+else if (Model.BlockType is "testimonials")
+{
+    <section class="marketing-section" id="@sectionId" aria-labelledby="@($"{Model.BlockType}-title")">
+        <div class="marketing-section-copy">
+            <span class="marketing-eyebrow">@Model.Eyebrow</span>
+            <h2 id="@($"{Model.BlockType}-title")">@Model.Heading</h2>
+            <p>@Model.Body</p>
+        </div>
+        <div class="marketing-grid marketing-grid-two">
+            @foreach (var item in items)
+            {
+                <article class="im1-card marketing-card">
+                    <p>@Value(item, "quote")</p>
+                    <strong>@Value(item, "name")</strong>
+                </article>
+            }
+        </div>
+    </section>
+}
+else if (Model.BlockType is "security" or "vision" or "contact")
+{
+    <section class="marketing-section marketing-statement" id="@sectionId" aria-labelledby="@($"{Model.BlockType}-title")">
+        <span class="marketing-eyebrow">@Model.Eyebrow</span>
+        <h2 id="@($"{Model.BlockType}-title")">@Model.Heading</h2>
+        <p>@Model.Body</p>
+        @if (!string.IsNullOrWhiteSpace(Model.PrimaryActionLabel) && !string.IsNullOrWhiteSpace(Model.PrimaryActionUrl))
+        {
+            <a class="im1-button im1-button-primary" href="@Model.PrimaryActionUrl">@Model.PrimaryActionLabel</a>
+        }
+    </section>
+}
+else
+{
+    <section class="marketing-section" id="@sectionId" aria-labelledby="@($"{Model.BlockType}-title")">
+        <div class="marketing-section-copy">
+            <span class="marketing-eyebrow">@Model.Eyebrow</span>
+            <h2 id="@($"{Model.BlockType}-title")">@Model.Heading</h2>
+            <p>@Model.Body</p>
+        </div>
+        @if (items.Count > 0)
+        {
+            <div class="marketing-grid @(Model.BlockType == "pricing" ? "marketing-grid-three" : null)">
+                @foreach (var item in items)
+                {
+                    <article class="im1-card marketing-card">
+                        <div class="marketing-card-title-row">
+                            <h3>@Value(item, "title")</h3>
+                            @if (!string.IsNullOrWhiteSpace(Value(item, "status")))
+                            {
+                                <span class="marketing-badge">@Value(item, "status")</span>
+                            }
+                        </div>
+                        @if (!string.IsNullOrWhiteSpace(Value(item, "body")))
+                        {
+                            <p>@Value(item, "body")</p>
+                        }
+                    </article>
+                }
+            </div>
+        }
+    </section>
+}
