@@ -72,7 +72,11 @@
                     <span>Healthy</span>
                 </div>
                 <div class="im1-shell-account">
-                    @if (isCustomerContext)
+                    @if (!isAuthenticated)
+                    {
+                        <a class="im1-shell-home-link" asp-controller="Home" asp-action="Index">Home</a>
+                    }
+                    else if (isCustomerContext)
                     {
                         <form asp-controller="Account" asp-action="Logout" method="post">
                             <button class="link-button" type="submit">Logout</button>

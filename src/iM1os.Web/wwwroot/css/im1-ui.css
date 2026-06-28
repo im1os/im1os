@@ -97,6 +97,17 @@
   justify-self: end;
 }
 
+.im1-shell-home-link {
+  color: var(--im1-color-text-muted);
+  font-size: var(--im1-font-size-label);
+  font-weight: 800;
+  text-decoration: none;
+}
+
+.im1-shell-home-link:hover {
+  color: var(--im1-color-text);
+}
+
 .im1-sidebar {
   background: var(--im1-color-surface);
   border-right: 1px solid var(--im1-color-border);
