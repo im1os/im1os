@@ -8,6 +8,17 @@ namespace iM1os.Web.Controllers;
 [Authorize]
 public sealed class EmployeesController(IEmployeeService employeeService) : Controller
 {
+    private static readonly HashSet<string> EmployeeEditorTabs = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "general",
+        "employment",
+        "compensation",
+        "login-account",
+        "permissions",
+        "security",
+        "activity"
+    };
+
     [HttpGet]
     public async Task<IActionResult> Index(string? query, string? status, string? role, Guid? employeeId, CancellationToken cancellationToken)
     {
@@ -67,12 +78,12 @@ public sealed class EmployeesController(IEmployeeService employeeService) : Cont
 
     [HttpPost]
     [ValidateAntiForgeryToken]
-    public async Task<IActionResult> Update(UpdateEmployeeRequest request, CancellationToken cancellationToken)
+    public async Task<IActionResult> Update(UpdateEmployeeRequest request, string? returnTab, CancellationToken cancellationToken)
     {
         try
         {
             await employeeService.UpdateEmployeeAsync(OrganizationId(), UserId(), request, RemoteIp(), cancellationToken);
-            return RedirectToAction(nameof(Edit), new { employeeId = request.EmployeeId });
+            return RedirectToEdit(request.EmployeeId, returnTab);
         }
         catch (UnauthorizedAccessException)
         {
@@ -82,12 +93,12 @@ public sealed class EmployeesController(IEmployeeService employeeService) : Cont
 
     [HttpPost]
     [ValidateAntiForgeryToken]
-    public async Task<IActionResult> EnableLogin(EnableEmployeeLoginRequest request, CancellationToken cancellationToken)
+    public async Task<IActionResult> EnableLogin(EnableEmployeeLoginRequest request, string? returnTab, CancellationToken cancellationToken)
     {
         try
         {
             await employeeService.EnableLoginAccountAsync(OrganizationId(), UserId(), request, RemoteIp(), cancellationToken);
-            return RedirectToAction(nameof(Edit), new { employeeId = request.EmployeeId });
+            return RedirectToEdit(request.EmployeeId, returnTab);
         }
         catch (UnauthorizedAccessException)
         {
@@ -97,12 +108,12 @@ public sealed class EmployeesController(IEmployeeService employeeService) : Cont
 
     [HttpPost]
     [ValidateAntiForgeryToken]
-    public async Task<IActionResult> Compensation(SaveEmployeeCompensationRequest request, CancellationToken cancellationToken)
+    public async Task<IActionResult> Compensation(SaveEmployeeCompensationRequest request, string? returnTab, CancellationToken cancellationToken)
     {
         try
         {
             await employeeService.SaveCompensationAsync(OrganizationId(), UserId(), request, RemoteIp(), cancellationToken);
-            return RedirectToAction(nameof(Edit), new { employeeId = request.EmployeeId });
+            return RedirectToEdit(request.EmployeeId, returnTab);
         }
         catch (UnauthorizedAccessException)
         {
@@ -112,12 +123,12 @@ public sealed class EmployeesController(IEmployeeService employeeService) : Cont
 
     [HttpPost]
     [ValidateAntiForgeryToken]
-    public async Task<IActionResult> Pin(SaveEmployeePinRequest request, CancellationToken cancellationToken)
+    public async Task<IActionResult> Pin(SaveEmployeePinRequest request, string? returnTab, CancellationToken cancellationToken)
     {
         try
         {
             await employeeService.SavePinAsync(OrganizationId(), UserId(), request, RemoteIp(), cancellationToken);
-            return RedirectToAction(nameof(Edit), new { employeeId = request.EmployeeId });
+            return RedirectToEdit(request.EmployeeId, returnTab);
         }
         catch (UnauthorizedAccessException)
         {
@@ -127,12 +138,12 @@ public sealed class EmployeesController(IEmployeeService employeeService) : Cont
 
     [HttpPost]
     [ValidateAntiForgeryToken]
-    public async Task<IActionResult> Permissions(SaveEmployeePermissionOverridesRequest request, CancellationToken cancellationToken)
+    public async Task<IActionResult> Permissions(SaveEmployeePermissionOverridesRequest request, string? returnTab, CancellationToken cancellationToken)
     {
         try
         {
             await employeeService.SavePermissionOverridesAsync(OrganizationId(), UserId(), request, RemoteIp(), cancellationToken);
-            return RedirectToAction(nameof(Edit), new { employeeId = request.EmployeeId });
+            return RedirectToEdit(request.EmployeeId, returnTab);
         }
         catch (UnauthorizedAccessException)
         {
@@ -142,12 +153,12 @@ public sealed class EmployeesController(IEmployeeService employeeService) : Cont
 
     [HttpPost]
     [ValidateAntiForgeryToken]
-    public async Task<IActionResult> Security(EmployeeSecurityActionRequest request, CancellationToken cancellationToken)
+    public async Task<IActionResult> Security(EmployeeSecurityActionRequest request, string? returnTab, CancellationToken cancellationToken)
     {
         try
         {
             await employeeService.RunSecurityActionAsync(OrganizationId(), UserId(), request, RemoteIp(), cancellationToken);
-            return RedirectToAction(nameof(Edit), new { employeeId = request.EmployeeId });
+            return RedirectToEdit(request.EmployeeId, returnTab);
         }
         catch (UnauthorizedAccessException)
         {
@@ -172,4 +183,18 @@ public sealed class EmployeesController(IEmployeeService employeeService) : Cont
     }
 
     private string? RemoteIp() => HttpContext.Connection.RemoteIpAddress?.ToString();
+
+    private IActionResult RedirectToEdit(Guid employeeId, string? returnTab)
+    {
+        var url = Url.Action(nameof(Edit), new { employeeId }) ?? $"/company/employees/edit?employeeId={employeeId}";
+        var tab = CleanReturnTab(returnTab);
+        return Redirect(tab is null ? url : $"{url}#{Uri.EscapeDataString(tab)}");
+    }
+
+    private static string? CleanReturnTab(string? returnTab)
+    {
+        return !string.IsNullOrWhiteSpace(returnTab) && EmployeeEditorTabs.Contains(returnTab)
+            ? returnTab
+            : null;
+    }
 }

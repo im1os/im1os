@@ -90,19 +90,20 @@
     </form>
 
     <section class="tab-panel" id="compensation" role="tabpanel" hidden>
-        <form asp-action="Compensation" method="post" class="im1-form">
+        <form asp-action="Compensation" method="post" class="im1-form" data-compensation-form>
             <input type="hidden" name="EmployeeId" value="@employee.Id" />
             <div class="im1-form-grid">
                 <label>Payroll Type
-                    <select name="PayrollType">
+                    <select name="PayrollType" data-payroll-type>
                         <option>Hourly</option>
                         <option>Salary</option>
+                        <option>Commission Only</option>
                     </select>
                 </label>
-                <label>Hourly Rate <input name="HourlyRate" type="number" min="0" step="0.01" /></label>
-                <label>Salary Amount <input name="SalaryAmount" type="number" min="0" step="0.01" /></label>
-                <label>Work Order Commission Rate <input name="WorkOrderCommissionRate" type="number" min="0" step="0.0001" /></label>
-                <label>Sales Commission Rate <input name="SalesCommissionRate" type="number" min="0" step="0.0001" /></label>
+                <label data-payroll-field="Hourly">Hourly Rate <input name="HourlyRate" type="number" min="0" step="0.01" /></label>
+                <label data-payroll-field="Salary" hidden>Salary Amount <input name="SalaryAmount" type="number" min="0" step="0.01" /></label>
+                <label>Work Order Commission % <input name="WorkOrderCommissionRate" type="number" min="0" max="100" step="0.01" /></label>
+                <label>Sales Commission % <input name="SalesCommissionRate" type="number" min="0" max="100" step="0.01" /></label>
                 <label>Effective Start <input name="EffectiveStartDate" type="date" required /></label>
                 <label>Effective End <input name="EffectiveEndDate" type="date" /></label>
                 <label>Notes <input name="Notes" /></label>

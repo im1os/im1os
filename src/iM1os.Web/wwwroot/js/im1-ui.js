@@ -304,6 +304,54 @@ window.IM1.activateMarketingHeader = function activateMarketingHeader() {
   });
 };
 
+window.IM1.activateCompensationForms = function activateCompensationForms(root) {
+  const scope = root || document;
+
+  scope.querySelectorAll("[data-compensation-form]").forEach((form) => {
+    const payrollType = form.querySelector("[data-payroll-type]");
+    const fields = Array.from(form.querySelectorAll("[data-payroll-field]"));
+
+    const render = () => {
+      fields.forEach((field) => {
+        const isVisible = field.dataset.payrollField === payrollType.value;
+        field.hidden = !isVisible;
+        field.querySelectorAll("input, select, textarea").forEach((input) => {
+          if (!isVisible) {
+            input.value = "";
+          }
+        });
+      });
+    };
+
+    payrollType?.addEventListener("change", render);
+    render();
+  });
+};
+
+window.IM1.activateTabReturnFields = function activateTabReturnFields(root) {
+  const scope = root || document;
+
+  scope.querySelectorAll(".im1-page form").forEach((form) => {
+    form.addEventListener("submit", () => {
+      const page = form.closest(".im1-page");
+      const activeTab = page?.querySelector("[data-tab-target].is-active")?.dataset.tabTarget;
+      if (!activeTab) {
+        return;
+      }
+
+      let input = form.querySelector("input[name='returnTab']");
+      if (!input) {
+        input = document.createElement("input");
+        input.type = "hidden";
+        input.name = "returnTab";
+        form.appendChild(input);
+      }
+
+      input.value = activeTab;
+    });
+  });
+};
+
 document.addEventListener("keydown", (event) => {
   if (event.key !== "Escape") {
     return;
@@ -326,4 +374,6 @@ document.addEventListener("DOMContentLoaded", () => {
   window.IM1.activateSidePanels(document);
   window.IM1.activateDataGrids(document);
   window.IM1.activateMarketingHeader();
+  window.IM1.activateCompensationForms(document);
+  window.IM1.activateTabReturnFields(document);
 });

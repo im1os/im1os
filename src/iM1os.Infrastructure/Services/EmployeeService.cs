@@ -169,9 +169,9 @@ public sealed class EmployeeService(
         await EnsureCanManageEmployeesAsync(organizationId, actorUserId, cancellationToken);
         var employee = await LoadEmployeeAsync(organizationId, request.EmployeeId, cancellationToken);
         var payrollType = Required(request.PayrollType, "Payroll type");
-        if (payrollType is not ("Hourly" or "Salary"))
+        if (payrollType is not ("Hourly" or "Salary" or "Commission Only"))
         {
-            throw new InvalidOperationException("Payroll type must be Hourly or Salary.");
+            throw new InvalidOperationException("Payroll type must be Hourly, Salary, or Commission Only.");
         }
 
         if (request.EffectiveEndDate is not null && request.EffectiveEndDate < request.EffectiveStartDate)
@@ -189,9 +189,9 @@ public sealed class EmployeeService(
             throw new InvalidOperationException("Salary amount is required for salary payroll.");
         }
 
-        if (request.WorkOrderCommissionRate is < 0 || request.SalesCommissionRate is < 0)
+        if (request.WorkOrderCommissionRate is < 0 or > 100 || request.SalesCommissionRate is < 0 or > 100)
         {
-            throw new InvalidOperationException("Commission rates cannot be negative.");
+            throw new InvalidOperationException("Commission rates must be between 0 and 100.");
         }
 
         var overlaps = await dbContext.EmployeeCompensations.IgnoreQueryFilters()
@@ -214,8 +214,8 @@ public sealed class EmployeeService(
             PayrollType = payrollType,
             HourlyRate = payrollType == "Hourly" ? request.HourlyRate : null,
             SalaryAmount = payrollType == "Salary" ? request.SalaryAmount : null,
-            WorkOrderCommissionRate = request.WorkOrderCommissionRate,
-            SalesCommissionRate = request.SalesCommissionRate,
+            WorkOrderCommissionRate = ToPercentRate(request.WorkOrderCommissionRate),
+            SalesCommissionRate = ToPercentRate(request.SalesCommissionRate),
             EffectiveStartDate = request.EffectiveStartDate,
             EffectiveEndDate = request.EffectiveEndDate,
             Notes = Clean(request.Notes)
@@ -748,6 +748,8 @@ public sealed class EmployeeService(
     private static string Required(string value, string fieldName) => string.IsNullOrWhiteSpace(value) ? throw new InvalidOperationException($"{fieldName} is required.") : value.Trim();
 
     private static string? Clean(string? value) => string.IsNullOrWhiteSpace(value) ? null : value.Trim();
+
+    private static decimal? ToPercentRate(decimal? value) => value is null ? null : value / 100m;
 
     private static string FirstName(string name) => name.Trim().Split(' ', StringSplitOptions.RemoveEmptyEntries).FirstOrDefault() ?? name.Trim();
 
