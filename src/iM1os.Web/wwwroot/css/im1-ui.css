@@ -54,6 +54,13 @@
   min-height: 100vh;
 }
 
+.im1-app-shell-no-sidebar {
+  grid-template-areas:
+    "header"
+    "main";
+  grid-template-columns: minmax(0, 1fr);
+}
+
 .im1-shell-header {
   align-items: center;
   background: var(--im1-color-surface);
@@ -66,6 +73,10 @@
   position: sticky;
   top: 0;
   z-index: 20;
+}
+
+.im1-app-shell-no-sidebar .im1-shell-header {
+  grid-template-columns: 260px 1fr auto;
 }
 
 .im1-shell-brand {

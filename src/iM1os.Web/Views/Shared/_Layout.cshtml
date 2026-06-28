@@ -1,11 +1,15 @@
 @{
-    var isCustomerContext = User.FindFirst("auth_context")?.Value == "tenant";
-    var isMarketingSite = ViewData["MarketingSite"] is true;
-    var productName = isCustomerContext ? "iM1 OS" : "IM1 Platform";
-    var brandController = isCustomerContext ? "Business" : "Platform";
-    var brandAction = isCustomerContext ? "Dashboard" : "Dashboard";
     var currentController = ViewContext.RouteData.Values["controller"]?.ToString();
     var currentAction = ViewContext.RouteData.Values["action"]?.ToString();
+    var isAuthenticated = User.Identity?.IsAuthenticated == true;
+    var isCustomerContext = User.FindFirst("auth_context")?.Value == "tenant";
+    var isBusinessAuthPage = string.Equals(currentController, "Account", StringComparison.OrdinalIgnoreCase);
+    var isBusinessShell = isCustomerContext || isBusinessAuthPage;
+    var isMarketingSite = ViewData["MarketingSite"] is true;
+    var showShellNavigation = isAuthenticated;
+    var productName = isBusinessShell ? "iM1 Business" : "IM1 Platform";
+    var brandController = isCustomerContext ? "Business" : isBusinessAuthPage ? "Account" : "Platform";
+    var brandAction = isCustomerContext ? "Dashboard" : isBusinessAuthPage ? "Login" : "Dashboard";
     var navigationItems = isCustomerContext
         ? IM1ShellNavigation.AppShell.TenantItems
         : IM1ShellNavigation.AppShell.PlatformItems;
@@ -56,7 +60,7 @@
     }
     else
     {
-        <div class="im1-app-shell">
+        <div class="im1-app-shell @(showShellNavigation ? null : "im1-app-shell-no-sidebar")">
             <header class="im1-shell-header">
                 <a class="im1-shell-brand" asp-controller="@brandController" asp-action="@brandAction" aria-label="@productName">
                     <span class="brand-mark">
@@ -82,9 +86,12 @@
                     }
                 </div>
             </header>
-            <aside class="im1-sidebar">
-                @await Html.PartialAsync("IM1ShellNavigation", new IM1ShellNavigationModel(productName, navigationItems, currentController, currentAction))
-            </aside>
+            @if (showShellNavigation)
+            {
+                <aside class="im1-sidebar">
+                    @await Html.PartialAsync("IM1ShellNavigation", new IM1ShellNavigationModel(productName, navigationItems, currentController, currentAction))
+                </aside>
+            }
             <main class="im1-main-content">
                 @RenderBody()
             </main>
