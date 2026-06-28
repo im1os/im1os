@@ -30,12 +30,15 @@ public sealed class TenantIdentityService(
             query = query.Where(x => x.OrganizationId == request.OrganizationId.Value);
         }
 
-        var user = await query
+        var matches = await query
             .Include(x => x.UserRoles)
             .ThenInclude(x => x.Role)
             .ThenInclude(x => x!.RolePermissions)
             .ThenInclude(x => x.Permission)
-            .SingleOrDefaultAsync(x => x.NormalizedEmail == normalizedEmail, cancellationToken);
+            .Where(x => x.NormalizedEmail == normalizedEmail)
+            .Take(2)
+            .ToListAsync(cancellationToken);
+        var user = matches.Count == 1 ? matches[0] : null;
 
         if (user is null || !user.IsActive)
         {
