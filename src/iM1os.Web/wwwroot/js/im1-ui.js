@@ -186,39 +186,6 @@ window.IM1.activateDataGrids = function activateDataGrids(root) {
       page += 1;
       render();
     });
-    rows.forEach((row) => {
-      const open = () => {
-        if (row.dataset.rowUrl) {
-          window.location.href = row.dataset.rowUrl;
-        }
-      };
-
-      row.addEventListener("dblclick", open);
-      row.addEventListener("keydown", (event) => {
-        if (event.key === "Enter") {
-          open();
-        }
-      });
-      row.addEventListener("contextmenu", (event) => {
-        if (!row.dataset.rowUrl) {
-          return;
-        }
-
-        event.preventDefault();
-        const existing = document.querySelector(".im1-context-menu");
-        existing?.remove();
-        const menu = document.createElement("div");
-        menu.className = "im1-context-menu";
-        menu.style.left = `${event.clientX}px`;
-        menu.style.top = `${event.clientY}px`;
-        const link = document.createElement("a");
-        link.href = row.dataset.rowUrl;
-        link.textContent = "Edit";
-        menu.appendChild(link);
-        document.body.appendChild(menu);
-      });
-    });
-
     exportButton?.addEventListener("click", () => {
       const headers = Array.from(grid.querySelectorAll("thead th")).map((item) => item.textContent.trim());
       const lines = [headers.join(",")];
@@ -266,6 +233,56 @@ window.IM1.activateDataGrids = function activateDataGrids(root) {
     }
 
     render();
+  });
+};
+
+window.IM1.activateRowOpeners = function activateRowOpeners(root) {
+  const scope = root || document;
+  const interactiveSelector = "a, button, input, select, textarea, label";
+
+  scope.querySelectorAll("tr[data-row-url]").forEach((row) => {
+    if (row.dataset.rowOpenBound === "true") {
+      return;
+    }
+
+    row.dataset.rowOpenBound = "true";
+
+    const open = () => {
+      if (row.dataset.rowUrl) {
+        window.location.href = row.dataset.rowUrl;
+      }
+    };
+
+    row.addEventListener("dblclick", (event) => {
+      if (!event.target.closest(interactiveSelector)) {
+        open();
+      }
+    });
+
+    row.addEventListener("keydown", (event) => {
+      if (event.key === "Enter") {
+        open();
+      }
+    });
+
+    row.addEventListener("contextmenu", (event) => {
+      if (!row.dataset.rowUrl || event.target.closest(interactiveSelector)) {
+        return;
+      }
+
+      event.preventDefault();
+      const existing = document.querySelector(".im1-context-menu");
+      existing?.remove();
+      const menu = document.createElement("div");
+      menu.className = "im1-context-menu";
+      menu.style.left = `${event.clientX}px`;
+      menu.style.top = `${event.clientY}px`;
+      const link = document.createElement("a");
+      link.href = row.dataset.rowUrl;
+      link.textContent = "Open";
+      menu.appendChild(link);
+      document.body.appendChild(menu);
+    });
   });
 };
 
@@ -393,6 +410,7 @@ document.addEventListener("DOMContentLoaded", () => {
   window.IM1.activateDialogs(document);
   window.IM1.activateSidePanels(document);
   window.IM1.activateDataGrids(document);
+  window.IM1.activateRowOpeners(document);
   window.IM1.activateMarketingHeader();
   window.IM1.activateCompensationForms(document);
   window.IM1.activateTabReturnFields(document);

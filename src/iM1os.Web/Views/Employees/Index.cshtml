@@ -17,6 +17,7 @@
         },
         Rows: Model.Employees.Select(employee => new Dictionary<string, object?>
         {
+            ["__url"] = Url.Action("Edit", "Employees", new { employeeId = employee.Id }),
             ["name"] = employee.Name,
             ["email"] = employee.Email ?? "",
             ["jobTitle"] = employee.JobTitle ?? "",

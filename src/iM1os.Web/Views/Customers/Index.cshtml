@@ -19,6 +19,7 @@
         },
         Rows: Model.Customers.Select(customer => new Dictionary<string, object?>
         {
+            ["__url"] = Url.Action("Detail", "Customers", new { customerId = customer.Id }),
             ["number"] = customer.CustomerNumber ?? "",
             ["name"] = customer.DisplayName,
             ["company"] = customer.CompanyName ?? "",

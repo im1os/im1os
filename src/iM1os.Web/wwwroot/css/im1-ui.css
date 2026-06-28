@@ -711,7 +711,7 @@
   background: var(--im1-color-surface-muted);
 }
 
-.im1-data-grid tr[data-row-url] {
+tr[data-row-url] {
   cursor: pointer;
 }
 

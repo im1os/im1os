@@ -41,7 +41,8 @@
         <tbody>
             @foreach (var tenant in Model)
             {
-                <tr>
+                var tenantUrl = Url.Action("Tenant", new { organizationId = tenant.OrganizationId });
+                <tr data-row-url="@tenantUrl" tabindex="0">
                     <td><a asp-action="Tenant" asp-route-organizationId="@tenant.OrganizationId">@tenant.OrganizationName</a></td>
                     <td>@tenant.Status</td>
                     <td>@tenant.SubscriptionPlan</td>
