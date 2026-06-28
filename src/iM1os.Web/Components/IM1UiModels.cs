@@ -91,7 +91,53 @@ public sealed record IM1ShellNavigationModel(
 
 public sealed record IM1ShellNavigationItemModel(
     string Label,
-    string Controller,
-    string Action,
+    string? Controller = null,
+    string? Action = null,
     string? Icon = null,
     IReadOnlyCollection<IM1ShellNavigationItemModel>? Children = null);
+
+public sealed record IM1ShellNavigationConfiguration(
+    IReadOnlyCollection<IM1ShellNavigationItemModel> PlatformItems,
+    IReadOnlyCollection<IM1ShellNavigationItemModel> TenantItems);
+
+public static class IM1ShellNavigation
+{
+    public static IM1ShellNavigationConfiguration AppShell { get; } = new(
+        PlatformItems:
+        [
+            new(
+                "Admin",
+                Icon: "AD",
+                Children:
+                [
+                    new("Dashboard", "Platform", "Dashboard", "DB")
+                ]),
+            new(
+                "Tenant Manager",
+                Icon: "TM",
+                Children:
+                [
+                    new("Organizations", "Platform", "Tenants", "OR"),
+                    new("Create Organization", "Platform", "CreateTenant", "CO")
+                ]),
+            new(
+                "Marketing CMS",
+                Icon: "MC",
+                Children:
+                [
+                    new("Pages", "MarketingAdmin", "Index", "PG")
+                ])
+        ],
+        TenantItems:
+        [
+            new(
+                "Owner Admin",
+                Icon: "OA",
+                Children:
+                [
+                    new("Business Dashboard", "Business", "Dashboard", "BD"),
+                    new("Business Admin", "Business", "Administration", "BA"),
+                    new("Profile", "Profile", "Index", "PR")
+                ])
+        ]);
+}

@@ -103,6 +103,7 @@
 .im1-sidebar-link {
   align-items: center;
   border-radius: var(--im1-radius-sm);
+  border: 0;
   color: var(--im1-color-text-muted);
   display: flex;
   font-size: var(--im1-font-size-label);
@@ -110,15 +111,19 @@
   gap: var(--im1-space-3);
   min-height: 40px;
   padding: 0 var(--im1-space-3);
+  text-decoration: none;
+  width: 100%;
 }
 
 .im1-sidebar-link:hover,
-.im1-sidebar-link.is-active {
+.im1-sidebar-link.is-active,
+.im1-sidebar-group.is-active > .im1-sidebar-group-toggle {
   background: var(--im1-color-surface-muted);
   color: var(--im1-color-text);
 }
 
-.im1-sidebar-link.is-active {
+.im1-sidebar-link.is-active,
+.im1-sidebar-group.is-active > .im1-sidebar-group-toggle {
   box-shadow: inset 3px 0 0 var(--im1-color-accent);
 }
 
@@ -128,10 +133,44 @@
   min-width: 24px;
 }
 
+.im1-sidebar-group {
+  display: grid;
+  gap: var(--im1-space-1);
+}
+
+.im1-sidebar-group-toggle {
+  cursor: pointer;
+  list-style: none;
+}
+
+.im1-sidebar-group-toggle::-webkit-details-marker {
+  display: none;
+}
+
+.im1-sidebar-group-toggle span:nth-child(2) {
+  flex: 1;
+}
+
+.im1-sidebar-caret::before {
+  content: ">";
+  display: inline-block;
+  font-size: var(--im1-font-size-caption);
+  transform: rotate(0deg);
+  transition: transform 140ms ease;
+}
+
+.im1-sidebar-group[open] > .im1-sidebar-group-toggle .im1-sidebar-caret::before {
+  transform: rotate(90deg);
+}
+
 .im1-sidebar-children {
   display: grid;
   gap: var(--im1-space-1);
   margin-left: var(--im1-space-6);
+}
+
+.im1-sidebar-child-link {
+  font-weight: 700;
 }
 
 .im1-main-content {
@@ -540,7 +579,15 @@
   justify-content: center;
 }
 
+.marketing-auth-actions {
+  align-items: center;
+  display: flex;
+  gap: var(--im1-space-4);
+  justify-content: flex-end;
+}
+
 .marketing-nav a,
+.marketing-auth-actions a:not(.im1-button),
 .marketing-footer a,
 .marketing-contact-links a {
   color: var(--im1-color-text-muted);
@@ -550,6 +597,7 @@
 }
 
 .marketing-nav a:hover,
+.marketing-auth-actions a:not(.im1-button):hover,
 .marketing-footer a:hover,
 .marketing-contact-links a:hover {
   color: var(--im1-color-text);
@@ -887,6 +935,13 @@
   }
 
   .marketing-nav {
+    grid-column: 1 / -1;
+    justify-content: flex-start;
+    overflow-x: auto;
+    padding-bottom: var(--im1-space-3);
+  }
+
+  .marketing-auth-actions {
     grid-column: 1 / -1;
     justify-content: flex-start;
     overflow-x: auto;

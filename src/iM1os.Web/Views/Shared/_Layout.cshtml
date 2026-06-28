@@ -7,19 +7,8 @@
     var currentController = ViewContext.RouteData.Values["controller"]?.ToString();
     var currentAction = ViewContext.RouteData.Values["action"]?.ToString();
     var navigationItems = isCustomerContext
-        ? new[]
-        {
-            new IM1ShellNavigationItemModel("Business Dashboard", "Business", "Dashboard", "BD"),
-            new IM1ShellNavigationItemModel("Business Admin", "Business", "Administration", "BA"),
-            new IM1ShellNavigationItemModel("Profile", "Profile", "Index", "PR")
-        }
-        : new[]
-        {
-            new IM1ShellNavigationItemModel("Dashboard", "Platform", "Dashboard", "DB"),
-            new IM1ShellNavigationItemModel("Organizations", "Platform", "Tenants", "OR"),
-            new IM1ShellNavigationItemModel("Create Organization", "Platform", "CreateTenant", "CO"),
-            new IM1ShellNavigationItemModel("Marketing CMS", "MarketingAdmin", "Index", "MC")
-        };
+        ? IM1ShellNavigation.AppShell.TenantItems
+        : IM1ShellNavigation.AppShell.PlatformItems;
 }
 <!DOCTYPE html>
 <html lang="en">
@@ -55,7 +44,11 @@
                 <a href="/#about">About</a>
                 <a href="/#contact">Contact</a>
             </nav>
-            <a class="im1-button im1-button-primary" href="/#contact">Request Demo</a>
+            <div class="marketing-auth-actions">
+                <a asp-controller="Platform" asp-action="Login">Platform Login</a>
+                <a asp-controller="Account" asp-action="Login">Company Login</a>
+                <a class="im1-button im1-button-primary" href="/#contact">Request Demo</a>
+            </div>
         </header>
         <main class="marketing-main">
             @RenderBody()

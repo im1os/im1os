@@ -1,27 +1,48 @@
 @model IM1ShellNavigationModel
+@functions {
+    private static bool IsActive(IM1ShellNavigationModel model, IM1ShellNavigationItemModel item)
+    {
+        var itemIsActive = !string.IsNullOrWhiteSpace(item.Controller)
+            && !string.IsNullOrWhiteSpace(item.Action)
+            && string.Equals(model.CurrentController, item.Controller, StringComparison.OrdinalIgnoreCase)
+            && string.Equals(model.CurrentAction, item.Action, StringComparison.OrdinalIgnoreCase);
+
+        return itemIsActive || (item.Children?.Any(child => IsActive(model, child)) ?? false);
+    }
+}
 
 <nav class="im1-sidebar-nav" aria-label="Main navigation">
     @foreach (var item in Model.Items)
     {
-        var isActive = string.Equals(Model.CurrentController, item.Controller, StringComparison.OrdinalIgnoreCase)
-            && string.Equals(Model.CurrentAction, item.Action, StringComparison.OrdinalIgnoreCase);
-        <a class="im1-sidebar-link @(isActive ? "is-active" : null)" asp-controller="@item.Controller" asp-action="@item.Action">
-            <span class="im1-sidebar-icon" aria-hidden="true">@item.Icon</span>
-            <span>@item.Label</span>
-        </a>
-        @if (item.Children?.Count > 0)
+        var hasChildren = item.Children?.Count > 0;
+        var isActive = IsActive(Model, item);
+
+        @if (hasChildren)
         {
-            <div class="im1-sidebar-children">
-                @foreach (var child in item.Children)
-                {
-                    var isChildActive = string.Equals(Model.CurrentController, child.Controller, StringComparison.OrdinalIgnoreCase)
-                        && string.Equals(Model.CurrentAction, child.Action, StringComparison.OrdinalIgnoreCase);
-                    <a class="im1-sidebar-link @(isChildActive ? "is-active" : null)" asp-controller="@child.Controller" asp-action="@child.Action">
-                        <span class="im1-sidebar-icon" aria-hidden="true">@child.Icon</span>
-                        <span>@child.Label</span>
-                    </a>
-                }
-            </div>
+            <details class="im1-sidebar-group @(isActive ? "is-active" : null)" @(isActive ? "open" : null)>
+                <summary class="im1-sidebar-link im1-sidebar-group-toggle">
+                    <span class="im1-sidebar-icon" aria-hidden="true">@item.Icon</span>
+                    <span>@item.Label</span>
+                    <span class="im1-sidebar-caret" aria-hidden="true"></span>
+                </summary>
+                <div class="im1-sidebar-children">
+                    @foreach (var child in item.Children!)
+                    {
+                        var isChildActive = IsActive(Model, child);
+                        <a class="im1-sidebar-link im1-sidebar-child-link @(isChildActive ? "is-active" : null)" asp-controller="@child.Controller" asp-action="@child.Action">
+                            <span class="im1-sidebar-icon" aria-hidden="true">@child.Icon</span>
+                            <span>@child.Label</span>
+                        </a>
+                    }
+                </div>
+            </details>
+        }
+        else if (!string.IsNullOrWhiteSpace(item.Controller) && !string.IsNullOrWhiteSpace(item.Action))
+        {
+            <a class="im1-sidebar-link @(isActive ? "is-active" : null)" asp-controller="@item.Controller" asp-action="@item.Action">
+                <span class="im1-sidebar-icon" aria-hidden="true">@item.Icon</span>
+                <span>@item.Label</span>
+            </a>
         }
     }
 </nav>
