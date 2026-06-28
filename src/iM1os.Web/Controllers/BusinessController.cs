@@ -14,16 +14,26 @@ public sealed class BusinessController(
     [HttpGet]
     public async Task<IActionResult> Dashboard(CancellationToken cancellationToken)
     {
-        ViewBag.OrganizationId = OrganizationId();
-        return View(await onboardingService.GetDashboardAsync(OrganizationId(), cancellationToken));
+        if (!TryOrganizationId(out var organizationId))
+        {
+            return RedirectToMissingOrganizationContext();
+        }
+
+        ViewBag.OrganizationId = organizationId;
+        return View(await onboardingService.GetDashboardAsync(organizationId, cancellationToken));
     }
 
     [HttpGet]
     public async Task<IActionResult> Administration(CancellationToken cancellationToken)
     {
+        if (!TryOrganizationId(out var organizationId))
+        {
+            return RedirectToMissingOrganizationContext();
+        }
+
         try
         {
-            var workspace = await businessAdministrationService.GetWorkspaceAsync(OrganizationId(), UserId(), cancellationToken);
+            var workspace = await businessAdministrationService.GetWorkspaceAsync(organizationId, UserId(), cancellationToken);
             return View(workspace);
         }
         catch (UnauthorizedAccessException)
@@ -115,6 +125,15 @@ public sealed class BusinessController(
             : throw new UnauthorizedAccessException("An organization context is required.");
     }
 
+    private bool TryOrganizationId(out Guid organizationId)
+    {
+        var value = User.FindFirstValue("organization_id")
+            ?? Request.Query["organizationId"].FirstOrDefault()
+            ?? (Request.HasFormContentType ? Request.Form["organizationId"].FirstOrDefault() : null);
+
+        return Guid.TryParse(value, out organizationId);
+    }
+
     private Guid UserId()
     {
         var userId = User.FindFirstValue(ClaimTypes.NameIdentifier)
@@ -130,6 +149,13 @@ public sealed class BusinessController(
         return User.FindFirstValue("platform_user_id") is not null
             ? RedirectToAction(nameof(Administration), new { organizationId = OrganizationId() })
             : RedirectToAction(nameof(Administration));
+    }
+
+    private IActionResult RedirectToMissingOrganizationContext()
+    {
+        return User.FindFirstValue("platform_user_id") is not null
+            ? RedirectToAction("Tenants", "Platform")
+            : RedirectToAction("Login", "Account", new { returnUrl = Request.Path + Request.QueryString });
     }
 
     private static async Task<bool> RunOwnerActionAsync(Func<Task> action)
