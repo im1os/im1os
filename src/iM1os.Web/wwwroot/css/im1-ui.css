@@ -385,6 +385,10 @@
   grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
+.im1-full-span {
+  grid-column: 1 / -1;
+}
+
 .im1-form-header h2 {
   margin: 0;
 }

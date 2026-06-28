@@ -1,0 +1,315 @@
+@model iM1os.Application.Customers.CustomerDetail
+
+@{
+    ViewData["Title"] = Model.DisplayName;
+    var page = new IM1PageModel(
+        Model.DisplayName,
+        "CRM / Customers",
+        "Shared customer profile used across sales, service, work orders, invoicing, payments, scheduling, marketing, and future modules.",
+        Breadcrumbs: new[]
+        {
+            new IM1BreadcrumbModel("Company", Url.Action("Dashboard", "Business")),
+            new IM1BreadcrumbModel("Customers", Url.Action("Index", "Customers")),
+            new IM1BreadcrumbModel(Model.DisplayName)
+        },
+        Toolbar: new IM1ToolbarModel(Actions: new[] { new IM1ActionModel("Back to Customers", Url.Action("Index", "Customers"), "secondary") }));
+    var tabs = new IM1TabsModel(
+        "Customer sections",
+        new[]
+        {
+            new IM1TabItemModel("general", "General", true),
+            new IM1TabItemModel("contact", "Contact"),
+            new IM1TabItemModel("addresses", "Addresses"),
+            new IM1TabItemModel("units", "Units"),
+            new IM1TabItemModel("timeline", "Timeline"),
+            new IM1TabItemModel("notes", "Notes"),
+            new IM1TabItemModel("documents", "Documents"),
+            new IM1TabItemModel("marketing", "Marketing"),
+            new IM1TabItemModel("financial", "Financial")
+        });
+}
+
+@await Html.PartialAsync("IM1Page", page)
+
+<section class="im1-page">
+    @await Html.PartialAsync("IM1Tabs", tabs)
+
+    <section class="tab-panel is-active" id="general" role="tabpanel">
+        <form asp-action="Update" method="post" class="im1-form">
+            <input type="hidden" name="CustomerId" value="@Model.Id" />
+            <div class="im1-form-grid">
+                <label>Display Name <input name="DisplayName" value="@Model.DisplayName" required /></label>
+                <label>Customer Type
+                    <select name="CustomerType">
+                        @foreach (var type in new[] { "Individual", "Company", "Fleet" })
+                        {
+                            <option value="@type" selected="@(Model.CustomerType == type)">@type</option>
+                        }
+                    </select>
+                </label>
+                <label>First Name <input name="FirstName" value="@Model.FirstName" /></label>
+                <label>Last Name <input name="LastName" value="@Model.LastName" /></label>
+                <label>Company <input name="CompanyName" value="@Model.CompanyName" /></label>
+                <label>Status
+                    <select name="Status">
+                        @foreach (var status in new[] { "Active", "Prospect", "Inactive", "Do Not Contact" })
+                        {
+                            <option value="@status" selected="@(Model.Status == status)">@status</option>
+                        }
+                    </select>
+                </label>
+                <label>Lifecycle Stage <input name="LifecycleStage" value="@Model.LifecycleStage" /></label>
+                <label>Source <input name="Source" value="@Model.Source" /></label>
+                <label>Preferred Contact Method
+                    <select name="PreferredContactMethod">
+                        <option value="">Not Set</option>
+                        @foreach (var method in new[] { "Email", "Phone", "Text", "Mail" })
+                        {
+                            <option value="@method" selected="@(Model.PreferredContactMethod == method)">@method</option>
+                        }
+                    </select>
+                </label>
+                <label>Email <input name="Email" value="@Model.Email" type="email" /></label>
+                <label>Phone <input name="Phone" value="@Model.Phone" /></label>
+            </div>
+            <div class="im1-form-actions">
+                <button class="im1-button im1-button-primary" type="submit">Save Customer</button>
+            </div>
+        </form>
+    </section>
+
+    <section class="tab-panel" id="contact" role="tabpanel" hidden>
+        <form asp-action="AddPhone" method="post" class="im1-form">
+            <input type="hidden" name="CustomerId" value="@Model.Id" />
+            <div class="im1-form-grid">
+                <label>Phone Type
+                    <select name="PhoneType">
+                        <option>Mobile</option>
+                        <option>Home</option>
+                        <option>Work</option>
+                        <option>Other</option>
+                    </select>
+                </label>
+                <label>Phone Number <input name="PhoneNumber" required /></label>
+                <label>Extension <input name="Extension" /></label>
+                <label class="im1-checkbox"><input name="IsPrimary" type="checkbox" value="true" /> Primary</label><input name="IsPrimary" type="hidden" value="false" />
+                <label class="im1-checkbox"><input name="CanText" type="checkbox" value="true" /> Can Text</label><input name="CanText" type="hidden" value="false" />
+            </div>
+            <div class="im1-form-actions">
+                <button class="im1-button im1-button-primary" type="submit">Add Phone</button>
+            </div>
+        </form>
+        <div class="im1-data-grid">
+            <table>
+                <thead><tr><th>Type</th><th>Number</th><th>Extension</th><th>Primary</th><th>Text</th></tr></thead>
+                <tbody>
+                    @foreach (var phone in Model.PhoneNumbers)
+                    {
+                        <tr><td>@phone.PhoneType</td><td>@phone.PhoneNumber</td><td>@phone.Extension</td><td>@(phone.IsPrimary ? "Yes" : "No")</td><td>@(phone.CanText ? "Yes" : "No")</td></tr>
+                    }
+                    @if (Model.PhoneNumbers.Count == 0)
+                    {
+                        <tr><td colspan="5">No phone numbers found.</td></tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    </section>
+
+    <section class="tab-panel" id="addresses" role="tabpanel" hidden>
+        <form asp-action="AddAddress" method="post" class="im1-form">
+            <input type="hidden" name="CustomerId" value="@Model.Id" />
+            <div class="im1-form-grid">
+                <label>Address Type <input name="AddressType" value="Primary" required /></label>
+                <label>Line 1 <input name="Line1" /></label>
+                <label>Line 2 <input name="Line2" /></label>
+                <label>City <input name="City" /></label>
+                <label>State / Region <input name="Region" /></label>
+                <label>Postal Code <input name="PostalCode" /></label>
+                <label>Country <input name="Country" value="US" required /></label>
+                <label class="im1-checkbox"><input name="IsPrimary" type="checkbox" value="true" /> Primary</label><input name="IsPrimary" type="hidden" value="false" />
+                <label class="im1-checkbox"><input name="IsBilling" type="checkbox" value="true" /> Billing</label><input name="IsBilling" type="hidden" value="false" />
+                <label class="im1-checkbox"><input name="IsShipping" type="checkbox" value="true" /> Shipping</label><input name="IsShipping" type="hidden" value="false" />
+            </div>
+            <div class="im1-form-actions">
+                <button class="im1-button im1-button-primary" type="submit">Add Address</button>
+            </div>
+        </form>
+        <div class="im1-data-grid">
+            <table>
+                <thead><tr><th>Type</th><th>Address</th><th>City</th><th>State</th><th>Postal</th><th>Flags</th></tr></thead>
+                <tbody>
+                    @foreach (var address in Model.Addresses)
+                    {
+                        <tr>
+                            <td>@address.AddressType</td>
+                            <td>@address.Line1 @address.Line2</td>
+                            <td>@address.City</td>
+                            <td>@address.Region</td>
+                            <td>@address.PostalCode</td>
+                            <td>@(address.IsPrimary ? "Primary " : "")@(address.IsBilling ? "Billing " : "")@(address.IsShipping ? "Shipping" : "")</td>
+                        </tr>
+                    }
+                    @if (Model.Addresses.Count == 0)
+                    {
+                        <tr><td colspan="6">No addresses found.</td></tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    </section>
+
+    <section class="tab-panel" id="units" role="tabpanel" hidden>
+        <div class="im1-data-grid">
+            <table>
+                <thead><tr><th>Unit</th><th>VIN</th><th>Mileage</th><th>Hours</th><th>Status</th></tr></thead>
+                <tbody>
+                    @foreach (var unit in Model.Units)
+                    {
+                        <tr><td>@unit.Description</td><td>@unit.Vin</td><td>@unit.Mileage</td><td>@unit.Hours</td><td>@(unit.IsActive ? "Active" : "Inactive")</td></tr>
+                    }
+                    @if (Model.Units.Count == 0)
+                    {
+                        <tr><td colspan="5">No units found.</td></tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    </section>
+
+    <section class="tab-panel" id="timeline" role="tabpanel" hidden>
+        <ol class="company-activity-list">
+            @foreach (var item in Model.Timeline)
+            {
+                <li><strong>@item.EventType</strong><span>@item.OccurredAtUtc.ToString("yyyy-MM-dd HH:mm")</span><p>@item.Summary</p></li>
+            }
+            @if (Model.Timeline.Count == 0)
+            {
+                <li>No timeline events found.</li>
+            }
+        </ol>
+    </section>
+
+    <section class="tab-panel" id="notes" role="tabpanel" hidden>
+        <form asp-action="AddNote" method="post" class="im1-form">
+            <input type="hidden" name="CustomerId" value="@Model.Id" />
+            <div class="im1-form-grid">
+                <label>Note Type
+                    <select name="NoteType">
+                        <option>General</option>
+                        <option>Sales</option>
+                        <option>Service</option>
+                        <option>Billing</option>
+                        <option>Marketing</option>
+                    </select>
+                </label>
+                <label>Subject <input name="Subject" /></label>
+                <label class="im1-checkbox"><input name="IsPinned" type="checkbox" value="true" /> Pinned</label><input name="IsPinned" type="hidden" value="false" />
+                <label class="im1-full-span">Note <textarea name="Body" rows="4" required></textarea></label>
+            </div>
+            <div class="im1-form-actions">
+                <button class="im1-button im1-button-primary" type="submit">Add Note</button>
+            </div>
+        </form>
+        <ol class="company-activity-list">
+            @foreach (var note in Model.Notes)
+            {
+                <li>
+                    <strong>@(note.IsPinned ? "Pinned " : "")@note.NoteType: @note.Subject</strong>
+                    <span>@note.OccurredAtUtc.ToString("yyyy-MM-dd HH:mm") by @(note.AuthorDisplayName ?? "Unknown")</span>
+                    <p>@note.Body</p>
+                </li>
+            }
+        </ol>
+    </section>
+
+    <section class="tab-panel" id="documents" role="tabpanel" hidden>
+        <form asp-action="AddDocument" method="post" class="im1-form">
+            <input type="hidden" name="CustomerId" value="@Model.Id" />
+            <div class="im1-form-grid">
+                <label>File Name <input name="FileName" required /></label>
+                <label>Document Type <input name="DocumentType" value="General" required /></label>
+                <label>URL <input name="Url" /></label>
+                <label>Content Type <input name="ContentType" /></label>
+            </div>
+            <div class="im1-form-actions">
+                <button class="im1-button im1-button-primary" type="submit">Register Document</button>
+            </div>
+        </form>
+        <div class="im1-data-grid">
+            <table>
+                <thead><tr><th>Type</th><th>File</th><th>Uploaded</th><th>Link</th></tr></thead>
+                <tbody>
+                    @foreach (var document in Model.Documents)
+                    {
+                        <tr><td>@document.DocumentType</td><td>@document.FileName</td><td>@document.UploadedAtUtc.ToString("yyyy-MM-dd HH:mm")</td><td>@if (!string.IsNullOrWhiteSpace(document.Url)) { <a href="@document.Url">Open</a> }</td></tr>
+                    }
+                    @if (Model.Documents.Count == 0)
+                    {
+                        <tr><td colspan="4">No documents found.</td></tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    </section>
+
+    <section class="tab-panel" id="marketing" role="tabpanel" hidden>
+        <form asp-action="AddTag" method="post" class="im1-form">
+            <input type="hidden" name="CustomerId" value="@Model.Id" />
+            <div class="im1-form-grid">
+                <label>Tag <input name="Tag" required /></label>
+            </div>
+            <div class="im1-form-actions"><button class="im1-button im1-button-primary" type="submit">Add Tag</button></div>
+        </form>
+        <form asp-action="AddCustomField" method="post" class="im1-form">
+            <input type="hidden" name="CustomerId" value="@Model.Id" />
+            <div class="im1-form-grid">
+                <label>Field Key <input name="FieldKey" required /></label>
+                <label>Label <input name="FieldLabel" /></label>
+                <label>Value <input name="FieldValue" /></label>
+            </div>
+            <div class="im1-form-actions"><button class="im1-button im1-button-primary" type="submit">Save Custom Field</button></div>
+        </form>
+        <div class="company-security-grid">
+            <article><span>Tags</span><strong>@string.Join(", ", Model.Tags.Select(x => x.Tag))</strong></article>
+            @foreach (var field in Model.CustomFields)
+            {
+                <article><span>@(field.FieldLabel ?? field.FieldKey)</span><strong>@field.FieldValue</strong></article>
+            }
+        </div>
+    </section>
+
+    <section class="tab-panel" id="financial" role="tabpanel" hidden>
+        <form asp-action="AddExternalLink" method="post" class="im1-form">
+            <input type="hidden" name="CustomerId" value="@Model.Id" />
+            <div class="im1-form-grid">
+                <label>Provider
+                    <select name="Provider">
+                        <option>Square</option>
+                        <option>QuickBooks</option>
+                        <option>Stripe</option>
+                        <option>Authorize.Net</option>
+                    </select>
+                </label>
+                <label>External Customer ID <input name="ExternalCustomerId" required /></label>
+                <label>External URL <input name="ExternalUrl" /></label>
+            </div>
+            <div class="im1-form-actions"><button class="im1-button im1-button-primary" type="submit">Add External Link</button></div>
+        </form>
+        <div class="im1-data-grid">
+            <table>
+                <thead><tr><th>Provider</th><th>External ID</th><th>Status</th><th>Link</th></tr></thead>
+                <tbody>
+                    @foreach (var link in Model.ExternalLinks)
+                    {
+                        <tr><td>@link.Provider</td><td>@link.ExternalCustomerId</td><td>@(link.IsActive ? "Active" : "Inactive")</td><td>@if (!string.IsNullOrWhiteSpace(link.ExternalUrl)) { <a href="@link.ExternalUrl">Open</a> }</td></tr>
+                    }
+                    @if (Model.ExternalLinks.Count == 0)
+                    {
+                        <tr><td colspan="4">No external links found.</td></tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    </section>
+</section>

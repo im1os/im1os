@@ -68,6 +68,20 @@ public sealed class ApplicationDbContext(
 
     public DbSet<Customer> Customers => Set<Customer>();
 
+    public DbSet<CustomerAddress> CustomerAddresses => Set<CustomerAddress>();
+
+    public DbSet<CustomerPhoneNumber> CustomerPhoneNumbers => Set<CustomerPhoneNumber>();
+
+    public DbSet<CustomerNote> CustomerNotes => Set<CustomerNote>();
+
+    public DbSet<CustomerTag> CustomerTags => Set<CustomerTag>();
+
+    public DbSet<CustomerCustomField> CustomerCustomFields => Set<CustomerCustomField>();
+
+    public DbSet<CustomerExternalLink> CustomerExternalLinks => Set<CustomerExternalLink>();
+
+    public DbSet<CustomerDocument> CustomerDocuments => Set<CustomerDocument>();
+
     public DbSet<CustomerVehicle> CustomerVehicles => Set<CustomerVehicle>();
 
     public DbSet<WorkOrder> WorkOrders => Set<WorkOrder>();
@@ -411,13 +425,109 @@ public sealed class ApplicationDbContext(
             entity.HasIndex(x => new { x.OrganizationId, x.DisplayName });
             entity.HasIndex(x => new { x.OrganizationId, x.Email });
             entity.HasIndex(x => new { x.OrganizationId, x.Phone });
+            entity.HasIndex(x => new { x.OrganizationId, x.Status });
+            entity.HasIndex(x => new { x.OrganizationId, x.LifecycleStage });
             entity.Property(x => x.DisplayName).HasMaxLength(220).IsRequired();
             entity.Property(x => x.FirstName).HasMaxLength(120);
             entity.Property(x => x.LastName).HasMaxLength(120);
             entity.Property(x => x.CompanyName).HasMaxLength(220);
             entity.Property(x => x.Email).HasMaxLength(320);
             entity.Property(x => x.Phone).HasMaxLength(40);
+            entity.Property(x => x.CustomerType).HasMaxLength(80).IsRequired();
+            entity.Property(x => x.Status).HasMaxLength(80).IsRequired();
+            entity.Property(x => x.LifecycleStage).HasMaxLength(80);
+            entity.Property(x => x.Source).HasMaxLength(120);
+            entity.Property(x => x.PreferredContactMethod).HasMaxLength(80);
+            entity.HasQueryFilter(x => x.DeletedAtUtc == null && (tenantProvider.CurrentOrganizationId == null || x.OrganizationId == tenantProvider.CurrentOrganizationId));
+        });
+
+        modelBuilder.Entity<CustomerAddress>(entity =>
+        {
+            entity.ToTable("customer_addresses");
+            entity.HasIndex(x => new { x.OrganizationId, x.CustomerId });
+            entity.HasIndex(x => new { x.OrganizationId, x.PostalCode });
+            entity.Property(x => x.AddressType).HasMaxLength(80).IsRequired();
+            entity.Property(x => x.Line1).HasMaxLength(200);
+            entity.Property(x => x.Line2).HasMaxLength(200);
+            entity.Property(x => x.City).HasMaxLength(120);
+            entity.Property(x => x.Region).HasMaxLength(80);
+            entity.Property(x => x.PostalCode).HasMaxLength(20);
+            entity.Property(x => x.Country).HasMaxLength(80).IsRequired();
+            entity.HasOne(x => x.Customer).WithMany(x => x.Addresses).HasForeignKey(x => x.CustomerId);
+            entity.HasQueryFilter(x => x.DeletedAtUtc == null && (tenantProvider.CurrentOrganizationId == null || x.OrganizationId == tenantProvider.CurrentOrganizationId));
+        });
+
+        modelBuilder.Entity<CustomerPhoneNumber>(entity =>
+        {
+            entity.ToTable("customer_phone_numbers");
+            entity.HasIndex(x => new { x.OrganizationId, x.CustomerId });
+            entity.HasIndex(x => new { x.OrganizationId, x.PhoneNumber });
+            entity.Property(x => x.PhoneType).HasMaxLength(80).IsRequired();
+            entity.Property(x => x.PhoneNumber).HasMaxLength(40).IsRequired();
+            entity.Property(x => x.Extension).HasMaxLength(20);
+            entity.HasOne(x => x.Customer).WithMany(x => x.PhoneNumbers).HasForeignKey(x => x.CustomerId);
+            entity.HasQueryFilter(x => x.DeletedAtUtc == null && (tenantProvider.CurrentOrganizationId == null || x.OrganizationId == tenantProvider.CurrentOrganizationId));
+        });
+
+        modelBuilder.Entity<CustomerNote>(entity =>
+        {
+            entity.ToTable("customer_notes");
+            entity.HasIndex(x => new { x.OrganizationId, x.CustomerId, x.OccurredAtUtc });
+            entity.HasIndex(x => new { x.OrganizationId, x.NoteType });
+            entity.Property(x => x.AuthorDisplayName).HasMaxLength(160);
+            entity.Property(x => x.NoteType).HasMaxLength(80).IsRequired();
+            entity.Property(x => x.Subject).HasMaxLength(200);
+            entity.Property(x => x.Body).HasMaxLength(4000).IsRequired();
+            entity.HasOne(x => x.Customer).WithMany(x => x.Notes).HasForeignKey(x => x.CustomerId);
+            entity.HasQueryFilter(x => x.DeletedAtUtc == null && (tenantProvider.CurrentOrganizationId == null || x.OrganizationId == tenantProvider.CurrentOrganizationId));
+        });
+
+        modelBuilder.Entity<CustomerTag>(entity =>
+        {
+            entity.ToTable("customer_tags");
+            entity.HasIndex(x => new { x.OrganizationId, x.CustomerId });
+            entity.HasIndex(x => new { x.OrganizationId, x.Tag });
+            entity.Property(x => x.Tag).HasMaxLength(120).IsRequired();
+            entity.HasOne(x => x.Customer).WithMany(x => x.Tags).HasForeignKey(x => x.CustomerId);
             entity.HasQueryFilter(x => tenantProvider.CurrentOrganizationId == null || x.OrganizationId == tenantProvider.CurrentOrganizationId);
+        });
+
+        modelBuilder.Entity<CustomerCustomField>(entity =>
+        {
+            entity.ToTable("customer_custom_fields");
+            entity.HasIndex(x => new { x.OrganizationId, x.CustomerId, x.FieldKey }).IsUnique();
+            entity.Property(x => x.FieldKey).HasMaxLength(120).IsRequired();
+            entity.Property(x => x.FieldLabel).HasMaxLength(160);
+            entity.Property(x => x.FieldValue).HasMaxLength(2000);
+            entity.HasOne(x => x.Customer).WithMany(x => x.CustomFields).HasForeignKey(x => x.CustomerId);
+            entity.HasQueryFilter(x => tenantProvider.CurrentOrganizationId == null || x.OrganizationId == tenantProvider.CurrentOrganizationId);
+        });
+
+        modelBuilder.Entity<CustomerExternalLink>(entity =>
+        {
+            entity.ToTable("customer_external_links");
+            entity.HasIndex(x => new { x.OrganizationId, x.CustomerId });
+            entity.HasIndex(x => new { x.OrganizationId, x.Provider, x.ExternalCustomerId }).IsUnique();
+            entity.Property(x => x.Provider).HasMaxLength(80).IsRequired();
+            entity.Property(x => x.ExternalCustomerId).HasMaxLength(200).IsRequired();
+            entity.Property(x => x.ExternalUrl).HasMaxLength(1000);
+            entity.Property(x => x.MetadataJson).HasColumnType("jsonb");
+            entity.HasOne(x => x.Customer).WithMany(x => x.ExternalLinks).HasForeignKey(x => x.CustomerId);
+            entity.HasQueryFilter(x => tenantProvider.CurrentOrganizationId == null || x.OrganizationId == tenantProvider.CurrentOrganizationId);
+        });
+
+        modelBuilder.Entity<CustomerDocument>(entity =>
+        {
+            entity.ToTable("customer_documents");
+            entity.HasIndex(x => new { x.OrganizationId, x.CustomerId });
+            entity.HasIndex(x => new { x.OrganizationId, x.DocumentType });
+            entity.Property(x => x.FileName).HasMaxLength(260).IsRequired();
+            entity.Property(x => x.DocumentType).HasMaxLength(80).IsRequired();
+            entity.Property(x => x.StorageKey).HasMaxLength(500);
+            entity.Property(x => x.Url).HasMaxLength(1000);
+            entity.Property(x => x.ContentType).HasMaxLength(120);
+            entity.HasOne(x => x.Customer).WithMany(x => x.Documents).HasForeignKey(x => x.CustomerId);
+            entity.HasQueryFilter(x => x.DeletedAtUtc == null && (tenantProvider.CurrentOrganizationId == null || x.OrganizationId == tenantProvider.CurrentOrganizationId));
         });
 
         modelBuilder.Entity<CustomerVehicle>(entity =>

@@ -61,6 +61,20 @@ public interface IApplicationDbContext
 
     DbSet<Customer> Customers { get; }
 
+    DbSet<CustomerAddress> CustomerAddresses { get; }
+
+    DbSet<CustomerPhoneNumber> CustomerPhoneNumbers { get; }
+
+    DbSet<CustomerNote> CustomerNotes { get; }
+
+    DbSet<CustomerTag> CustomerTags { get; }
+
+    DbSet<CustomerCustomField> CustomerCustomFields { get; }
+
+    DbSet<CustomerExternalLink> CustomerExternalLinks { get; }
+
+    DbSet<CustomerDocument> CustomerDocuments { get; }
+
     DbSet<CustomerVehicle> CustomerVehicles { get; }
 
     DbSet<WorkOrder> WorkOrders { get; }

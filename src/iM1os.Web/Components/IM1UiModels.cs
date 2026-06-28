@@ -145,6 +145,13 @@ public static class IM1ShellNavigation
                     new("Company Admin", "Business", "Administration", "CA")
                 ]),
             new(
+                "CRM",
+                Icon: "CR",
+                Children:
+                [
+                    new("Customers", "Customers", "Index", "CU")
+                ]),
+            new(
                 "HR",
                 Icon: "HR",
                 Children:

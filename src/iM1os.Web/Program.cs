@@ -167,6 +167,14 @@ app.MapControllerRoute(
     pattern: "company/employees/{action=Index}",
     defaults: new { controller = "Employees" });
 app.MapControllerRoute(
+    name: "company-customer-detail",
+    pattern: "company/customers/{customerId:guid}",
+    defaults: new { controller = "Customers", action = "Detail" });
+app.MapControllerRoute(
+    name: "company-customers",
+    pattern: "company/customers/{action=Index}",
+    defaults: new { controller = "Customers" });
+app.MapControllerRoute(
     name: "company-profile",
     pattern: "company/profile/{action=Index}",
     defaults: new { controller = "Profile" });
