@@ -20,6 +20,19 @@ public class HomeController(IMarketingCmsService marketingCmsService) : Controll
         return View(page);
     }
 
+    [HttpGet]
+    public async Task<IActionResult> Page(string slug, CancellationToken cancellationToken)
+    {
+        var page = await marketingCmsService.GetPublishedPageAsync(slug, cancellationToken);
+        if (page is null)
+        {
+            return NotFound();
+        }
+
+        ViewData["MarketingSite"] = true;
+        return View("Index", page);
+    }
+
     [HttpPost]
     [ValidateAntiForgeryToken]
     public async Task<IActionResult> RequestDemo(MarketingLeadRequest request, CancellationToken cancellationToken)

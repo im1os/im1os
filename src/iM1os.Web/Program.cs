@@ -66,6 +66,10 @@ app.MapControllerRoute(
     pattern: "admin/{action=Dashboard}/{id?}",
     defaults: new { controller = "Platform" });
 app.MapControllerRoute(
+    name: "marketing-page",
+    pattern: "{slug:regex(^(?!admin$|health$|account$|business$|home$|marketingadmin$).+)}",
+    defaults: new { controller = "Home", action = "Page" });
+app.MapControllerRoute(
     name: "default",
     pattern: "{controller=Home}/{action=Index}/{id?}");
 
