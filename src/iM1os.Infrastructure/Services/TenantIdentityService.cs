@@ -64,6 +64,7 @@ public sealed class TenantIdentityService(
         user.AccessFailedCount = 0;
         user.LockoutEndAtUtc = null;
         user.LastLoginAtUtc = now;
+        AddSession(user, ipAddress, now);
         AddEvent(user.OrganizationId, user.Id, "UserLoggedIn", ipAddress, new { user.Email });
         await dbContext.SaveChangesAsync(cancellationToken);
 
@@ -113,8 +114,10 @@ public sealed class TenantIdentityService(
         user.AccessFailedCount = 0;
         user.LockoutEndAtUtc = null;
         user.LastLoginAtUtc = now;
+        user.LastPasswordChangedAtUtc = now;
         invitation.AcceptedAtUtc = now;
 
+        AddSession(user, ipAddress, now);
         AddEvent(user.OrganizationId, user.Id, "OwnerActivated", ipAddress, new { user.Email });
         AddEvent(user.OrganizationId, user.Id, "UserLoggedIn", ipAddress, new { user.Email });
         await dbContext.SaveChangesAsync(cancellationToken);
@@ -150,7 +153,7 @@ public sealed class TenantIdentityService(
         await welcomeEmailSender.SendAsync(
             user.Email,
             "Reset your IM1OS password",
-            $"Reset your IM1OS password: /Account/ResetPassword?token={Uri.EscapeDataString(token)}",
+            $"Reset your IM1OS password: /company/reset-password?token={Uri.EscapeDataString(token)}",
             cancellationToken);
         await dbContext.SaveChangesAsync(cancellationToken);
     }
@@ -186,6 +189,7 @@ public sealed class TenantIdentityService(
         user.MustChangePassword = false;
         user.AccessFailedCount = 0;
         user.LockoutEndAtUtc = null;
+        user.LastPasswordChangedAtUtc = now;
         reset.CompletedAtUtc = now;
 
         AddEvent(user.OrganizationId, user.Id, "PasswordResetCompleted", ipAddress, new { user.Email });
@@ -195,6 +199,15 @@ public sealed class TenantIdentityService(
 
     public async Task LogoutAsync(Guid organizationId, Guid userId, string? ipAddress, CancellationToken cancellationToken)
     {
+        var now = dateTimeProvider.UtcNow;
+        var sessions = await dbContext.UserSessions.IgnoreQueryFilters()
+            .Where(x => x.OrganizationId == organizationId && x.UserId == userId && x.RevokedAtUtc == null)
+            .ToListAsync(cancellationToken);
+        foreach (var session in sessions)
+        {
+            session.RevokedAtUtc = now;
+        }
+
         AddEvent(organizationId, userId, "UserLoggedOut", ipAddress, new { });
         await dbContext.SaveChangesAsync(cancellationToken);
     }
@@ -223,14 +236,30 @@ public sealed class TenantIdentityService(
             .AnyAsync(x => x.OrganizationId == user.OrganizationId && x.CompletedAtUtc != null, cancellationToken);
 
         var roles = user.UserRoles.Select(x => x.Role?.Name).Where(x => x is not null).Select(x => x!).Distinct().Order().ToArray();
-        var permissions = user.UserRoles
+        var permissionSet = user.UserRoles
             .SelectMany(x => x.Role?.RolePermissions ?? [])
             .Select(x => x.Permission?.Key)
             .Where(x => x is not null)
             .Select(x => x!)
-            .Distinct()
-            .Order()
-            .ToArray();
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var overrides = await dbContext.UserPermissionOverrides
+            .IgnoreQueryFilters()
+            .Include(x => x.Permission)
+            .Where(x => x.OrganizationId == user.OrganizationId && x.UserId == user.Id)
+            .ToListAsync(cancellationToken);
+        foreach (var permissionOverride in overrides.Where(x => x.Permission is not null))
+        {
+            if (permissionOverride.IsAllowed)
+            {
+                permissionSet.Add(permissionOverride.Permission!.Key);
+            }
+            else
+            {
+                permissionSet.Remove(permissionOverride.Permission!.Key);
+            }
+        }
+
+        var permissions = permissionSet.Order().ToArray();
 
         return new TenantLoginResult(
             user.Id,
@@ -254,6 +283,19 @@ public sealed class TenantIdentityService(
             OccurredAtUtc = dateTimeProvider.UtcNow,
             IpAddress = ipAddress,
             PayloadJson = JsonSerializer.Serialize(payload)
+        });
+    }
+
+    private void AddSession(ApplicationUser user, string? ipAddress, DateTimeOffset now)
+    {
+        dbContext.UserSessions.Add(new UserSession
+        {
+            OrganizationId = user.OrganizationId,
+            UserId = user.Id,
+            SessionKey = NewToken(),
+            IpAddress = ipAddress,
+            StartedAtUtc = now,
+            LastSeenAtUtc = now
         });
     }
 }

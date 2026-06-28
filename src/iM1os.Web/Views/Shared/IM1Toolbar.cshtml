@@ -22,7 +22,7 @@
     }
     @if (Model.ShowExport)
     {
-        <button class="im1-button im1-button-secondary" type="button">Export</button>
+        <button class="im1-button im1-button-secondary" type="button" data-im1-grid-export>Export</button>
     }
 
     @foreach (var action in Model.Actions ?? Array.Empty<IM1ActionModel>())

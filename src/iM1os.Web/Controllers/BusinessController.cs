@@ -12,6 +12,12 @@ public sealed class BusinessController(
     IBusinessAdministrationService businessAdministrationService) : Controller
 {
     [HttpGet]
+    public IActionResult AccessDenied()
+    {
+        return View();
+    }
+
+    [HttpGet]
     public async Task<IActionResult> Dashboard(CancellationToken cancellationToken)
     {
         if (!TryOrganizationId(out var organizationId))

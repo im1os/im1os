@@ -34,6 +34,10 @@ public interface IApplicationDbContext
 
     DbSet<RolePermission> RolePermissions { get; }
 
+    DbSet<UserPermissionOverride> UserPermissionOverrides { get; }
+
+    DbSet<UserSession> UserSessions { get; }
+
     DbSet<FeatureFlag> FeatureFlags { get; }
 
     DbSet<ApplicationSetting> ApplicationSettings { get; }

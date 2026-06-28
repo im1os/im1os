@@ -1,0 +1,244 @@
+@model iM1os.Application.CompanyUsers.CompanyUsersWorkspace
+
+@{
+    ViewData["Title"] = "Company Users";
+    var showNewUser = Context.Request.Query["newUser"] == "true";
+    var grid = new IM1DataGridModel(
+        Columns: new[]
+        {
+            new IM1DataGridColumnModel("avatar", "Avatar", false, false),
+            new IM1DataGridColumnModel("name", "Name"),
+            new IM1DataGridColumnModel("email", "Email"),
+            new IM1DataGridColumnModel("role", "Company Role"),
+            new IM1DataGridColumnModel("status", "Status"),
+            new IM1DataGridColumnModel("lastLogin", "Last Login"),
+            new IM1DataGridColumnModel("mfa", "MFA Enabled"),
+            new IM1DataGridColumnModel("created", "Created Date")
+        },
+        Rows: Model.Users.Select(user => new Dictionary<string, object?>
+        {
+            ["__url"] = Url.Action("Index", "CompanyUsers", new { userId = user.Id, query = Model.Query, status = Model.Status, role = Model.Role }),
+            ["avatar"] = user.Avatar,
+            ["name"] = user.Name,
+            ["email"] = user.Email,
+            ["role"] = user.CompanyRole,
+            ["status"] = user.Status,
+            ["lastLogin"] = user.LastLoginAtUtc?.ToString("yyyy-MM-dd HH:mm") ?? "Never",
+            ["mfa"] = user.MfaEnabled ? "Yes" : "No",
+            ["created"] = user.CreatedAtUtc.ToString("yyyy-MM-dd")
+        }).ToArray(),
+        Toolbar: new IM1ToolbarModel(
+            Actions: new[] { new IM1ActionModel("New User", Url.Action("Index", "CompanyUsers", new { newUser = true }), "primary") },
+            SearchPlaceholder: "Search users",
+            ShowRefresh: true,
+            ShowExport: true),
+        EmptyText: "No company users found.",
+        PageSize: 10);
+    var page = new IM1PageModel(
+        "Company Users",
+        "Administration",
+        "Manage employee access, roles, permissions, invitations, passwords, sessions, and activity.",
+        Breadcrumbs: new[]
+        {
+            new IM1BreadcrumbModel("Company", Url.Action("Dashboard", "Business")),
+            new IM1BreadcrumbModel("Administration", Url.Action("Administration", "Business")),
+            new IM1BreadcrumbModel("Company Users")
+        });
+    var editorTabs = new IM1TabsModel(
+        "Company user editor sections",
+        new[]
+        {
+            new IM1TabItemModel("general", "General", true),
+            new IM1TabItemModel("permissions", "Permissions"),
+            new IM1TabItemModel("security", "Security"),
+            new IM1TabItemModel("activity", "Activity")
+        });
+}
+
+@await Html.PartialAsync("IM1Page", page)
+
+<form class="im1-toolbar" method="get" asp-controller="CompanyUsers" asp-action="Index">
+    <div class="im1-toolbar-main">
+        <input class="im1-toolbar-search" name="query" value="@Model.Query" placeholder="Search users server-side" />
+    </div>
+    <select name="status">
+        <option value="">All statuses</option>
+        @foreach (var status in new[] { "Active", "Disabled", "Locked" })
+        {
+            <option value="@status" selected="@(Model.Status == status)">@status</option>
+        }
+    </select>
+    <select name="role">
+        <option value="">All roles</option>
+        @foreach (var role in Model.Roles)
+        {
+            <option value="@role.Name" selected="@(Model.Role == role.Name)">@role.Name</option>
+        }
+    </select>
+    <button class="im1-button im1-button-secondary" type="submit">Apply Filters</button>
+</form>
+
+@await Html.PartialAsync("IM1DataGrid", grid)
+
+@if (showNewUser)
+{
+    <div class="im1-side-panel-backdrop is-open" data-side-panel="new-user">
+        <aside class="im1-side-panel" aria-labelledby="new-user-title">
+            <header class="im1-side-panel-header">
+                <div>
+                    <h2 id="new-user-title">New User</h2>
+                    <p>Create a company user by invitation or with an initial password.</p>
+                </div>
+                <a class="im1-dialog-close" asp-controller="CompanyUsers" asp-action="Index" aria-label="Close">X</a>
+            </header>
+            <div class="im1-side-panel-body">
+                <form asp-action="Create" method="post" class="im1-form">
+                    <div class="im1-form-grid">
+                        <label>Name <input name="Name" /></label>
+                        <label>Email <input name="Email" type="email" autocomplete="username" /></label>
+                        <label>Company Role
+                            <select name="RoleName">
+                                @foreach (var role in Model.Roles)
+                                {
+                                    <option value="@role.Name">@role.Name</option>
+                                }
+                            </select>
+                        </label>
+                        <label>Status
+                            <select name="Status">
+                                <option>Active</option>
+                                <option>Disabled</option>
+                            </select>
+                        </label>
+                    </div>
+                    <label class="im1-checkbox"><input name="SendInvitationEmail" type="checkbox" value="true" checked /> Send Invitation Email</label>
+                    <label>Initial Password <input name="InitialPassword" type="password" autocomplete="new-password" /></label>
+                    <div class="im1-form-actions">
+                        <button class="im1-button im1-button-primary" type="submit">Create User</button>
+                    </div>
+                </form>
+            </div>
+        </aside>
+    </div>
+}
+
+@if (Model.SelectedUser is not null)
+{
+    var user = Model.SelectedUser;
+    <div class="im1-side-panel-backdrop is-open" data-side-panel="user-editor">
+        <aside class="im1-side-panel" aria-labelledby="user-editor-title">
+            <header class="im1-side-panel-header">
+                <div>
+                    <h2 id="user-editor-title">@user.DisplayName</h2>
+                    <p>@user.Email</p>
+                </div>
+                <a class="im1-dialog-close" asp-controller="CompanyUsers" asp-action="Index" aria-label="Close">X</a>
+            </header>
+            <div class="im1-side-panel-body">
+                @await Html.PartialAsync("IM1Tabs", editorTabs)
+
+                <section class="tab-panel is-active" id="general" role="tabpanel">
+                    <form asp-action="Update" method="post" class="im1-form">
+                        <div class="im1-form-grid">
+                            <input type="hidden" name="UserId" value="@user.Id" />
+                            <label>First Name <input name="FirstName" value="@user.FirstName" /></label>
+                            <label>Last Name <input name="LastName" value="@user.LastName" /></label>
+                            <label>Display Name <input name="DisplayName" value="@user.DisplayName" /></label>
+                            <label>Email <input name="Email" value="@user.Email" type="email" /></label>
+                            <label>Phone <input name="Phone" value="@user.Phone" /></label>
+                            <label>Job Title <input name="JobTitle" value="@user.JobTitle" /></label>
+                            <label>Company Role
+                                <select name="RoleName">
+                                    @foreach (var role in Model.Roles)
+                                    {
+                                        <option value="@role.Name" selected="@(role.Name == user.CompanyRole)">@role.Name</option>
+                                    }
+                                </select>
+                            </label>
+                            <label>Status
+                                <select name="Status">
+                                    @foreach (var status in new[] { "Active", "Disabled" })
+                                    {
+                                        <option value="@status" selected="@(status == user.Status)">@status</option>
+                                    }
+                                </select>
+                            </label>
+                        </div>
+                        <div class="im1-form-actions">
+                            <button class="im1-button im1-button-primary" type="submit">Save General</button>
+                        </div>
+                    </form>
+                </section>
+
+                <section class="tab-panel" id="permissions" role="tabpanel" hidden>
+                    <form asp-action="Permissions" method="post" class="im1-form">
+                        <input type="hidden" name="UserId" value="@user.Id" />
+                        <div class="company-permission-list">
+                            @for (var i = 0; i < user.Permissions.Count; i++)
+                            {
+                                var permission = user.Permissions.ElementAt(i);
+                                <article>
+                                    <input type="hidden" name="Overrides[@i].PermissionId" value="@permission.PermissionId" />
+                                    <strong>@permission.Key</strong>
+                                    <span>@permission.Description</span>
+                                    <em>Role: @(permission.RoleAllows ? "Allowed" : "Not allowed")</em>
+                                    <label class="im1-checkbox"><input name="Overrides[@i].IsOverridden" type="checkbox" value="true" checked="@(permission.OverrideAllows is not null)" /> Override</label>
+                                    <select name="Overrides[@i].IsAllowed">
+                                        <option value="true" selected="@(permission.OverrideAllows == true)">Allow</option>
+                                        <option value="false" selected="@(permission.OverrideAllows == false)">Deny</option>
+                                    </select>
+                                </article>
+                            }
+                        </div>
+                        <div class="im1-form-actions">
+                            <button class="im1-button im1-button-primary" type="submit">Save Permissions</button>
+                        </div>
+                    </form>
+                </section>
+
+                <section class="tab-panel" id="security" role="tabpanel" hidden>
+                    <div class="company-security-grid">
+                        <article><span>Username</span><strong>@user.Security.Username</strong></article>
+                        <article><span>Email</span><strong>@user.Security.Email</strong></article>
+                        <article><span>Password</span><strong>********</strong></article>
+                        <article><span>Last Password Change</span><strong>@(user.Security.LastPasswordChangedAtUtc?.ToString("yyyy-MM-dd HH:mm") ?? "Never")</strong></article>
+                        <article><span>Last Login</span><strong>@(user.Security.LastLoginAtUtc?.ToString("yyyy-MM-dd HH:mm") ?? "Never")</strong></article>
+                        <article><span>Failed Login Attempts</span><strong>@user.Security.FailedLoginAttempts</strong></article>
+                        <article><span>MFA Status</span><strong>@(user.Security.MfaEnabled ? "Enabled" : "Disabled")</strong></article>
+                        <article><span>Account Locked</span><strong>@(user.Security.AccountLocked ? "Yes" : "No")</strong></article>
+                        <article><span>Active Sessions</span><strong>@user.Security.ActiveSessions</strong></article>
+                    </div>
+                    <div class="action-row company-security-actions">
+                        <form asp-action="Security" method="post">
+                            <input type="hidden" name="UserId" value="@user.Id" />
+                            <input type="hidden" name="Action" value="ResetPassword" />
+                            <input name="NewPassword" type="password" autocomplete="new-password" placeholder="New password" />
+                            <button class="im1-button im1-button-secondary" type="submit">Reset Password</button>
+                        </form>
+                        @foreach (var action in new[] { ("SendPasswordResetEmail", "Send Password Reset Email"), ("UnlockAccount", "Unlock Account"), ("ForcePasswordChange", "Force Password Change"), ("SignOutAllSessions", "Sign Out All Sessions"), (user.Status == "Active" ? "DisableUser" : "EnableUser", user.Status == "Active" ? "Disable User" : "Enable User") })
+                        {
+                            <form asp-action="Security" method="post">
+                                <input type="hidden" name="UserId" value="@user.Id" />
+                                <input type="hidden" name="Action" value="@action.Item1" />
+                                <button class="im1-button im1-button-secondary" type="submit">@action.Item2</button>
+                            </form>
+                        }
+                    </div>
+                </section>
+
+                <section class="tab-panel" id="activity" role="tabpanel" hidden>
+                    <ol class="company-activity-list">
+                        @foreach (var item in user.Activity)
+                        {
+                            <li>
+                                <strong>@item.EventType</strong>
+                                <span>@item.OccurredAtUtc.ToString("yyyy-MM-dd HH:mm")</span>
+                                <p>@item.Summary</p>
+                            </li>
+                        }
+                    </ol>
+                </section>
+            </div>
+        </aside>
+    </div>
+}

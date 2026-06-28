@@ -49,6 +49,7 @@ public sealed class TenantProfileService(
 
         user.PasswordHash = passwordHasher.HashPassword(user, request.NewPassword);
         user.MustChangePassword = false;
+        user.LastPasswordChangedAtUtc = dateTimeProvider.UtcNow;
         AddEvent(organizationId, userId, "PasswordChanged", ipAddress, new { user.Email });
         await dbContext.SaveChangesAsync(cancellationToken);
         return true;

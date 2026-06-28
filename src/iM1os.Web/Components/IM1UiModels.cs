@@ -49,6 +49,13 @@ public sealed record IM1DialogModel(
     string SecondaryActionLabel = "Cancel",
     string Size = "md");
 
+public sealed record IM1SidePanelModel(
+    string Id,
+    string Title,
+    string? Description = null,
+    IHtmlContent? Content = null,
+    bool IsOpen = false);
+
 public sealed record IM1FormModel(
     string? Title = null,
     string? Description = null,
@@ -130,12 +137,13 @@ public static class IM1ShellNavigation
         CompanyItems:
         [
             new(
-                "Owner Admin",
+                "Administration",
                 Icon: "OA",
                 Children:
                 [
                     new("Company Dashboard", "Business", "Dashboard", "CD"),
                     new("Company Admin", "Business", "Administration", "CA"),
+                    new("Company Users", "CompanyUsers", "Index", "CU"),
                     new("Profile", "Profile", "Index", "PR")
                 ])
         ]);

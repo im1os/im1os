@@ -41,6 +41,10 @@ public sealed class ApplicationDbContext(
 
     public DbSet<RolePermission> RolePermissions => Set<RolePermission>();
 
+    public DbSet<UserPermissionOverride> UserPermissionOverrides => Set<UserPermissionOverride>();
+
+    public DbSet<UserSession> UserSessions => Set<UserSession>();
+
     public DbSet<FeatureFlag> FeatureFlags => Set<FeatureFlag>();
 
     public DbSet<ApplicationSetting> ApplicationSettings => Set<ApplicationSetting>();
@@ -153,8 +157,11 @@ public sealed class ApplicationDbContext(
             entity.HasIndex(x => new { x.OrganizationId, x.NormalizedEmail }).IsUnique();
             entity.Property(x => x.Email).HasMaxLength(320).IsRequired();
             entity.Property(x => x.NormalizedEmail).HasMaxLength(320).IsRequired();
+            entity.Property(x => x.FirstName).HasMaxLength(120);
+            entity.Property(x => x.LastName).HasMaxLength(120);
             entity.Property(x => x.DisplayName).HasMaxLength(160).IsRequired();
             entity.Property(x => x.Phone).HasMaxLength(40);
+            entity.Property(x => x.JobTitle).HasMaxLength(160);
             entity.Property(x => x.PasswordHash).HasMaxLength(1000).IsRequired();
             entity.Property(x => x.MfaMethod).HasMaxLength(40);
             entity.Property(x => x.MfaSecretProtected).HasMaxLength(1000);
@@ -162,7 +169,7 @@ public sealed class ApplicationDbContext(
             entity.Property(x => x.PinHash).HasMaxLength(1000);
             entity.Property(x => x.Language).HasMaxLength(20).IsRequired();
             entity.Property(x => x.TimeZone).HasMaxLength(120).IsRequired();
-            entity.HasQueryFilter(x => tenantProvider.CurrentOrganizationId == null || x.OrganizationId == tenantProvider.CurrentOrganizationId);
+            entity.HasQueryFilter(x => x.DeletedAtUtc == null && (tenantProvider.CurrentOrganizationId == null || x.OrganizationId == tenantProvider.CurrentOrganizationId));
         });
 
         modelBuilder.Entity<UserInvitation>(entity =>
@@ -227,6 +234,27 @@ public sealed class ApplicationDbContext(
             entity.HasKey(x => new { x.RoleId, x.PermissionId });
             entity.HasOne(x => x.Role).WithMany(x => x.RolePermissions).HasForeignKey(x => x.RoleId);
             entity.HasOne(x => x.Permission).WithMany(x => x.RolePermissions).HasForeignKey(x => x.PermissionId);
+        });
+
+        modelBuilder.Entity<UserPermissionOverride>(entity =>
+        {
+            entity.ToTable("user_permission_overrides");
+            entity.HasIndex(x => new { x.OrganizationId, x.UserId, x.PermissionId }).IsUnique();
+            entity.HasOne(x => x.User).WithMany(x => x.PermissionOverrides).HasForeignKey(x => x.UserId);
+            entity.HasOne(x => x.Permission).WithMany().HasForeignKey(x => x.PermissionId);
+            entity.HasQueryFilter(x => tenantProvider.CurrentOrganizationId == null || x.OrganizationId == tenantProvider.CurrentOrganizationId);
+        });
+
+        modelBuilder.Entity<UserSession>(entity =>
+        {
+            entity.ToTable("user_sessions");
+            entity.HasIndex(x => new { x.OrganizationId, x.UserId, x.RevokedAtUtc });
+            entity.HasIndex(x => x.SessionKey).IsUnique();
+            entity.Property(x => x.SessionKey).HasMaxLength(160).IsRequired();
+            entity.Property(x => x.IpAddress).HasMaxLength(80);
+            entity.Property(x => x.UserAgent).HasMaxLength(500);
+            entity.HasOne(x => x.User).WithMany(x => x.Sessions).HasForeignKey(x => x.UserId);
+            entity.HasQueryFilter(x => tenantProvider.CurrentOrganizationId == null || x.OrganizationId == tenantProvider.CurrentOrganizationId);
         });
 
         modelBuilder.Entity<FeatureFlag>(entity =>

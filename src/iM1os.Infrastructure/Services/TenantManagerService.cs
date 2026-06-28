@@ -249,7 +249,7 @@ public sealed class TenantManagerService(
             RecipientEmail = owner.Email,
             RecipientName = owner.DisplayName,
             Subject = "Your IM1OS owner activation link",
-            Body = $"Activate your IM1OS owner account for {organization.Name}: /Account/Activate?token={Uri.EscapeDataString(token)}",
+            Body = $"Activate your IM1OS owner account for {organization.Name}: /company/activate?token={Uri.EscapeDataString(token)}",
             CreatedAtUtc = now
         };
 

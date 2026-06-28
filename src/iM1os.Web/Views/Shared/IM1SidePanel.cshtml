@@ -1,0 +1,19 @@
+@model IM1SidePanelModel
+
+<div class="im1-side-panel-backdrop @(Model.IsOpen ? "is-open" : null)" data-side-panel="@Model.Id" @(Model.IsOpen ? null : "hidden")>
+    <aside class="im1-side-panel" aria-labelledby="@($"{Model.Id}-title")">
+        <header class="im1-side-panel-header">
+            <div>
+                <h2 id="@($"{Model.Id}-title")">@Model.Title</h2>
+                @if (!string.IsNullOrWhiteSpace(Model.Description))
+                {
+                    <p>@Model.Description</p>
+                }
+            </div>
+            <button class="im1-dialog-close" type="button" data-side-panel-close aria-label="Close">X</button>
+        </header>
+        <div class="im1-side-panel-body">
+            @Model.Content
+        </div>
+    </aside>
+</div>

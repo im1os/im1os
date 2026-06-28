@@ -65,6 +65,33 @@ window.IM1.activateDialogs = function activateDialogs(root) {
   });
 };
 
+window.IM1.activateSidePanels = function activateSidePanels(root) {
+  const scope = root || document;
+
+  scope.querySelectorAll("[data-side-panel-open]").forEach((button) => {
+    button.addEventListener("click", () => {
+      const panel = document.querySelector(`[data-side-panel='${button.dataset.sidePanelOpen}']`);
+      if (!panel) {
+        return;
+      }
+
+      panel.hidden = false;
+      panel.classList.add("is-open");
+      panel.querySelector("button, [href], input, select, textarea, [tabindex]:not([tabindex='-1'])")?.focus();
+    });
+  });
+
+  scope.querySelectorAll("[data-side-panel-close]").forEach((button) => {
+    button.addEventListener("click", () => {
+      const panel = button.closest("[data-side-panel]");
+      if (panel) {
+        panel.classList.remove("is-open");
+        panel.hidden = true;
+      }
+    });
+  });
+};
+
 window.IM1.activateDataGrids = function activateDataGrids(root) {
   const scope = root || document;
 
@@ -77,9 +104,26 @@ window.IM1.activateDataGrids = function activateDataGrids(root) {
     const status = grid.querySelector("[data-im1-grid-status]");
     const previous = grid.querySelector("[data-im1-grid-prev]");
     const next = grid.querySelector("[data-im1-grid-next]");
+    const exportButton = grid.querySelector("[data-im1-grid-export]");
     const pageSize = Number.parseInt(grid.dataset.pageSize || "", 10);
+    const preferenceKey = `im1-grid:${window.location.pathname}:${grid.dataset.gridKey || "default"}`;
     let page = 1;
     let visibleRows = rows;
+    let storedPreferences = {};
+
+    try {
+      storedPreferences = JSON.parse(localStorage.getItem(preferenceKey) || "{}");
+      if (search && storedPreferences.search && !search.value) {
+        search.value = storedPreferences.search;
+      }
+    } catch {
+      // Ignore corrupt local preferences.
+    }
+
+    const savePreferences = (changes) => {
+      storedPreferences = { ...storedPreferences, ...changes };
+      localStorage.setItem(preferenceKey, JSON.stringify(storedPreferences));
+    };
 
     const render = () => {
       const totalPages = Number.isFinite(pageSize) && pageSize > 0
@@ -115,6 +159,9 @@ window.IM1.activateDataGrids = function activateDataGrids(root) {
 
     const applySearch = () => {
       const query = (search?.value || "").trim().toLowerCase();
+      if (search) {
+        savePreferences({ search: search.value });
+      }
       visibleRows = query
         ? rows.filter((row) => row.textContent.toLowerCase().includes(query))
         : rows;
@@ -138,24 +185,84 @@ window.IM1.activateDataGrids = function activateDataGrids(root) {
       page += 1;
       render();
     });
+    rows.forEach((row) => {
+      const open = () => {
+        if (row.dataset.rowUrl) {
+          window.location.href = row.dataset.rowUrl;
+        }
+      };
 
-    grid.querySelectorAll("[data-sortable='true']").forEach((header, columnIndex) => {
-      const button = header.querySelector(".im1-grid-sort");
-      button?.addEventListener("click", () => {
-        const isDescending = button.classList.contains("is-ascending");
-        grid.querySelectorAll(".im1-grid-sort").forEach((item) => item.classList.remove("is-ascending", "is-descending"));
-        button.classList.add(isDescending ? "is-descending" : "is-ascending");
+      row.addEventListener("dblclick", open);
+      row.addEventListener("keydown", (event) => {
+        if (event.key === "Enter") {
+          open();
+        }
+      });
+      row.addEventListener("contextmenu", (event) => {
+        if (!row.dataset.rowUrl) {
+          return;
+        }
 
-        rows.sort((left, right) => {
-          const leftValue = left.children[columnIndex]?.textContent?.trim() || "";
-          const rightValue = right.children[columnIndex]?.textContent?.trim() || "";
-          return leftValue.localeCompare(rightValue, undefined, { numeric: true, sensitivity: "base" }) * (isDescending ? -1 : 1);
-        });
-
-        rows.forEach((row) => tbody?.appendChild(row));
-        applySearch();
+        event.preventDefault();
+        const existing = document.querySelector(".im1-context-menu");
+        existing?.remove();
+        const menu = document.createElement("div");
+        menu.className = "im1-context-menu";
+        menu.style.left = `${event.clientX}px`;
+        menu.style.top = `${event.clientY}px`;
+        const link = document.createElement("a");
+        link.href = row.dataset.rowUrl;
+        link.textContent = "Edit";
+        menu.appendChild(link);
+        document.body.appendChild(menu);
       });
     });
+
+    exportButton?.addEventListener("click", () => {
+      const headers = Array.from(grid.querySelectorAll("thead th")).map((item) => item.textContent.trim());
+      const lines = [headers.join(",")];
+      visibleRows.forEach((row) => {
+        lines.push(Array.from(row.children).map((cell) => `"${cell.textContent.trim().replaceAll('"', '""')}"`).join(","));
+      });
+      const blob = new Blob([lines.join("\n")], { type: "text/csv" });
+      const link = document.createElement("a");
+      link.href = URL.createObjectURL(blob);
+      link.download = "im1-grid-export.csv";
+      link.click();
+      URL.revokeObjectURL(link.href);
+    });
+
+    const sortRows = (columnIndex, isDescending, button) => {
+      grid.querySelectorAll(".im1-grid-sort").forEach((item) => item.classList.remove("is-ascending", "is-descending"));
+      button?.classList.add(isDescending ? "is-descending" : "is-ascending");
+
+      rows.sort((left, right) => {
+        const leftValue = left.children[columnIndex]?.textContent?.trim() || "";
+        const rightValue = right.children[columnIndex]?.textContent?.trim() || "";
+        return leftValue.localeCompare(rightValue, undefined, { numeric: true, sensitivity: "base" }) * (isDescending ? -1 : 1);
+      });
+
+      rows.forEach((row) => tbody?.appendChild(row));
+      applySearch();
+    };
+
+    grid.querySelectorAll("[data-sortable='true']").forEach((header) => {
+      const button = header.querySelector(".im1-grid-sort");
+      button?.addEventListener("click", () => {
+        const columnIndex = header.cellIndex;
+        const isDescending = button.classList.contains("is-ascending");
+        savePreferences({ sortColumn: columnIndex, sortDescending: isDescending });
+        sortRows(columnIndex, isDescending, button);
+      });
+    });
+
+    if (Number.isInteger(storedPreferences.sortColumn)) {
+      const header = Array.from(grid.querySelectorAll("[data-sortable='true']")).find((item) => item.cellIndex === storedPreferences.sortColumn);
+      const button = header?.querySelector(".im1-grid-sort");
+      if (button) {
+        sortRows(storedPreferences.sortColumn, storedPreferences.sortDescending === true, button);
+      }
+    }
 
     render();
   });
@@ -206,9 +313,16 @@ document.addEventListener("keydown", (event) => {
   });
 });
 
+document.addEventListener("click", (event) => {
+  if (!event.target.closest(".im1-context-menu")) {
+    document.querySelector(".im1-context-menu")?.remove();
+  }
+});
+
 document.addEventListener("DOMContentLoaded", () => {
   window.IM1.activateTabs(document);
   window.IM1.activateDialogs(document);
+  window.IM1.activateSidePanels(document);
   window.IM1.activateDataGrids(document);
   window.IM1.activateMarketingHeader();
 });

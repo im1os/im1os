@@ -6,6 +6,10 @@ public sealed class ApplicationUser : AuditableEntity
 {
     public Guid OrganizationId { get; set; }
 
+    public string? FirstName { get; set; }
+
+    public string? LastName { get; set; }
+
     public required string Email { get; set; }
 
     public required string NormalizedEmail { get; set; }
@@ -14,11 +18,19 @@ public sealed class ApplicationUser : AuditableEntity
 
     public string? Phone { get; set; }
 
+    public string? JobTitle { get; set; }
+
     public required string PasswordHash { get; set; }
 
     public bool IsActive { get; set; } = true;
 
+    public DateTimeOffset? DisabledAtUtc { get; set; }
+
+    public DateTimeOffset? DeletedAtUtc { get; set; }
+
     public bool MustChangePassword { get; set; }
+
+    public DateTimeOffset? LastPasswordChangedAtUtc { get; set; }
 
     public DateTimeOffset? EmailVerifiedAtUtc { get; set; }
 
@@ -45,4 +57,8 @@ public sealed class ApplicationUser : AuditableEntity
     public ICollection<OrganizationMembership> OrganizationMemberships { get; } = new List<OrganizationMembership>();
 
     public ICollection<UserRole> UserRoles { get; } = new List<UserRole>();
+
+    public ICollection<UserPermissionOverride> PermissionOverrides { get; } = new List<UserPermissionOverride>();
+
+    public ICollection<UserSession> Sessions { get; } = new List<UserSession>();
 }

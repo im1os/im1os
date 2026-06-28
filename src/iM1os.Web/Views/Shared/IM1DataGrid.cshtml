@@ -39,7 +39,8 @@
                 {
                     @foreach (var row in Model.Rows)
                     {
-                        <tr data-im1-grid-row>
+                        var rowUrl = row.TryGetValue("__url", out var urlValue) ? urlValue?.ToString() : null;
+                        <tr data-im1-grid-row data-row-url="@rowUrl" tabindex="@(string.IsNullOrWhiteSpace(rowUrl) ? null : "0")">
                             @foreach (var column in Model.Columns)
                             {
                                 <td>@(row.TryGetValue(column.Key, out var value) ? value : null)</td>

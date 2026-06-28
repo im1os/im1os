@@ -158,6 +158,10 @@ app.MapControllerRoute(
     pattern: "company/admin/{action=Administration}",
     defaults: new { controller = "Business" });
 app.MapControllerRoute(
+    name: "company-users",
+    pattern: "company/users/{action=Index}",
+    defaults: new { controller = "CompanyUsers" });
+app.MapControllerRoute(
     name: "company-profile",
     pattern: "company/profile/{action=Index}",
     defaults: new { controller = "Profile" });

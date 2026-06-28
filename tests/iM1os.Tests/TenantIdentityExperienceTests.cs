@@ -25,7 +25,7 @@ public sealed class TenantIdentityExperienceTests
         Assert.False(owner.IsActive);
         Assert.True(owner.MustChangePassword);
         Assert.True(await dbContext.UserInvitations.IgnoreQueryFilters().AnyAsync(x => x.UserId == owner.Id && x.AcceptedAtUtc == null));
-        Assert.Contains("/Account/Activate?token=", emailSender.LastBody);
+        Assert.Contains("/company/activate?token=", emailSender.LastBody);
         Assert.True(await dbContext.PlatformEvents.AnyAsync(x => x.EventType == "OwnerInvited" && x.TargetOrganizationId == result.OrganizationId));
     }
 
