@@ -28,7 +28,7 @@ public sealed class BusinessAdministrationService(
 
     public async Task<BusinessAdministrationWorkspace> GetWorkspaceAsync(Guid organizationId, Guid userId, CancellationToken cancellationToken)
     {
-        await EnsureOwnerAsync(organizationId, userId, cancellationToken);
+        await EnsureCompanyAdministratorAsync(organizationId, userId, cancellationToken);
         var organization = await dbContext.Organizations.IgnoreQueryFilters().SingleAsync(x => x.Id == organizationId, cancellationToken);
         var config = await GetOrCreateConfigurationAsync(organizationId, cancellationToken);
         var locations = await dbContext.Locations.IgnoreQueryFilters()
@@ -81,7 +81,7 @@ public sealed class BusinessAdministrationService(
 
     public async Task UpdateBusinessProfileAsync(Guid organizationId, Guid userId, UpdateBusinessProfileRequest request, CancellationToken cancellationToken)
     {
-        await EnsureOwnerAsync(organizationId, userId, cancellationToken);
+        await EnsureCompanyAdministratorAsync(organizationId, userId, cancellationToken);
         var organization = await dbContext.Organizations.IgnoreQueryFilters().SingleAsync(x => x.Id == organizationId, cancellationToken);
         var before = ToProfile(organization);
 
@@ -111,7 +111,7 @@ public sealed class BusinessAdministrationService(
 
     public async Task UpsertLocationAsync(Guid organizationId, Guid userId, UpsertLocationRequest request, CancellationToken cancellationToken)
     {
-        await EnsureOwnerAsync(organizationId, userId, cancellationToken);
+        await EnsureCompanyAdministratorAsync(organizationId, userId, cancellationToken);
         var location = request.Id is Guid locationId
             ? await dbContext.Locations.IgnoreQueryFilters().SingleAsync(x => x.OrganizationId == organizationId && x.Id == locationId, cancellationToken)
             : null;
@@ -143,7 +143,7 @@ public sealed class BusinessAdministrationService(
 
     public async Task InviteEmployeeAsync(Guid organizationId, Guid userId, InviteEmployeeRequest request, CancellationToken cancellationToken)
     {
-        await EnsureOwnerAsync(organizationId, userId, cancellationToken);
+        await EnsureCompanyAdministratorAsync(organizationId, userId, cancellationToken);
         var normalizedEmail = request.Email.Trim().ToUpperInvariant();
         if (await dbContext.Users.IgnoreQueryFilters().AnyAsync(x => x.OrganizationId == organizationId && x.NormalizedEmail == normalizedEmail, cancellationToken))
         {
@@ -195,7 +195,7 @@ public sealed class BusinessAdministrationService(
 
     public async Task SaveLaborConfigurationAsync(Guid organizationId, Guid userId, LaborConfigurationRequest request, CancellationToken cancellationToken)
     {
-        await EnsureOwnerAsync(organizationId, userId, cancellationToken);
+        await EnsureCompanyAdministratorAsync(organizationId, userId, cancellationToken);
         var config = await GetOrCreateConfigurationAsync(organizationId, cancellationToken);
         var before = ToDto(config);
         config.DefaultLaborRate = request.DefaultLaborRate;
@@ -210,7 +210,7 @@ public sealed class BusinessAdministrationService(
 
     public async Task SaveTaxConfigurationAsync(Guid organizationId, Guid userId, TaxConfigurationRequest request, CancellationToken cancellationToken)
     {
-        await EnsureOwnerAsync(organizationId, userId, cancellationToken);
+        await EnsureCompanyAdministratorAsync(organizationId, userId, cancellationToken);
         var config = await GetOrCreateConfigurationAsync(organizationId, cancellationToken);
         var before = ToDto(config);
         config.DefaultTaxRate = request.DefaultTaxRate;
@@ -221,7 +221,7 @@ public sealed class BusinessAdministrationService(
 
     public async Task SaveNotificationPreferencesAsync(Guid organizationId, Guid userId, NotificationPreferencesRequest request, CancellationToken cancellationToken)
     {
-        await EnsureOwnerAsync(organizationId, userId, cancellationToken);
+        await EnsureCompanyAdministratorAsync(organizationId, userId, cancellationToken);
         var config = await GetOrCreateConfigurationAsync(organizationId, cancellationToken);
         var before = ToDto(config);
         config.NotificationPreferencesJson = JsonSerializer.Serialize(request);
@@ -229,11 +229,16 @@ public sealed class BusinessAdministrationService(
         await dbContext.SaveChangesAsync(cancellationToken);
     }
 
-    private async Task EnsureOwnerAsync(Guid organizationId, Guid userId, CancellationToken cancellationToken)
+    private async Task EnsureCompanyAdministratorAsync(Guid organizationId, Guid userId, CancellationToken cancellationToken)
     {
-        var isOwner = await dbContext.UserRoles.IgnoreQueryFilters()
-            .AnyAsync(x => x.UserId == userId && x.Role != null && x.Role.OrganizationId == organizationId && x.Role.NormalizedName == "OWNER", cancellationToken);
-        if (isOwner)
+        var isCompanyAdministrator = await dbContext.UserRoles.IgnoreQueryFilters()
+            .AnyAsync(x =>
+                x.UserId == userId &&
+                x.Role != null &&
+                x.Role.OrganizationId == organizationId &&
+                (x.Role.NormalizedName == "OWNER" || x.Role.NormalizedName == "ADMINISTRATOR"),
+                cancellationToken);
+        if (isCompanyAdministrator)
         {
             return;
         }
@@ -245,7 +250,7 @@ public sealed class BusinessAdministrationService(
             return;
         }
 
-        throw new UnauthorizedAccessException("Only organization owners or platform administrators can manage business administration.");
+        throw new UnauthorizedAccessException("Only company owners, company administrators, or platform administrators can manage business administration.");
     }
 
     private async Task<Role> GetOrCreateRoleAsync(Guid organizationId, string roleName, CancellationToken cancellationToken)

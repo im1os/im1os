@@ -1,6 +1,7 @@
 @model iM1os.Application.TenantIdentity.BusinessDashboardSummary
 @{
     var isOwner = User.IsInRole("Owner");
+    var isCompanyAdmin = User.IsInRole("Administrator");
     var isPlatformAdmin = User.IsInRole("Platform Administrator");
     var organizationId = ViewBag.OrganizationId as Guid?;
 }
@@ -15,7 +16,7 @@
         <h1>@Model.BusinessName</h1>
         <p class="subtle">@(Model.SetupProgress >= 100 ? "Your company is now ready to begin operations." : "Finish company administration to prepare this shop for operations.")</p>
     </div>
-    @if (isOwner || isPlatformAdmin)
+    @if (isOwner || isCompanyAdmin || isPlatformAdmin)
     {
         <a class="primary-action" asp-controller="Business" asp-action="Administration" asp-route-organizationId="@organizationId">Company Administration</a>
     }
@@ -35,7 +36,7 @@
     </article>
     <article class="page-band">
         <h2>Quick Actions</h2>
-        @if (isOwner || isPlatformAdmin)
+        @if (isOwner || isCompanyAdmin || isPlatformAdmin)
         {
             <div class="action-row">
                 <a class="secondary-action" asp-controller="Business" asp-action="Administration" asp-route-organizationId="@organizationId" asp-fragment="employees">Invite Employee</a>
@@ -46,7 +47,7 @@
         }
         else
         {
-            <p>Administration actions are available to company owners.</p>
+            <p>Administration actions are available to company owners and administrators.</p>
         }
     </article>
     <article class="page-band">
