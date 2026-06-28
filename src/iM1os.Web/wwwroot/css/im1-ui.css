@@ -520,6 +520,7 @@
   padding: 0 clamp(var(--im1-space-4), 4vw, 56px);
   position: sticky;
   top: 0;
+  transition: transform 180ms ease;
   z-index: 30;
 }
 
@@ -879,6 +880,10 @@
 
   .marketing-header {
     grid-template-columns: 1fr auto;
+  }
+
+  .marketing-header.is-hidden-on-scroll {
+    transform: translateY(-100%);
   }
 
   .marketing-nav {
