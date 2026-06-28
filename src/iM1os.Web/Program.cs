@@ -29,8 +29,9 @@ builder.Services
         options.SlidingExpiration = true;
         options.Events.OnRedirectToLogin = context =>
         {
-            var loginPath = context.Request.Path.StartsWithSegments("/Platform")
-                ? "/Platform/Login"
+            var loginPath = context.Request.Path.StartsWithSegments("/admin") ||
+                context.Request.Path.StartsWithSegments("/Platform")
+                ? "/admin/login"
                 : "/Account/Login";
             context.Response.Redirect($"{loginPath}?ReturnUrl={Uri.EscapeDataString(context.Request.PathBase + context.Request.Path + context.Request.QueryString)}");
             return Task.CompletedTask;
@@ -52,6 +53,18 @@ app.UseAuthentication();
 app.UseAuthorization();
 
 app.MapHealthChecks("/health");
+app.MapControllerRoute(
+    name: "admin-marketing",
+    pattern: "admin/marketing/{action=Index}/{id?}",
+    defaults: new { controller = "MarketingAdmin" });
+app.MapControllerRoute(
+    name: "admin-login",
+    pattern: "admin/login",
+    defaults: new { controller = "Platform", action = "Login" });
+app.MapControllerRoute(
+    name: "admin",
+    pattern: "admin/{action=Dashboard}/{id?}",
+    defaults: new { controller = "Platform" });
 app.MapControllerRoute(
     name: "default",
     pattern: "{controller=Home}/{action=Index}/{id?}");
