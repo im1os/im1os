@@ -352,6 +352,26 @@ window.IM1.activateTabReturnFields = function activateTabReturnFields(root) {
   });
 };
 
+window.IM1.activateTaxExemptFields = function activateTaxExemptFields(root) {
+  const scope = root || document;
+
+  scope.querySelectorAll("[data-tax-exempt-toggle]").forEach((toggle) => {
+    const form = toggle.closest("form");
+    const certificateNumber = form?.querySelector("[data-tax-exempt-number]");
+    if (!certificateNumber) {
+      return;
+    }
+
+    const render = () => {
+      certificateNumber.required = toggle.checked;
+      certificateNumber.setAttribute("aria-required", toggle.checked ? "true" : "false");
+    };
+
+    toggle.addEventListener("change", render);
+    render();
+  });
+};
+
 document.addEventListener("keydown", (event) => {
   if (event.key !== "Escape") {
     return;
@@ -376,4 +396,5 @@ document.addEventListener("DOMContentLoaded", () => {
   window.IM1.activateMarketingHeader();
   window.IM1.activateCompensationForms(document);
   window.IM1.activateTabReturnFields(document);
+  window.IM1.activateTaxExemptFields(document);
 });

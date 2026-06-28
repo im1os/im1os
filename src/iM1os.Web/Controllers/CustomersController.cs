@@ -32,7 +32,17 @@ public sealed class CustomersController(ICustomerCrmService customerService) : C
     [ValidateAntiForgeryToken]
     public async Task<IActionResult> Create(CreateCustomerRequest request, CancellationToken cancellationToken)
     {
-        var customerId = await customerService.CreateCustomerAsync(OrganizationId(), UserId(), request, RemoteIp(), cancellationToken);
+        Guid customerId;
+        try
+        {
+            customerId = await customerService.CreateCustomerAsync(OrganizationId(), UserId(), request, RemoteIp(), cancellationToken);
+        }
+        catch (InvalidOperationException ex)
+        {
+            TempData["CustomerError"] = ex.Message;
+            return RedirectToAction(nameof(New));
+        }
+
         return RedirectToAction(nameof(Detail), new { customerId });
     }
 
@@ -40,7 +50,16 @@ public sealed class CustomersController(ICustomerCrmService customerService) : C
     [ValidateAntiForgeryToken]
     public async Task<IActionResult> Update(UpdateCustomerRequest request, string? returnTab, CancellationToken cancellationToken)
     {
-        await customerService.UpdateCustomerAsync(OrganizationId(), UserId(), request, RemoteIp(), cancellationToken);
+        try
+        {
+            await customerService.UpdateCustomerAsync(OrganizationId(), UserId(), request, RemoteIp(), cancellationToken);
+        }
+        catch (InvalidOperationException ex)
+        {
+            TempData["CustomerError"] = ex.Message;
+            return RedirectToDetail(request.CustomerId, returnTab);
+        }
+
         return RedirectToDetail(request.CustomerId, returnTab);
     }
 

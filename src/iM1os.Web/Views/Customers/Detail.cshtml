@@ -36,6 +36,11 @@
 
 @await Html.PartialAsync("IM1Page", page)
 
+@if (TempData["CustomerError"] is string errorMessage)
+{
+    <div class="form-alert error">@errorMessage</div>
+}
+
 <section class="im1-page">
     @await Html.PartialAsync("IM1Tabs", tabs)
 
@@ -116,7 +121,7 @@
                     <label>Anniversary <input name="Anniversary" value="@Model.Anniversary?.ToString("yyyy-MM-dd")" type="date" /></label>
                     <label>Customer Since <input value="@((Model.CustomerSince ?? DateOnly.FromDateTime(Model.CreatedAtUtc.DateTime)).ToString("yyyy-MM-dd"))" readonly /></label>
                     <label>Last Purchase <input value="@(Model.LastPurchaseAtUtc?.ToString("yyyy-MM-dd") ?? "None")" readonly /></label>
-                    <label>Tax Exempt Number <input name="TaxExemptNumber" value="@Model.TaxExemptNumber" maxlength="50" /></label>
+                    <label>Reseller Tax Certificate Number <input name="TaxExemptNumber" value="@Model.TaxExemptNumber" maxlength="50" data-tax-exempt-number /></label>
                     <label>Credit Limit <input name="CreditLimit" value="@Model.CreditLimit" type="number" step="0.01" min="0" /></label>
                     <div class="im1-checkbox-group">
                         <span class="im1-checkbox-group-title">Communication & Tax Flags</span>
@@ -124,7 +129,7 @@
                             <label class="im1-checkbox"><input name="AllowEmailMarketing" type="checkbox" value="true" checked="@Model.AllowEmailMarketing" /> Email Marketing</label><input name="AllowEmailMarketing" type="hidden" value="false" />
                             <label class="im1-checkbox"><input name="AllowSmsMarketing" type="checkbox" value="true" checked="@Model.AllowSmsMarketing" /> SMS Marketing</label><input name="AllowSmsMarketing" type="hidden" value="false" />
                             <label class="im1-checkbox"><input name="AllowPhoneCalls" type="checkbox" value="true" checked="@Model.AllowPhoneCalls" /> Phone Calls</label><input name="AllowPhoneCalls" type="hidden" value="false" />
-                            <label class="im1-checkbox"><input name="TaxExempt" type="checkbox" value="true" checked="@Model.TaxExempt" /> Tax Exempt</label><input name="TaxExempt" type="hidden" value="false" />
+                            <label class="im1-checkbox"><input name="TaxExempt" type="checkbox" value="true" checked="@Model.TaxExempt" data-tax-exempt-toggle /> Tax Exempt</label><input name="TaxExempt" type="hidden" value="false" />
                         </div>
                     </div>
                     <label class="im1-full-span">Notes <textarea name="SummaryNotes" rows="3">@Model.SummaryNotes</textarea></label>

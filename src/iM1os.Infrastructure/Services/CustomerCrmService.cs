@@ -156,6 +156,7 @@ public sealed class CustomerCrmService(
     public async Task<Guid> CreateCustomerAsync(Guid organizationId, Guid actorUserId, CreateCustomerRequest request, string? ipAddress, CancellationToken cancellationToken)
     {
         var now = dateTimeProvider.UtcNow;
+        var taxExemptNumber = ValidateTaxExemptNumber(request.TaxExempt, request.TaxExemptNumber);
         var customer = new Customer
         {
             OrganizationId = organizationId,
@@ -181,7 +182,7 @@ public sealed class CustomerCrmService(
             AllowSmsMarketing = request.AllowSmsMarketing,
             AllowPhoneCalls = request.AllowPhoneCalls,
             TaxExempt = request.TaxExempt,
-            TaxExemptNumber = Clean(request.TaxExemptNumber),
+            TaxExemptNumber = taxExemptNumber,
             DateOfBirth = request.DateOfBirth,
             Anniversary = request.Anniversary,
             PreferredLanguage = Clean(request.PreferredLanguage),
@@ -221,6 +222,7 @@ public sealed class CustomerCrmService(
     {
         var customer = await LoadCustomerAsync(organizationId, request.CustomerId, cancellationToken);
         var before = Snapshot(customer);
+        var taxExemptNumber = ValidateTaxExemptNumber(request.TaxExempt, request.TaxExemptNumber);
         customer.DisplayName = BuildDisplayName(request.FirstName, request.MiddleName, request.LastName, request.CompanyName, request.Email, request.MobilePhone ?? request.HomePhone ?? request.WorkPhone);
         customer.FirstName = Clean(request.FirstName);
         customer.MiddleName = Clean(request.MiddleName);
@@ -242,7 +244,7 @@ public sealed class CustomerCrmService(
         customer.AllowSmsMarketing = request.AllowSmsMarketing;
         customer.AllowPhoneCalls = request.AllowPhoneCalls;
         customer.TaxExempt = request.TaxExempt;
-        customer.TaxExemptNumber = Clean(request.TaxExemptNumber);
+        customer.TaxExemptNumber = taxExemptNumber;
         customer.DateOfBirth = request.DateOfBirth;
         customer.Anniversary = request.Anniversary;
         customer.PreferredLanguage = Clean(request.PreferredLanguage);
@@ -491,6 +493,17 @@ public sealed class CustomerCrmService(
     }
 
     private static string Required(string value, string fieldName) => string.IsNullOrWhiteSpace(value) ? throw new InvalidOperationException($"{fieldName} is required.") : value.Trim();
+
+    private static string? ValidateTaxExemptNumber(bool taxExempt, string? taxExemptNumber)
+    {
+        var cleanNumber = Clean(taxExemptNumber);
+        if (taxExempt && string.IsNullOrWhiteSpace(cleanNumber))
+        {
+            throw new InvalidOperationException("Reseller tax certificate number is required when Tax Exempt is checked.");
+        }
+
+        return taxExempt ? cleanNumber : null;
+    }
 
     private static string? Clean(string? value) => string.IsNullOrWhiteSpace(value) ? null : value.Trim();
 }
