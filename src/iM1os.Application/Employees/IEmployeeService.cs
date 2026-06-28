@@ -12,6 +12,8 @@ public interface IEmployeeService
 
     Task SaveCompensationAsync(Guid organizationId, Guid actorUserId, SaveEmployeeCompensationRequest request, string? ipAddress, CancellationToken cancellationToken);
 
+    Task DeleteCompensationAsync(Guid organizationId, Guid actorUserId, DeleteEmployeeCompensationRequest request, string? ipAddress, CancellationToken cancellationToken);
+
     Task SavePinAsync(Guid organizationId, Guid actorUserId, SaveEmployeePinRequest request, string? ipAddress, CancellationToken cancellationToken);
 
     Task SavePermissionOverridesAsync(Guid organizationId, Guid actorUserId, SaveEmployeePermissionOverridesRequest request, string? ipAddress, CancellationToken cancellationToken);

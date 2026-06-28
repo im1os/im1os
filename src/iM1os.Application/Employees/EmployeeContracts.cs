@@ -132,6 +132,8 @@ public sealed record SaveEmployeeCompensationRequest(
     DateOnly? EffectiveEndDate,
     string? Notes);
 
+public sealed record DeleteEmployeeCompensationRequest(Guid EmployeeId, Guid CompensationId);
+
 public sealed record SaveEmployeePinRequest(Guid EmployeeId, string Pin);
 
 public sealed record SaveEmployeePermissionOverridesRequest(

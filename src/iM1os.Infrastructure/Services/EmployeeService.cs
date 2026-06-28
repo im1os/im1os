@@ -234,6 +234,31 @@ public sealed class EmployeeService(
         await dbContext.SaveChangesAsync(cancellationToken);
     }
 
+    public async Task DeleteCompensationAsync(Guid organizationId, Guid actorUserId, DeleteEmployeeCompensationRequest request, string? ipAddress, CancellationToken cancellationToken)
+    {
+        await EnsureCanManageEmployeesAsync(organizationId, actorUserId, cancellationToken);
+        var compensation = await dbContext.EmployeeCompensations.IgnoreQueryFilters()
+            .SingleAsync(x =>
+                x.OrganizationId == organizationId &&
+                x.EmployeeId == request.EmployeeId &&
+                x.Id == request.CompensationId &&
+                x.DeletedAtUtc == null,
+                cancellationToken);
+
+        compensation.DeletedAtUtc = dateTimeProvider.UtcNow;
+        AddActivity(organizationId, request.EmployeeId, actorUserId, "CompensationDeleted", "Employee compensation entry deleted", ipAddress, new
+        {
+            compensation.PayrollType,
+            compensation.HourlyRate,
+            compensation.SalaryAmount,
+            compensation.WorkOrderCommissionRate,
+            compensation.SalesCommissionRate,
+            compensation.EffectiveStartDate,
+            compensation.EffectiveEndDate
+        });
+        await dbContext.SaveChangesAsync(cancellationToken);
+    }
+
     public async Task SavePinAsync(Guid organizationId, Guid actorUserId, SaveEmployeePinRequest request, string? ipAddress, CancellationToken cancellationToken)
     {
         await EnsureCanManageEmployeesAsync(organizationId, actorUserId, cancellationToken);

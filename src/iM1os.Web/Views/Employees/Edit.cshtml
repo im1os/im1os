@@ -123,12 +123,13 @@
                         <th>Work Order Commission</th>
                         <th>Sales Commission</th>
                         <th>Effective Dates</th>
+                        <th>Actions</th>
                     </tr>
                 </thead>
                 <tbody>
                     @if (employee.Compensation.Count == 0)
                     {
-                        <tr><td colspan="6">No compensation records found.</td></tr>
+                        <tr><td colspan="7">No compensation records found.</td></tr>
                     }
                     else
                     {
@@ -141,6 +142,14 @@
                                 <td>@(compensation.WorkOrderCommissionRate?.ToString("P2") ?? "")</td>
                                 <td>@(compensation.SalesCommissionRate?.ToString("P2") ?? "")</td>
                                 <td>@compensation.EffectiveStartDate.ToString("yyyy-MM-dd") - @(compensation.EffectiveEndDate?.ToString("yyyy-MM-dd") ?? "Current")</td>
+                                <td>
+                                    <form asp-action="DeleteCompensation" method="post" onsubmit="return confirm('Delete this compensation entry?');">
+                                        <input type="hidden" name="EmployeeId" value="@employee.Id" />
+                                        <input type="hidden" name="CompensationId" value="@compensation.Id" />
+                                        <input type="hidden" name="returnTab" value="compensation" />
+                                        <button class="im1-button im1-button-danger" type="submit">Delete</button>
+                                    </form>
+                                </td>
                             </tr>
                         }
                     }

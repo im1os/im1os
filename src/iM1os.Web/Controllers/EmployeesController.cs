@@ -123,6 +123,21 @@ public sealed class EmployeesController(IEmployeeService employeeService) : Cont
 
     [HttpPost]
     [ValidateAntiForgeryToken]
+    public async Task<IActionResult> DeleteCompensation(DeleteEmployeeCompensationRequest request, string? returnTab, CancellationToken cancellationToken)
+    {
+        try
+        {
+            await employeeService.DeleteCompensationAsync(OrganizationId(), UserId(), request, RemoteIp(), cancellationToken);
+            return RedirectToEdit(request.EmployeeId, returnTab);
+        }
+        catch (UnauthorizedAccessException)
+        {
+            return RedirectToAction("AccessDenied", "Business");
+        }
+    }
+
+    [HttpPost]
+    [ValidateAntiForgeryToken]
     public async Task<IActionResult> Pin(SaveEmployeePinRequest request, string? returnTab, CancellationToken cancellationToken)
     {
         try
