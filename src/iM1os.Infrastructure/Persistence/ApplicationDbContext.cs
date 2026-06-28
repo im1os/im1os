@@ -196,6 +196,13 @@ public sealed class ApplicationDbContext(
             entity.Property(x => x.Department).HasMaxLength(120);
             entity.Property(x => x.EmploymentType).HasMaxLength(80).IsRequired();
             entity.Property(x => x.Status).HasMaxLength(80).IsRequired();
+            entity.Property(x => x.IsTechnician).HasDefaultValue(false);
+            entity.Property(x => x.IsServiceAdvisor).HasDefaultValue(false);
+            entity.Property(x => x.IsSales).HasDefaultValue(false);
+            entity.Property(x => x.IsParts).HasDefaultValue(false);
+            entity.Property(x => x.IsAccounting).HasDefaultValue(false);
+            entity.Property(x => x.IsInventory).HasDefaultValue(false);
+            entity.Property(x => x.IsManager).HasDefaultValue(false);
             entity.HasQueryFilter(x => x.DeletedAtUtc == null && (tenantProvider.CurrentOrganizationId == null || x.OrganizationId == tenantProvider.CurrentOrganizationId));
         });
 

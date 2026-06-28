@@ -134,6 +134,13 @@ public sealed class EmployeeService(
         employee.Status = Required(request.Status, "Status");
         employee.HireDate = request.HireDate;
         employee.TerminationDate = request.TerminationDate;
+        employee.IsTechnician = request.IsTechnician;
+        employee.IsServiceAdvisor = request.IsServiceAdvisor;
+        employee.IsSales = request.IsSales;
+        employee.IsParts = request.IsParts;
+        employee.IsAccounting = request.IsAccounting;
+        employee.IsInventory = request.IsInventory;
+        employee.IsManager = request.IsManager;
 
         if (employee.LoginAccount is not null)
         {
@@ -478,6 +485,13 @@ public sealed class EmployeeService(
             employee.Status,
             employee.HireDate,
             employee.TerminationDate,
+            employee.IsTechnician,
+            employee.IsServiceAdvisor,
+            employee.IsSales,
+            employee.IsParts,
+            employee.IsAccounting,
+            employee.IsInventory,
+            employee.IsManager,
             loginAccount,
             compensation,
             permissionStates,
@@ -757,7 +771,14 @@ public sealed class EmployeeService(
         employee.EmploymentType,
         employee.Status,
         employee.HireDate,
-        employee.TerminationDate
+        employee.TerminationDate,
+        employee.IsTechnician,
+        employee.IsServiceAdvisor,
+        employee.IsSales,
+        employee.IsParts,
+        employee.IsAccounting,
+        employee.IsInventory,
+        employee.IsManager
     };
 
     private static string NewToken() => Convert.ToBase64String(RandomNumberGenerator.GetBytes(32)).TrimEnd('=').Replace('+', '-').Replace('/', '_');

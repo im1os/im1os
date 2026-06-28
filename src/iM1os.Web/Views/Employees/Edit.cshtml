@@ -70,6 +70,13 @@
                 </label>
                 <label>Hire Date <input name="HireDate" type="date" value="@employee.HireDate?.ToString("yyyy-MM-dd")" /></label>
                 <label>Termination Date <input name="TerminationDate" type="date" value="@employee.TerminationDate?.ToString("yyyy-MM-dd")" /></label>
+                <label class="im1-checkbox"><input name="IsTechnician" type="checkbox" value="true" checked="@employee.IsTechnician" /><input name="IsTechnician" type="hidden" value="false" /> Technician Dropdown</label>
+                <label class="im1-checkbox"><input name="IsServiceAdvisor" type="checkbox" value="true" checked="@employee.IsServiceAdvisor" /><input name="IsServiceAdvisor" type="hidden" value="false" /> Service Advisor Dropdown</label>
+                <label class="im1-checkbox"><input name="IsSales" type="checkbox" value="true" checked="@employee.IsSales" /><input name="IsSales" type="hidden" value="false" /> Sales Dropdown</label>
+                <label class="im1-checkbox"><input name="IsParts" type="checkbox" value="true" checked="@employee.IsParts" /><input name="IsParts" type="hidden" value="false" /> Parts Dropdown</label>
+                <label class="im1-checkbox"><input name="IsAccounting" type="checkbox" value="true" checked="@employee.IsAccounting" /><input name="IsAccounting" type="hidden" value="false" /> Accounting Dropdown</label>
+                <label class="im1-checkbox"><input name="IsInventory" type="checkbox" value="true" checked="@employee.IsInventory" /><input name="IsInventory" type="hidden" value="false" /> Inventory Dropdown</label>
+                <label class="im1-checkbox"><input name="IsManager" type="checkbox" value="true" checked="@employee.IsManager" /><input name="IsManager" type="hidden" value="false" /> Manager Dropdown</label>
                 @if (login is not null)
                 {
                     <label>Company Role

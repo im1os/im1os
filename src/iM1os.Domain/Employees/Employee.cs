@@ -31,6 +31,20 @@ public sealed class Employee : AuditableEntity, IOrganizationOwned
 
     public DateOnly? TerminationDate { get; set; }
 
+    public bool IsTechnician { get; set; }
+
+    public bool IsServiceAdvisor { get; set; }
+
+    public bool IsSales { get; set; }
+
+    public bool IsParts { get; set; }
+
+    public bool IsAccounting { get; set; }
+
+    public bool IsInventory { get; set; }
+
+    public bool IsManager { get; set; }
+
     public DateTimeOffset? DeletedAtUtc { get; set; }
 
     public ApplicationUser? LoginAccount { get; set; }

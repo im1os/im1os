@@ -36,6 +36,13 @@ public sealed record EmployeeEditor(
     string Status,
     DateOnly? HireDate,
     DateOnly? TerminationDate,
+    bool IsTechnician,
+    bool IsServiceAdvisor,
+    bool IsSales,
+    bool IsParts,
+    bool IsAccounting,
+    bool IsInventory,
+    bool IsManager,
     EmployeeLoginAccount? LoginAccount,
     IReadOnlyCollection<EmployeeCompensationItem> Compensation,
     IReadOnlyCollection<EmployeePermissionState> Permissions,
@@ -112,6 +119,13 @@ public sealed record UpdateEmployeeRequest(
     string Status,
     DateOnly? HireDate,
     DateOnly? TerminationDate,
+    bool IsTechnician,
+    bool IsServiceAdvisor,
+    bool IsSales,
+    bool IsParts,
+    bool IsAccounting,
+    bool IsInventory,
+    bool IsManager,
     string? RoleName);
 
 public sealed record EnableEmployeeLoginRequest(
