@@ -393,6 +393,65 @@ td a {
   min-height: 0;
 }
 
+.admin-tabs {
+  margin-top: 24px;
+}
+
+.tab-list {
+  background: #ffffff;
+  border: 1px solid #d9e0e7;
+  border-radius: 8px;
+  display: flex;
+  gap: 4px;
+  margin-bottom: 16px;
+  overflow-x: auto;
+  padding: 6px;
+}
+
+.tab-button {
+  background: transparent;
+  border: 0;
+  border-radius: 6px;
+  color: #536173;
+  cursor: pointer;
+  flex: 0 0 auto;
+  font-family: inherit;
+  font-size: 14px;
+  font-weight: 800;
+  min-height: 40px;
+  padding: 0 14px;
+}
+
+.tab-button:hover {
+  background: #edf1f5;
+  color: #18202a;
+}
+
+.tab-button.is-active {
+  background: #18202a;
+  color: #ffffff;
+}
+
+.tab-panel {
+  display: none;
+}
+
+.tab-panel.is-active {
+  display: block;
+}
+
+.form-grid-spaced {
+  margin-top: 24px;
+}
+
+.admin-table {
+  margin-top: 16px;
+}
+
+.admin-table table {
+  min-width: 760px;
+}
+
 .compact-list {
   display: grid;
   gap: 8px;
@@ -444,6 +503,10 @@ td a {
 
   .connector-grid {
     grid-template-columns: 1fr;
+  }
+
+  .tab-list {
+    flex-wrap: wrap;
   }
 }
 

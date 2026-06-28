@@ -1,21 +1,28 @@
+@{
+    var isCustomerContext = User.FindFirst("auth_context")?.Value == "tenant";
+    var productName = isCustomerContext ? "iM1 OS" : "IM1 Platform";
+    var brandController = isCustomerContext ? "Business" : "Platform";
+    var brandAction = isCustomerContext ? "Dashboard" : "Dashboard";
+}
 <!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>@ViewData["Title"] - IM1 Platform</title>
+    <title>@ViewData["Title"] - @productName</title>
+    <link rel="stylesheet" href="~/css/im1-ui.css" asp-append-version="true" />
     <link rel="stylesheet" href="~/css/site.css" asp-append-version="true" />
 </head>
 <body>
     <header class="topbar">
-        <a class="brand" asp-controller="Platform" asp-action="Dashboard" aria-label="IM1 Platform">
+        <a class="brand" asp-controller="@brandController" asp-action="@brandAction" aria-label="@productName">
             <span class="brand-mark">
                 <img src="~/images/im1-logo.png" asp-append-version="true" alt="" />
             </span>
-            <span>IM1 Platform</span>
+            <span>@productName</span>
         </a>
         <nav>
-            @if (User.FindFirst("auth_context")?.Value == "tenant")
+            @if (isCustomerContext)
             {
                 <a asp-controller="Business" asp-action="Dashboard">Business Dashboard</a>
                 <a asp-controller="Business" asp-action="Administration">Business Admin</a>
@@ -29,7 +36,7 @@
             {
                 <a asp-controller="Platform" asp-action="Dashboard">Dashboard</a>
                 <a asp-controller="Platform" asp-action="Tenants">Tenants</a>
-                <a asp-controller="Platform" asp-action="CreateTenant">Create Instance</a>
+                <a asp-controller="Platform" asp-action="CreateTenant">Create Tenant</a>
                 <a href="/health">Health</a>
                 @if (User.Identity?.IsAuthenticated == true)
                 {
@@ -43,6 +50,8 @@
     <main class="shell">
         @RenderBody()
     </main>
+    <script src="~/js/im1-ui.js" asp-append-version="true"></script>
+    <script src="~/js/site.js" asp-append-version="true"></script>
     @await RenderSectionAsync("Scripts", required: false)
 </body>
 </html>

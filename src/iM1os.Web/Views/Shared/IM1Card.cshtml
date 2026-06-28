@@ -1,0 +1,27 @@
+@model IM1CardModel
+
+<article class="im1-card">
+    @if (!string.IsNullOrWhiteSpace(Model.Eyebrow))
+    {
+        <span class="im1-card-eyebrow">@Model.Eyebrow</span>
+    }
+    <h2 class="im1-card-title">@Model.Title</h2>
+    @if (!string.IsNullOrWhiteSpace(Model.Value))
+    {
+        <strong class="im1-card-value">@Model.Value</strong>
+    }
+    @if (!string.IsNullOrWhiteSpace(Model.Description))
+    {
+        <p class="im1-card-description">@Model.Description</p>
+    }
+    @Model.Content
+    @if (Model.Actions?.Count > 0)
+    {
+        <div class="im1-card-actions">
+            @foreach (var action in Model.Actions)
+            {
+                <a class="im1-button im1-button-@action.Kind" href="@action.Url">@action.Label</a>
+            }
+        </div>
+    }
+</article>

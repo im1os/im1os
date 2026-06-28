@@ -141,7 +141,11 @@ AI consumes the data, events, recommendations, and permissions produced by the l
 
 ## Tenancy
 
-The tenant is `Organization`. `Organization` is the security boundary.
+Organization is the primary tenant and security boundary within iM1 Platform. Every Organization represents a single customer business and owns all operational data, users, subscriptions, integrations, and locations. All operational records are scoped by `OrganizationId`.
+
+Location represents a physical or operational site within an Organization, such as a storefront, service center, warehouse, mobile trailer, or remote office. Location-specific data additionally includes `LocationId`, enabling multi-location operations while maintaining a single tenant boundary.
+
+The iM1 Platform is the global SaaS control plane responsible for provisioning Organizations, authentication, licensing, billing, monitoring, deployments, and platform-wide administration. It contains no customer operational data except that required to manage Organizations.
 
 Platform Administration sits above `Organization`. Platform-level users and services may manage tenants, lifecycle, billing, feature access, health, support, and analytics, but tenant-owned business data remains protected by organization boundaries.
 
@@ -160,6 +164,38 @@ An organization owns:
 Users may belong to multiple organizations. Roles and permissions are scoped to an organization. Location permissions exist inside an organization for workflows that should be limited to one or more physical stores or service locations.
 
 Every tenant-owned table must contain `OrganizationId`. Most operational tables should also contain `LocationId` because service, parts, receiving, repair, and invoicing workflows usually happen at a specific location.
+
+## UI Terminology
+
+iM1 Platform is a multi-tenant SaaS application, but customers should never be exposed to platform or tenancy terminology.
+
+Internal architecture uses `Organization` as the canonical tenant entity. Use `OrganizationId` throughout the database, APIs, permissions, services, and business logic. All tenant isolation is enforced through `OrganizationId`.
+
+Platform Administration is an internal control plane used only by iM1 administrators. Platform Admin screens may use the term Organization because they manage customer organizations across the platform.
+
+Customer Administration must not expose the terms Tenant, Organization, or Platform. Present the Organization as Business throughout customer-facing UI.
+
+Customer-facing examples include:
+
+- Business Profile
+- Business Settings
+- Business Locations
+- Business Users
+- Business Branding
+- Business Hours
+- Business Subscription
+
+Customers should experience iM1 OS as software built for their business, not as one tenant within a larger SaaS platform.
+
+This is a presentation-layer concern only. Do not create separate Business models or duplicate database entities. Business UI maps directly to the `Organization` entity.
+
+## iM1 UI
+
+iM1 UI is the reusable application framework for iM1 OS and IM1 Platform surfaces. It owns theme tokens, the application shell, core components, data grid behavior, service-layer UI patterns, and permission-aware actions.
+
+Business modules should be composed from iM1 UI primitives rather than hand-built screen-specific UI. Third-party UI dependencies must be wrapped by iM1 UI and must not be imported directly by modules or pages.
+
+The detailed iM1 UI contract lives at [docs/specs/IM1_UI_FRAMEWORK_SPEC.md](specs/IM1_UI_FRAMEWORK_SPEC.md).
 
 ## Core Product Areas
 

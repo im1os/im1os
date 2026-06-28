@@ -11,7 +11,7 @@
         <p class="subtle">@Model.Tenant.Status - @Model.Tenant.SubscriptionPlan - @Model.Tenant.HealthStatus</p>
     </div>
     <div class="action-row">
-        <a class="primary-action" asp-action="EditTenant" asp-route-organizationId="@Model.Tenant.OrganizationId">Edit Instance</a>
+        <a class="primary-action" asp-action="EditTenant" asp-route-organizationId="@Model.Tenant.OrganizationId">Edit Tenant</a>
         <a class="secondary-action" asp-controller="Business" asp-action="Dashboard" asp-route-organizationId="@Model.Tenant.OrganizationId">Open Tenant Dashboard</a>
         <a class="secondary-action" asp-controller="Business" asp-action="Administration" asp-route-organizationId="@Model.Tenant.OrganizationId">Tenant Admin</a>
         <a class="secondary-action" asp-action="Tenants">Tenant Manager</a>

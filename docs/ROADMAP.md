@@ -4,7 +4,7 @@ Phase 1 establishes the SaaS platform foundation and the service and parts opera
 
 Phase 1A should define and begin the IM1 Platform control plane only where needed for onboarding and operating tenants: Tenant Manager scope, tenant lifecycle states, provisioning state, plan/entitlement model, tenant health indicators, and platform audit requirements.
 
-Phase 2 should add module infrastructure for service and parts operations: module discovery conventions, permissions per module, migration ownership, API grouping, UI navigation extension points, audit event conventions, background job conventions, and tenant-isolation test requirements.
+Phase 2 should add the iM1 UI framework and module infrastructure before additional business screens grow: theme tokens, application shell, core UI components, IM1DataGrid, service-layer UI patterns, module discovery conventions, permissions per module, migration ownership, API grouping, UI navigation extension points, audit event conventions, background job conventions, and tenant-isolation test requirements.
 
 Phase 3 should begin core service workflow modules only after module standards, security reviews, and database ownership rules are accepted. The first business modules should support customer intake, vehicles, work orders, diagnosis, estimates, and customer communication.
 
@@ -19,6 +19,8 @@ Phase 7 should grow network effects: benchmark-safe shared intelligence, optiona
 Optional future modules may include vehicle sales, unit inventory, F&I, deal jackets, and floor planning. These are not core platform phases and must not shape the foundation.
 
 See `docs/DOMAIN_MODEL.md` and `docs/MODULE_DEFINITIONS.md` before designing or implementing business modules.
+
+The iM1 UI framework is now a foundation prerequisite for module UI. See `docs/specs/IM1_UI_FRAMEWORK_SPEC.md`. Business modules should compose iM1 UI primitives and must not directly consume third-party UI libraries.
 
 Before rebuilding a module, study the legacy implementation and update `docs/LEGACY_FUNCTIONAL_SPEC.md`. Architecture proposals should be captured in `docs/FOUNDATION_ARCHITECTURE_PROPOSAL.md` or a module-specific proposal before implementation.
 

@@ -75,7 +75,7 @@ The Platform runs the SaaS. The OS runs the shop. The Network connects everyone.
 
 Tenant Manager is the first major IM1 Platform module.
 
-It should act as Mission Control for every IM1OS instance.
+It should act as Mission Control for every IM1OS tenant.
 
 Tenant list fields may include:
 

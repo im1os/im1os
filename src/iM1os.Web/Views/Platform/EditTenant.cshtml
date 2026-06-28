@@ -6,7 +6,7 @@
 
 <section class="dashboard-header">
     <div>
-        <p class="eyebrow">Edit instance</p>
+        <p class="eyebrow">Edit tenant</p>
         <h1>@Model.OrganizationName</h1>
         <p class="subtle">Manage tenant lifecycle, billing status, plan, health, and version metadata.</p>
     </div>
@@ -57,6 +57,6 @@
             </select>
         </label>
         <label>Trial Expires At UTC <input asp-for="TrialExpiresAtUtc" type="datetime-local" /></label>
-        <button class="primary-action" type="submit">Save Instance</button>
+        <button class="primary-action" type="submit">Save Tenant</button>
     </form>
 </section>

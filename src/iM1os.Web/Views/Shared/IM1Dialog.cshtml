@@ -1,0 +1,23 @@
+@model IM1DialogModel
+
+<div class="im1-dialog-backdrop" id="@Model.Id" hidden>
+    <section class="im1-dialog im1-dialog-@Model.Size" role="dialog" aria-modal="true" aria-labelledby="@($"{Model.Id}-title")">
+        <header class="im1-dialog-header">
+            <div>
+                <h2 id="@($"{Model.Id}-title")">@Model.Title</h2>
+                @if (!string.IsNullOrWhiteSpace(Model.Description))
+                {
+                    <p>@Model.Description</p>
+                }
+            </div>
+            <button class="im1-dialog-close" type="button" data-dialog-close aria-label="Close">X</button>
+        </header>
+        <div class="im1-dialog-body">
+            @Model.Content
+        </div>
+        <footer class="im1-dialog-actions">
+            <button class="im1-button im1-button-secondary" type="button" data-dialog-close>@Model.SecondaryActionLabel</button>
+            <button class="im1-button im1-button-primary" type="submit">@Model.PrimaryActionLabel</button>
+        </footer>
+    </section>
+</div>

@@ -1,0 +1,40 @@
+@model IM1ToolbarModel
+
+<form class="im1-toolbar" method="@Model.Method" action="@Model.FormAction">
+    @if (!string.IsNullOrWhiteSpace(Model.SearchPlaceholder))
+    {
+        <div class="im1-toolbar-main">
+            <input class="im1-toolbar-search" name="@Model.SearchName" value="@Model.SearchValue" placeholder="@Model.SearchPlaceholder" />
+        </div>
+    }
+    else
+    {
+        <div class="im1-toolbar-main"></div>
+    }
+
+    @if (Model.ShowRefresh)
+    {
+        <button class="im1-button im1-button-secondary" type="submit">Refresh</button>
+    }
+    @if (Model.ShowFilters)
+    {
+        <button class="im1-button im1-button-secondary" type="button">Filters</button>
+    }
+    @if (Model.ShowExport)
+    {
+        <button class="im1-button im1-button-secondary" type="button">Export</button>
+    }
+
+    @foreach (var action in Model.Actions ?? Array.Empty<IM1ActionModel>())
+    {
+        var buttonClass = $"im1-button im1-button-{action.Kind}";
+        if (!string.IsNullOrWhiteSpace(action.Url))
+        {
+            <a class="@buttonClass @(action.IsEnabled ? null : "is-disabled")" href="@action.Url" aria-disabled="@(!action.IsEnabled)">@action.Label</a>
+        }
+        else
+        {
+            <button class="@buttonClass" type="button" disabled="@(!action.IsEnabled)">@action.Label</button>
+        }
+    }
+</form>

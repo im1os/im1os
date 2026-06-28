@@ -25,5 +25,7 @@ Core product assumptions:
 - Location permissions exist inside an organization.
 - Every tenant-owned table must contain `OrganizationId`.
 - Most operational tables should also contain `LocationId`.
+- UI terminology is context-specific. Internal code, APIs, database schema, permissions, services, and business logic use `Organization` and `OrganizationId`. Platform Admin screens may use Organization because they are internal iM1 control-plane surfaces. Customer-facing administration must present the same entity as Business and must not expose Tenant, Organization, or Platform terminology.
+- iM1 UI is the reusable application framework. Pages and modules must consume iM1-owned UI primitives and wrappers. Do not import AG Grid, MUI, Bootstrap, charting libraries, or other third-party UI libraries directly outside the iM1 UI component boundary.
 
 Do not add unrelated product assumptions, traditional DMS assumptions, or external platform dependencies.

@@ -1,0 +1,42 @@
+@model IM1PageModel
+
+<section class="im1-page">
+    @if (Model.Breadcrumbs?.Count > 0)
+    {
+        <nav class="im1-breadcrumbs" aria-label="Breadcrumb">
+            @foreach (var crumb in Model.Breadcrumbs)
+            {
+                if (!string.IsNullOrWhiteSpace(crumb.Url))
+                {
+                    <a href="@crumb.Url">@crumb.Label</a>
+                }
+                else
+                {
+                    <span>@crumb.Label</span>
+                }
+            }
+        </nav>
+    }
+    <header class="im1-page-header">
+        <div>
+            @if (!string.IsNullOrWhiteSpace(Model.Eyebrow))
+            {
+                <p class="eyebrow">@Model.Eyebrow</p>
+            }
+            <h1 class="im1-page-title">@Model.Title</h1>
+            @if (!string.IsNullOrWhiteSpace(Model.Description))
+            {
+                <p class="im1-page-description">@Model.Description</p>
+            }
+        </div>
+        @if (Model.Toolbar is not null)
+        {
+            @await Html.PartialAsync("IM1Toolbar", Model.Toolbar)
+        }
+    </header>
+    @Model.Content
+    @if (!string.IsNullOrWhiteSpace(Model.Status))
+    {
+        <footer class="im1-page-status">@Model.Status</footer>
+    }
+</section>

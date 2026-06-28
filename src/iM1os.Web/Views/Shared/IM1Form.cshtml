@@ -1,0 +1,27 @@
+@model IM1FormModel
+
+<form class="im1-form" method="@Model.Method" action="@Model.Action">
+    @if (!string.IsNullOrWhiteSpace(Model.Title) || !string.IsNullOrWhiteSpace(Model.Description))
+    {
+        <header class="im1-form-header">
+            @if (!string.IsNullOrWhiteSpace(Model.Title))
+            {
+                <h2>@Model.Title</h2>
+            }
+            @if (!string.IsNullOrWhiteSpace(Model.Description))
+            {
+                <p>@Model.Description</p>
+            }
+        </header>
+    }
+    @if (!string.IsNullOrWhiteSpace(Model.ValidationSummary))
+    {
+        <p class="im1-form-validation">@Model.ValidationSummary</p>
+    }
+    <div class="im1-form-grid">
+        @Model.Fields
+    </div>
+    <footer class="im1-form-actions">
+        <button class="im1-button im1-button-primary" type="submit">@Model.SubmitLabel</button>
+    </footer>
+</form>

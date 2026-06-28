@@ -42,7 +42,7 @@ Scope:
 
 ### Provisioning
 
-Owns automated creation and activation of new tenant instances.
+Owns automated creation and activation of new tenants.
 
 Scope:
 

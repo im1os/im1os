@@ -179,7 +179,7 @@ public sealed class TenantProvisioningService(
             RecipientEmail = owner.Email,
             RecipientName = owner.DisplayName,
             Subject = "Welcome to IM1OS",
-            Body = $"Welcome {owner.DisplayName}. Your IM1OS instance for {organization.Name} is ready. Activate your owner account: /Account/Activate?token={Uri.EscapeDataString(invitationToken)}",
+            Body = $"Welcome {owner.DisplayName}. Your iM1 OS business account for {organization.Name} is ready. Activate your owner account: /Account/Activate?token={Uri.EscapeDataString(invitationToken)}",
             CreatedAtUtc = now
         };
 
