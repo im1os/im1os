@@ -19,4 +19,8 @@
         <button class="primary-action" type="submit">Sign In</button>
         <a class="secondary-action" asp-action="ForgotPassword">Reset Password</a>
     </form>
+    <nav class="auth-link-row" aria-label="Login options">
+        <a asp-controller="Platform" asp-action="Login">Platform Login</a>
+        <a asp-controller="Account" asp-action="Login">Company Login</a>
+    </nav>
 </section>

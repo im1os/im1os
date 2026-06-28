@@ -224,6 +224,28 @@ h1 {
   width: 100%;
 }
 
+.auth-link-row {
+  border-top: 1px solid #e5ebf0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 18px;
+  padding-top: 16px;
+}
+
+.auth-link-row a {
+  border: 1px solid #b9c4d0;
+  border-radius: 6px;
+  color: #253142;
+  font-size: 13px;
+  font-weight: 800;
+  padding: 8px 12px;
+}
+
+.auth-link-row a:hover {
+  background: #f7f9fb;
+}
+
 .form-grid,
 .wizard {
   display: grid;
