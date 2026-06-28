@@ -2,6 +2,33 @@
 
 @{
     ViewData["Title"] = "Business Administration";
+    var pageToolbar = new IM1ToolbarModel(
+        Actions: new[]
+        {
+            new IM1ActionModel("Dashboard", Url.Action("Dashboard", "Business"), "secondary")
+        });
+    var page = new IM1PageModel(
+        Title: Model.Profile.BusinessName,
+        Eyebrow: "Business administration",
+        Description: Model.IsReadyForOperations ? "Your business is now ready to begin operations." : "Configure identity, locations, users, permissions, labor, taxes, notifications, and integration placeholders.",
+        Breadcrumbs: new[]
+        {
+            new IM1BreadcrumbModel("Business", Url.Action("Dashboard", "Business")),
+            new IM1BreadcrumbModel("Administration")
+        },
+        Toolbar: pageToolbar);
+    var tabs = new IM1TabsModel(
+        "Business administration sections",
+        new[]
+        {
+            new IM1TabItemModel("profile", "Profile", true),
+            new IM1TabItemModel("locations", "Locations"),
+            new IM1TabItemModel("employees", "Users"),
+            new IM1TabItemModel("roles", "Roles"),
+            new IM1TabItemModel("operations", "Operations"),
+            new IM1TabItemModel("connectors", "Connectors"),
+            new IM1TabItemModel("activity", "Activity")
+        });
     var locationGrid = new IM1DataGridModel(
         Columns: new[]
         {
@@ -48,16 +75,9 @@
         PageSize: 10);
 }
 
-<section class="dashboard-header">
-    <div>
-        <p class="eyebrow">Business administration</p>
-        <h1>@Model.Profile.BusinessName</h1>
-        <p class="subtle">@(Model.IsReadyForOperations ? "Your business is now ready to begin operations." : "Configure identity, locations, employees, permissions, labor, taxes, notifications, and integration placeholders.")</p>
-    </div>
-    <a class="primary-action" asp-controller="Business" asp-action="Dashboard">Dashboard</a>
-</section>
+@await Html.PartialAsync("IM1Page", page)
 
-<section class="metric-grid">
+<section class="im1-metric-grid">
     @await Html.PartialAsync("IM1Card", new IM1CardModel("Setup", $"{Model.SetupProgress}%", "Administration readiness."))
     @await Html.PartialAsync("IM1Card", new IM1CardModel("Locations", Model.Locations.Count.ToString(), "Configured shops."))
     @await Html.PartialAsync("IM1Card", new IM1CardModel("Employees", Model.Employees.Count.ToString(), "Business users."))
@@ -65,15 +85,7 @@
 </section>
 
 <section class="admin-tabs" data-tabs>
-    <div class="tab-list" role="tablist" aria-label="Business administration sections">
-        <button class="tab-button is-active" type="button" role="tab" aria-selected="true" aria-controls="profile" data-tab-target="profile">Profile</button>
-        <button class="tab-button" type="button" role="tab" aria-selected="false" aria-controls="locations" data-tab-target="locations">Locations</button>
-        <button class="tab-button" type="button" role="tab" aria-selected="false" aria-controls="employees" data-tab-target="employees">Users</button>
-        <button class="tab-button" type="button" role="tab" aria-selected="false" aria-controls="roles" data-tab-target="roles">Roles</button>
-        <button class="tab-button" type="button" role="tab" aria-selected="false" aria-controls="operations" data-tab-target="operations">Operations</button>
-        <button class="tab-button" type="button" role="tab" aria-selected="false" aria-controls="connectors" data-tab-target="connectors">Connectors</button>
-        <button class="tab-button" type="button" role="tab" aria-selected="false" aria-controls="activity" data-tab-target="activity">Activity</button>
-    </div>
+    @await Html.PartialAsync("IM1Tabs", tabs)
 
     <div class="tab-panel is-active" id="profile" role="tabpanel">
         <article class="page-band">

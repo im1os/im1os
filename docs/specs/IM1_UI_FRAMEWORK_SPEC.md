@@ -18,6 +18,14 @@ iM1 UI owns the product's presentation contract:
 
 This keeps iM1 OS maintainable as it grows from foundation screens into service, parts, commerce, intelligence, and network modules.
 
+## Operating System Standard
+
+iM1 UI must behave as a single, consistent operating system rather than a collection of independent pages.
+
+The user experience should be predictable. Every module should use the same navigation patterns, layouts, actions, dialogs, forms, grids, and workflows. A user who learns one area of iM1 should immediately understand every other area.
+
+Consistency is more valuable than uniqueness. When adding a feature, first ask whether it can be built using an existing iM1 component. Only create a new component when the existing component set cannot express the workflow.
+
 ## Architectural Rule
 
 Nothing outside the iM1 UI component boundary may import third-party UI libraries directly.
@@ -62,16 +70,56 @@ Raw color values should live in the token layer. Components and pages should con
 
 ## Application Shell
 
+The application shell is permanent and should never be recreated by individual pages. Only the main content area changes when navigating between pages.
+
 The shell owns:
 
 - Header.
-- Sidebar or responsive navigation.
+- Left navigation.
+- Main content area.
+- Notifications.
+- User/account menu.
 - Breadcrumbs.
-- Page title and action area.
-- Content width and responsive behavior.
+- Status indicators.
 - Authentication-context-specific branding.
 
 Customer-facing shell copy must present iM1 OS as business software. Platform Admin may use internal platform language.
+
+No page should implement its own navigation.
+
+## Left Navigation
+
+The left navigation is the primary navigation mechanism throughout iM1.
+
+Rules:
+
+- Modules appear in left navigation.
+- Modules may contain expandable child navigation.
+- Navigation behavior is identical everywhere.
+- Icons, spacing, typography, and indentation are standardized.
+- The currently selected item is clearly highlighted.
+- Navigation remains visible while users work.
+- Future support for favorites and recent items should be considered.
+
+## Standard Page Layout
+
+Every administrative page follows the same structure:
+
+```text
+Page Title
+Breadcrumbs
+
+Toolbar
+-------------------------------------------------
+
+Filters, optional
+
+Grid / Dashboard / Form
+
+Status Bar / Pagination
+```
+
+Pages should not invent their own layout.
 
 ## Core Components
 
@@ -84,6 +132,9 @@ Initial component contract:
 - `IM1Dialog`: modal confirmation, forms, and destructive action confirmation.
 - `IM1Form`: labels, validation, field groups, checkboxes, selects, and submit rows.
 - `IM1DataGrid`: standard tabular workflow component.
+- `IM1Tabs`: standard tabbed section navigation.
+- `IM1Lookup`: future lookup and picker framework.
+- `IM1Notification`: future notification and toast framework.
 
 ## IM1DataGrid
 

@@ -73,3 +73,25 @@ public sealed record IM1DataGridColumnModel(
     string Header,
     bool Sortable = true,
     bool Filterable = true);
+
+public sealed record IM1TabsModel(
+    string Label,
+    IReadOnlyCollection<IM1TabItemModel> Items);
+
+public sealed record IM1TabItemModel(
+    string Id,
+    string Label,
+    bool IsActive = false);
+
+public sealed record IM1ShellNavigationModel(
+    string ProductName,
+    IReadOnlyCollection<IM1ShellNavigationItemModel> Items,
+    string? CurrentController = null,
+    string? CurrentAction = null);
+
+public sealed record IM1ShellNavigationItemModel(
+    string Label,
+    string Controller,
+    string Action,
+    string? Icon = null,
+    IReadOnlyCollection<IM1ShellNavigationItemModel>? Children = null);

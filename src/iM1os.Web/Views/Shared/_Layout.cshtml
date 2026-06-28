@@ -3,6 +3,21 @@
     var productName = isCustomerContext ? "iM1 OS" : "IM1 Platform";
     var brandController = isCustomerContext ? "Business" : "Platform";
     var brandAction = isCustomerContext ? "Dashboard" : "Dashboard";
+    var currentController = ViewContext.RouteData.Values["controller"]?.ToString();
+    var currentAction = ViewContext.RouteData.Values["action"]?.ToString();
+    var navigationItems = isCustomerContext
+        ? new[]
+        {
+            new IM1ShellNavigationItemModel("Business Dashboard", "Business", "Dashboard", "BD"),
+            new IM1ShellNavigationItemModel("Business Admin", "Business", "Administration", "BA"),
+            new IM1ShellNavigationItemModel("Profile", "Profile", "Index", "PR")
+        }
+        : new[]
+        {
+            new IM1ShellNavigationItemModel("Dashboard", "Platform", "Dashboard", "DB"),
+            new IM1ShellNavigationItemModel("Organizations", "Platform", "Tenants", "OR"),
+            new IM1ShellNavigationItemModel("Create Organization", "Platform", "CreateTenant", "CO")
+        };
 }
 <!DOCTYPE html>
 <html lang="en">
@@ -14,42 +29,40 @@
     <link rel="stylesheet" href="~/css/site.css" asp-append-version="true" />
 </head>
 <body>
-    <header class="topbar">
-        <a class="brand" asp-controller="@brandController" asp-action="@brandAction" aria-label="@productName">
-            <span class="brand-mark">
-                <img src="~/images/im1-logo.png" asp-append-version="true" alt="" />
-            </span>
-            <span>@productName</span>
-        </a>
-        <nav>
-            @if (isCustomerContext)
-            {
-                <a asp-controller="Business" asp-action="Dashboard">Business Dashboard</a>
-                <a asp-controller="Business" asp-action="Administration">Business Admin</a>
-                <a asp-controller="Profile" asp-action="Index">Profile</a>
-                <a href="/health">Health</a>
-                <form asp-controller="Account" asp-action="Logout" method="post">
-                    <button class="link-button" type="submit">Logout</button>
-                </form>
-            }
-            else
-            {
-                <a asp-controller="Platform" asp-action="Dashboard">Dashboard</a>
-                <a asp-controller="Platform" asp-action="Tenants">Tenants</a>
-                <a asp-controller="Platform" asp-action="CreateTenant">Create Tenant</a>
-                <a href="/health">Health</a>
-                @if (User.Identity?.IsAuthenticated == true)
+    <div class="im1-app-shell">
+        <header class="im1-shell-header">
+            <a class="im1-shell-brand" asp-controller="@brandController" asp-action="@brandAction" aria-label="@productName">
+                <span class="brand-mark">
+                    <img src="~/images/im1-logo.png" asp-append-version="true" alt="" />
+                </span>
+                <span>@productName</span>
+            </a>
+            <div class="im1-shell-status">
+                <span>Healthy</span>
+            </div>
+            <div class="im1-shell-account">
+                @if (isCustomerContext)
+                {
+                    <form asp-controller="Account" asp-action="Logout" method="post">
+                        <button class="link-button" type="submit">Logout</button>
+                    </form>
+                }
+                else if (User.Identity?.IsAuthenticated == true)
                 {
                     <form asp-controller="Platform" asp-action="Logout" method="post">
                         <button class="link-button" type="submit">Logout</button>
                     </form>
                 }
-            }
-        </nav>
-    </header>
-    <main class="shell">
-        @RenderBody()
-    </main>
+            </div>
+        </header>
+        <aside class="im1-sidebar">
+            @await Html.PartialAsync("IM1ShellNavigation", new IM1ShellNavigationModel(productName, navigationItems, currentController, currentAction))
+        </aside>
+        <main class="im1-main-content">
+            @RenderBody()
+        </main>
+        <section class="im1-notifications" aria-live="polite"></section>
+    </div>
     <script src="~/js/im1-ui.js" asp-append-version="true"></script>
     <script src="~/js/site.js" asp-append-version="true"></script>
     @await RenderSectionAsync("Scripts", required: false)

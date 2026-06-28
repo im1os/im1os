@@ -1,0 +1,8 @@
+@model IM1TabsModel
+
+<div class="im1-tabs" role="tablist" aria-label="@Model.Label" data-im1-tabs>
+    @foreach (var tab in Model.Items)
+    {
+        <button class="im1-tab @(tab.IsActive ? "is-active" : null)" type="button" role="tab" aria-selected="@(tab.IsActive ? "true" : "false")" aria-controls="@tab.Id" data-tab-target="@tab.Id">@tab.Label</button>
+    }
+</div>

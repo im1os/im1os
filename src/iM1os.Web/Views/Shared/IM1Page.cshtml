@@ -29,11 +29,11 @@
                 <p class="im1-page-description">@Model.Description</p>
             }
         </div>
-        @if (Model.Toolbar is not null)
-        {
-            @await Html.PartialAsync("IM1Toolbar", Model.Toolbar)
-        }
     </header>
+    @if (Model.Toolbar is not null)
+    {
+        @await Html.PartialAsync("IM1Toolbar", Model.Toolbar)
+    }
     @Model.Content
     @if (!string.IsNullOrWhiteSpace(Model.Status))
     {

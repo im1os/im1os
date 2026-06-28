@@ -1,0 +1,27 @@
+@model IM1ShellNavigationModel
+
+<nav class="im1-sidebar-nav" aria-label="Main navigation">
+    @foreach (var item in Model.Items)
+    {
+        var isActive = string.Equals(Model.CurrentController, item.Controller, StringComparison.OrdinalIgnoreCase)
+            && string.Equals(Model.CurrentAction, item.Action, StringComparison.OrdinalIgnoreCase);
+        <a class="im1-sidebar-link @(isActive ? "is-active" : null)" asp-controller="@item.Controller" asp-action="@item.Action">
+            <span class="im1-sidebar-icon" aria-hidden="true">@item.Icon</span>
+            <span>@item.Label</span>
+        </a>
+        @if (item.Children?.Count > 0)
+        {
+            <div class="im1-sidebar-children">
+                @foreach (var child in item.Children)
+                {
+                    var isChildActive = string.Equals(Model.CurrentController, child.Controller, StringComparison.OrdinalIgnoreCase)
+                        && string.Equals(Model.CurrentAction, child.Action, StringComparison.OrdinalIgnoreCase);
+                    <a class="im1-sidebar-link @(isChildActive ? "is-active" : null)" asp-controller="@child.Controller" asp-action="@child.Action">
+                        <span class="im1-sidebar-icon" aria-hidden="true">@child.Icon</span>
+                        <span>@child.Label</span>
+                    </a>
+                }
+            </div>
+        }
+    }
+</nav>

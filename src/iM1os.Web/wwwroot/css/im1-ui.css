@@ -44,6 +44,111 @@
   --im1-color-focus: #5db6ad;
 }
 
+.im1-app-shell {
+  display: grid;
+  grid-template-areas:
+    "header header"
+    "sidebar main";
+  grid-template-columns: 260px minmax(0, 1fr);
+  grid-template-rows: 64px minmax(calc(100vh - 64px), auto);
+  min-height: 100vh;
+}
+
+.im1-shell-header {
+  align-items: center;
+  background: var(--im1-color-surface);
+  border-bottom: 1px solid var(--im1-color-border);
+  display: grid;
+  gap: var(--im1-space-4);
+  grid-area: header;
+  grid-template-columns: 260px 1fr auto;
+  padding: 0 var(--im1-space-6);
+  position: sticky;
+  top: 0;
+  z-index: 20;
+}
+
+.im1-shell-brand {
+  align-items: center;
+  display: inline-flex;
+  gap: var(--im1-space-3);
+  font-size: 20px;
+  font-weight: 800;
+}
+
+.im1-shell-status {
+  color: var(--im1-color-success);
+  font-size: var(--im1-font-size-label);
+  font-weight: 800;
+}
+
+.im1-shell-account {
+  justify-self: end;
+}
+
+.im1-sidebar {
+  background: var(--im1-color-surface);
+  border-right: 1px solid var(--im1-color-border);
+  grid-area: sidebar;
+  padding: var(--im1-space-4);
+}
+
+.im1-sidebar-nav {
+  display: grid;
+  gap: var(--im1-space-1);
+  position: sticky;
+  top: 80px;
+}
+
+.im1-sidebar-link {
+  align-items: center;
+  border-radius: var(--im1-radius-sm);
+  color: var(--im1-color-text-muted);
+  display: flex;
+  font-size: var(--im1-font-size-label);
+  font-weight: 800;
+  gap: var(--im1-space-3);
+  min-height: 40px;
+  padding: 0 var(--im1-space-3);
+}
+
+.im1-sidebar-link:hover,
+.im1-sidebar-link.is-active {
+  background: var(--im1-color-surface-muted);
+  color: var(--im1-color-text);
+}
+
+.im1-sidebar-link.is-active {
+  box-shadow: inset 3px 0 0 var(--im1-color-accent);
+}
+
+.im1-sidebar-icon {
+  color: var(--im1-color-accent);
+  font-size: var(--im1-font-size-caption);
+  min-width: 24px;
+}
+
+.im1-sidebar-children {
+  display: grid;
+  gap: var(--im1-space-1);
+  margin-left: var(--im1-space-6);
+}
+
+.im1-main-content {
+  grid-area: main;
+  min-width: 0;
+  padding: var(--im1-space-8);
+}
+
+.im1-notifications {
+  bottom: var(--im1-space-6);
+  display: grid;
+  gap: var(--im1-space-3);
+  position: fixed;
+  right: var(--im1-space-6);
+  z-index: 60;
+}
+
 .im1-page {
   display: grid;
   gap: var(--im1-space-6);
@@ -81,6 +186,10 @@
   font-size: var(--im1-font-size-display);
   line-height: 1.05;
   margin: 0;
+}
+
+.im1-page-header .im1-toolbar {
+  min-width: min(100%, 420px);
 }
 
 .im1-page-description {
@@ -158,6 +267,12 @@
   border: 1px solid var(--im1-color-border);
   border-radius: var(--im1-radius-md);
   padding: var(--im1-space-6);
+}
+
+.im1-metric-grid {
+  display: grid;
+  gap: var(--im1-space-4);
+  grid-template-columns: repeat(4, minmax(0, 1fr));
 }
 
 .im1-card-eyebrow {
@@ -359,13 +474,74 @@
   gap: var(--im1-space-2);
 }
 
+.im1-tabs {
+  background: var(--im1-color-surface);
+  border: 1px solid var(--im1-color-border);
+  border-radius: var(--im1-radius-md);
+  display: flex;
+  gap: var(--im1-space-1);
+  overflow-x: auto;
+  padding: var(--im1-space-2);
+}
+
+.im1-tab {
+  background: transparent;
+  border: 0;
+  border-radius: var(--im1-radius-sm);
+  color: var(--im1-color-text-muted);
+  cursor: pointer;
+  flex: 0 0 auto;
+  font-family: inherit;
+  font-size: var(--im1-font-size-label);
+  font-weight: 800;
+  min-height: 40px;
+  padding: 0 var(--im1-space-4);
+}
+
+.im1-tab:hover,
+.im1-tab.is-active {
+  background: var(--im1-color-action);
+  color: var(--im1-color-surface);
+}
+
 .is-disabled {
   opacity: 0.55;
   pointer-events: none;
 }
 
 @media (max-width: 900px) {
+  .im1-app-shell {
+    grid-template-areas:
+      "header"
+      "sidebar"
+      "main";
+    grid-template-columns: 1fr;
+    grid-template-rows: auto auto 1fr;
+  }
+
+  .im1-shell-header {
+    grid-template-columns: 1fr;
+    height: auto;
+    padding: var(--im1-space-4);
+  }
+
+  .im1-sidebar {
+    border-bottom: 1px solid var(--im1-color-border);
+    border-right: 0;
+  }
+
+  .im1-sidebar-nav {
+    display: flex;
+    overflow-x: auto;
+    position: static;
+  }
+
+  .im1-main-content {
+    padding: var(--im1-space-4);
+  }
+
   .im1-page-header,
+  .im1-metric-grid,
   .im1-form-grid {
     grid-template-columns: 1fr;
   }
