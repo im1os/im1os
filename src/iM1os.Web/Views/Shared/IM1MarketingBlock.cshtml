@@ -85,6 +85,12 @@
         </div>
     </section>
 }
+else if (Model.BlockType is "html")
+{
+    <section class="marketing-section marketing-raw-html" id="@sectionId">
+        @Html.Raw(Model.Body)
+    </section>
+}
 else if (Model.BlockType is "comparison")
 {
     <section class="marketing-section" id="@sectionId" aria-labelledby="@($"{Model.BlockType}-title")">

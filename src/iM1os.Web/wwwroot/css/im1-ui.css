@@ -827,6 +827,15 @@
   padding: var(--im1-space-4);
 }
 
+.marketing-admin-code-editor {
+  font-family: ui-monospace, SFMono-Regular, Consolas, "Liberation Mono", monospace;
+  line-height: 1.5;
+}
+
+.marketing-raw-html {
+  display: block;
+}
+
 @media (max-width: 900px) {
   .im1-app-shell {
     grid-template-areas:

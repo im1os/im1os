@@ -8,7 +8,13 @@
         Eyebrow: "Marketing CMS",
         Description: "Edit the public website page settings, publishing status, and SEO metadata.",
         Breadcrumbs: new[] { new IM1BreadcrumbModel("Marketing CMS", Url.Action("Index", "MarketingAdmin")), new IM1BreadcrumbModel(Model.Id is null ? "New Page" : Model.Title) },
-        Toolbar: new IM1ToolbarModel(Actions: Model.Id is null ? Array.Empty<IM1ActionModel>() : new[] { new IM1ActionModel("Add Block", Url.Action("Block", "MarketingAdmin", new { pageId = Model.Id }), "primary") }));
+        Toolbar: new IM1ToolbarModel(Actions: Model.Id is null
+            ? Array.Empty<IM1ActionModel>()
+            : new[]
+            {
+                new IM1ActionModel("Add Block", Url.Action("Block", "MarketingAdmin", new { pageId = Model.Id }), "primary"),
+                new IM1ActionModel("Add Raw HTML", Url.Action("Block", "MarketingAdmin", new { pageId = Model.Id, blockType = "html" }), "secondary")
+            }));
 }
 
 @await Html.PartialAsync("IM1Page", page)
@@ -44,7 +50,7 @@
     <section class="im1-card">
         <div class="im1-form-header">
             <h2>Content Blocks</h2>
-            <p>Blocks render in sort order and keep marketing content separate from application code.</p>
+            <p>Blocks render in sort order and keep marketing content separate from application code. Raw HTML blocks render exactly as entered.</p>
         </div>
         <div class="marketing-admin-block-list">
             @foreach (var block in blocks.OrderBy(x => x.SortOrder))

@@ -2,10 +2,11 @@
 
 @{
     ViewData["Title"] = Model.Id is null ? "New Marketing Block" : Model.Heading;
+    var isRawHtml = string.Equals(Model.BlockType, "html", StringComparison.OrdinalIgnoreCase);
     var page = new IM1PageModel(
         Title: Model.Id is null ? "New Marketing Block" : Model.Heading,
         Eyebrow: "Marketing CMS",
-        Description: "Create reusable website content blocks for the public marketing site.",
+        Description: isRawHtml ? "Edit a raw HTML block for the public marketing site." : "Create reusable website content blocks for the public marketing site.",
         Breadcrumbs: new[] { new IM1BreadcrumbModel("Marketing CMS", Url.Action("Index", "MarketingAdmin")), new IM1BreadcrumbModel("Page", Url.Action("Page", "MarketingAdmin", new { id = Model.MarketingPageId })), new IM1BreadcrumbModel("Block") });
 }
 
@@ -16,8 +17,15 @@
         <input asp-for="Id" type="hidden" />
         <input asp-for="MarketingPageId" type="hidden" />
         <div class="im1-form-header">
-            <h2>Block Content</h2>
-            <p>Use block types such as hero, platform, products, integrations, ecommerce, comparison, testimonials, faq, pricing, announcements, security, vision, and contact.</p>
+            <h2>@(isRawHtml ? "Raw HTML" : "Block Content")</h2>
+            @if (isRawHtml)
+            {
+                <p>HTML entered here is rendered directly on the public site. Use trusted markup only.</p>
+            }
+            else
+            {
+                <p>Use block types such as hero, platform, products, integrations, ecommerce, comparison, testimonials, faq, pricing, announcements, security, vision, contact, and html.</p>
+            }
         </div>
         <div class="im1-form-grid">
             <label>Block Type <input asp-for="BlockType" required /></label>
@@ -29,8 +37,15 @@
             <label>Secondary Action Label <input asp-for="SecondaryActionLabel" /></label>
             <label>Secondary Action URL <input asp-for="SecondaryActionUrl" /></label>
         </div>
-        <label>Body <textarea asp-for="Body" rows="4"></textarea></label>
-        <label>Items JSON <textarea asp-for="ItemsJson" rows="10" spellcheck="false"></textarea></label>
+        @if (isRawHtml)
+        {
+            <label>Raw HTML <textarea class="marketing-admin-code-editor" asp-for="Body" rows="18" spellcheck="false"></textarea></label>
+        }
+        else
+        {
+            <label>Body <textarea asp-for="Body" rows="4"></textarea></label>
+            <label>Items JSON <textarea class="marketing-admin-code-editor" asp-for="ItemsJson" rows="10" spellcheck="false"></textarea></label>
+        }
         <label class="checkbox"><input asp-for="IsPublished" /> Published</label>
         <div class="im1-form-actions">
             <button class="im1-button im1-button-primary" type="submit">Save Block</button>

@@ -40,11 +40,13 @@ public sealed class MarketingAdminController(IMarketingCmsService marketingCmsSe
     }
 
     [HttpGet]
-    public async Task<IActionResult> Block(Guid pageId, Guid? id, CancellationToken cancellationToken)
+    public async Task<IActionResult> Block(Guid pageId, Guid? id, string? blockType, CancellationToken cancellationToken)
     {
         if (id is null)
         {
-            return View(new SaveMarketingContentBlockRequest(null, pageId, "feature", null, string.Empty, null, null, null, null, null, null, true, 0));
+            var type = string.IsNullOrWhiteSpace(blockType) ? "feature" : blockType.Trim().ToLowerInvariant();
+            var heading = type == "html" ? "Raw HTML" : string.Empty;
+            return View(new SaveMarketingContentBlockRequest(null, pageId, type, null, heading, null, null, null, null, null, null, true, 0));
         }
 
         var page = await marketingCmsService.GetPageAsync(pageId, cancellationToken);
