@@ -132,7 +132,6 @@
                             <label class="im1-checkbox"><input name="TaxExempt" type="checkbox" value="true" checked="@Model.TaxExempt" data-tax-exempt-toggle /> Tax Exempt</label><input name="TaxExempt" type="hidden" value="false" />
                         </div>
                     </div>
-                    <label class="im1-full-span">Notes <textarea name="SummaryNotes" rows="3">@Model.SummaryNotes</textarea></label>
                 </div>
             </fieldset>
 
@@ -264,8 +263,12 @@
     </section>
 
     <section class="tab-panel" id="notes" role="tabpanel" hidden>
-        <form asp-action="AddNote" method="post" class="im1-form">
+        <form asp-action="AddNote" method="post" class="im1-form im1-note-composer">
             <input type="hidden" name="CustomerId" value="@Model.Id" />
+            <div class="im1-form-header">
+                <h2>Insert Note</h2>
+                <p>Notes are stamped with the date, time, and person who entered them.</p>
+            </div>
             <div class="im1-form-grid">
                 <label>Note Type
                     <select name="NoteType">
@@ -277,21 +280,25 @@
                     </select>
                 </label>
                 <label>Subject <input name="Subject" /></label>
-                <label class="im1-checkbox"><input name="IsPinned" type="checkbox" value="true" /> Pinned</label><input name="IsPinned" type="hidden" value="false" />
-                <label class="im1-full-span">Note <textarea name="Body" rows="4" required></textarea></label>
+                <label class="im1-checkbox"><input name="IsPinned" type="checkbox" value="true" /> Anchor to top</label><input name="IsPinned" type="hidden" value="false" />
+                <label class="im1-full-span">Insert Note <textarea name="Body" rows="4" required></textarea></label>
             </div>
             <div class="im1-form-actions">
-                <button class="im1-button im1-button-primary" type="submit">Add Note</button>
+                <button class="im1-button im1-button-primary" type="submit">Insert Note</button>
             </div>
         </form>
         <ol class="company-activity-list">
             @foreach (var note in Model.Notes)
             {
                 <li>
-                    <strong>@(note.IsPinned ? "Pinned " : "")@note.NoteType: @note.Subject</strong>
+                    <strong>@(note.IsPinned ? "Anchored " : "")@note.NoteType@(string.IsNullOrWhiteSpace(note.Subject) ? "" : $": {note.Subject}")</strong>
                     <span>@note.OccurredAtUtc.ToString("yyyy-MM-dd HH:mm") by @(note.AuthorDisplayName ?? "Unknown")</span>
                     <p>@note.Body</p>
                 </li>
+            }
+            @if (Model.Notes.Count == 0)
+            {
+                <li>No notes found.</li>
             }
         </ol>
     </section>

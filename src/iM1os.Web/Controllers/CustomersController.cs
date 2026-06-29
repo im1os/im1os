@@ -67,8 +67,16 @@ public sealed class CustomersController(ICustomerCrmService customerService) : C
     [ValidateAntiForgeryToken]
     public async Task<IActionResult> AddNote(AddCustomerNoteRequest request, string? returnTab, CancellationToken cancellationToken)
     {
-        await customerService.AddNoteAsync(OrganizationId(), UserId(), request, RemoteIp(), cancellationToken);
-        return RedirectToDetail(request.CustomerId, returnTab);
+        try
+        {
+            await customerService.AddNoteAsync(OrganizationId(), UserId(), request, RemoteIp(), cancellationToken);
+        }
+        catch (InvalidOperationException ex)
+        {
+            TempData["CustomerError"] = ex.Message;
+        }
+
+        return RedirectToDetail(request.CustomerId, returnTab ?? "notes");
     }
 
     [HttpPost]

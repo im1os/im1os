@@ -249,7 +249,7 @@ public sealed class CustomerCrmService(
         customer.Anniversary = request.Anniversary;
         customer.PreferredLanguage = Clean(request.PreferredLanguage);
         customer.CreditLimit = request.CreditLimit;
-        customer.SummaryNotes = Clean(request.SummaryNotes);
+        customer.SummaryNotes = request.SummaryNotes is null ? customer.SummaryNotes : Clean(request.SummaryNotes);
         customer.IsActive = customer.Status.Equals("Active", StringComparison.OrdinalIgnoreCase);
 
         AddActivity(organizationId, customer.Id, actorUserId, "CustomerUpdated", "Customer updated", ipAddress, new { before, after = Snapshot(customer) });
@@ -397,8 +397,18 @@ public sealed class CustomerCrmService(
 
     private async Task<string?> ActorNameAsync(Guid organizationId, Guid actorUserId, CancellationToken cancellationToken)
     {
-        return await dbContext.Users.IgnoreQueryFilters()
+        var companyUserName = await dbContext.Users.IgnoreQueryFilters()
             .Where(x => x.OrganizationId == organizationId && x.Id == actorUserId)
+            .Select(x => x.DisplayName)
+            .SingleOrDefaultAsync(cancellationToken);
+
+        if (!string.IsNullOrWhiteSpace(companyUserName))
+        {
+            return companyUserName;
+        }
+
+        return await dbContext.PlatformUsers
+            .Where(x => x.Id == actorUserId)
             .Select(x => x.DisplayName)
             .SingleOrDefaultAsync(cancellationToken);
     }
