@@ -157,6 +157,25 @@ iM1 UI defines tokens for:
 
 Raw color values should live in the token layer. Components and pages should consume semantic tokens.
 
+The current iM1 visual standard uses the following base palette:
+
+- iM1 Black `#0D0D0F`, Charcoal `#1A1D21`, Slate `#475569`, Light `#F4F5F7`, White `#FFFFFF`.
+- iM1 Red `#E31C23` for primary actions, active navigation, destructive emphasis only when paired with danger context, and focused iM1 brand moments.
+- Success `#22C55E`, Warning `#F59E0B`, Error `#EF4444`, Info `#3B82F6`, Purple `#8B5CF6`, and Teal `#14B8A6` are reserved for status meaning.
+
+Typography uses Inter with this application scale:
+
+- Display 1: 32px bold.
+- Display 2: 24px bold.
+- Heading 1: 20px semibold.
+- Heading 2: 18px semibold.
+- Heading 3 and body large: 16px.
+- Body: 14px.
+- Small: 12px.
+- Caption: 11px.
+
+The default workspace pattern is a black left rail, white content surfaces, compact controls, subtle borders, and minimal elevation on cards, dialogs, grids, and toolbar surfaces. Page-specific CSS must not introduce competing palettes, oversized fields, decorative gradients, or form-heavy layouts.
+
 ## Application Shell
 
 The application shell is permanent and should never be recreated by individual pages. Only the main content area changes when navigating between pages.
