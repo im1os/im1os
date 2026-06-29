@@ -366,7 +366,6 @@
                         <option>Marketing</option>
                     </select>
                 </label>
-                <label>Subject <input name="Subject" /></label>
                 <label class="im1-checkbox"><input name="IsPinned" type="checkbox" value="true" /> Anchor to top</label><input name="IsPinned" type="hidden" value="false" />
                 <label class="im1-full-span">Insert Note <textarea name="Body" rows="4" required></textarea></label>
             </div>
@@ -378,7 +377,7 @@
             @foreach (var note in Model.Notes)
             {
                 <li>
-                    <strong>@(note.IsPinned ? "Anchored " : "")@note.NoteType@(string.IsNullOrWhiteSpace(note.Subject) ? "" : $": {note.Subject}")</strong>
+                    <strong>@(note.IsPinned ? "Anchored " : "")@note.NoteType</strong>
                     <span>@note.OccurredAtUtc.ToString("yyyy-MM-dd HH:mm") by @(note.AuthorDisplayName ?? "Unknown")</span>
                     <p>@note.Body</p>
                 </li>
