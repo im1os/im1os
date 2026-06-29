@@ -8,11 +8,20 @@ window.IM1.activateTabs = function activateTabs(root) {
     const buttons = Array.from(tabRoot.querySelectorAll("[data-tab-target]"));
     const panels = Array.from(panelScope.querySelectorAll(".tab-panel"));
 
-    const activate = (id, updateHash) => {
+    const restoreScrollPosition = (left, top) => {
+      window.scrollTo(left, top);
+      window.requestAnimationFrame(() => window.scrollTo(left, top));
+      window.setTimeout(() => window.scrollTo(left, top), 0);
+    };
+
+    const activate = (id, updateHash, preserveScroll) => {
       const panel = panels.find((item) => item.id === id);
       if (!panel) {
         return;
       }
+
+      const scrollLeft = window.scrollX;
+      const scrollTop = window.scrollY;
 
       buttons.forEach((button) => {
         const isActive = button.dataset.tabTarget === id;
@@ -29,23 +38,28 @@ window.IM1.activateTabs = function activateTabs(root) {
       if (updateHash) {
         history.replaceState(null, "", `#${id}`);
       }
+
+      if (preserveScroll) {
+        restoreScrollPosition(scrollLeft, scrollTop);
+      }
     };
 
     buttons.forEach((button) => {
-      button.addEventListener("click", () => activate(button.dataset.tabTarget, true));
+      button.addEventListener("click", () => activate(button.dataset.tabTarget, true, true));
     });
 
     panelScope.querySelectorAll("a[href^='#']").forEach((link) => {
-      link.addEventListener("click", () => {
+      link.addEventListener("click", (event) => {
         const id = link.getAttribute("href")?.slice(1);
         if (id && panels.some((item) => item.id === id)) {
-          activate(id, true);
+          event.preventDefault();
+          activate(id, true, true);
         }
       });
     });
 
     const initialId = window.location.hash ? window.location.hash.slice(1) : buttons[0]?.dataset.tabTarget;
-    activate(initialId, false);
+    activate(initialId, false, false);
   });
 };
 

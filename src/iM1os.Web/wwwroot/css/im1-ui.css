@@ -238,7 +238,7 @@
 
 .im1-page {
   display: grid;
-  gap: var(--im1-space-4);
+  gap: var(--im1-space-2);
 }
 
 .im1-breadcrumbs {
@@ -246,8 +246,8 @@
   color: var(--im1-color-text-muted);
   display: flex;
   flex-wrap: wrap;
-  font-size: var(--im1-font-size-label);
-  gap: var(--im1-space-2);
+  font-size: var(--im1-font-size-caption);
+  gap: var(--im1-space-1);
 }
 
 .im1-breadcrumbs a {
@@ -258,21 +258,21 @@
 .im1-breadcrumbs a::after {
   color: var(--im1-color-text-muted);
   content: "/";
-  margin-left: var(--im1-space-2);
+  margin-left: var(--im1-space-1);
 }
 
 .im1-page-header {
   align-items: flex-start;
   display: flex;
-  gap: var(--im1-space-4);
+  gap: var(--im1-space-3);
   justify-content: space-between;
 }
 
 .im1-page-title {
   color: var(--im1-color-text);
-  font-size: var(--im1-font-size-display);
+  font-size: 24px;
   font-weight: 800;
-  line-height: 1.1;
+  line-height: 1.05;
   margin: 0;
 }
 
@@ -283,8 +283,8 @@
 .im1-page-description {
   color: var(--im1-color-text-muted);
   font-size: var(--im1-font-size-label);
-  line-height: 1.45;
-  margin: var(--im1-space-2) 0 0;
+  line-height: 1.3;
+  margin: var(--im1-space-1) 0 0;
   max-width: 760px;
 }
 
@@ -301,8 +301,8 @@
   box-shadow: var(--im1-shadow-card);
   display: flex;
   flex-wrap: wrap;
-  gap: var(--im1-space-2);
-  padding: var(--im1-space-2);
+  gap: var(--im1-space-1);
+  padding: var(--im1-space-1);
 }
 
 .im1-toolbar-main {
@@ -323,8 +323,8 @@
   font-size: var(--im1-font-size-label);
   font-weight: 800;
   justify-content: center;
-  min-height: 34px;
-  padding: 0 12px;
+  min-height: 30px;
+  padding: 0 10px;
   text-decoration: none;
   transition: background 140ms ease, border-color 140ms ease, color 140ms ease, box-shadow 140ms ease;
 }
@@ -1024,7 +1024,7 @@ tr[data-row-url] {
 .im1-data-grid th,
 .im1-data-grid td {
   border-bottom: 1px solid var(--im1-color-border);
-  padding: 8px var(--im1-space-3);
+  padding: 6px var(--im1-space-2);
   text-align: left;
   white-space: nowrap;
 }
@@ -1069,7 +1069,7 @@ tr[data-row-url] {
 
 .im1-row-actions {
   display: flex;
-  gap: var(--im1-space-2);
+  gap: var(--im1-space-1);
 }
 
 .im1-data-grid-status {
@@ -1078,11 +1078,12 @@ tr[data-row-url] {
   display: flex;
   font-size: var(--im1-font-size-label);
   justify-content: space-between;
+  min-height: 30px;
 }
 
 .im1-data-grid-pager {
   display: flex;
-  gap: var(--im1-space-2);
+  gap: var(--im1-space-1);
 }
 
 .dashboard-header {
@@ -1125,8 +1126,8 @@ tr[data-row-url] {
   font-size: var(--im1-font-size-label);
   font-weight: 800;
   justify-content: center;
-  min-height: 34px;
-  padding: 0 12px;
+  min-height: 30px;
+  padding: 0 10px;
   text-decoration: none;
   transition: background 140ms ease, border-color 140ms ease, color 140ms ease, box-shadow 140ms ease;
 }
@@ -1161,9 +1162,9 @@ tr[data-row-url] {
 
 .metric-grid {
   display: grid;
-  gap: var(--im1-space-4);
+  gap: var(--im1-space-3);
   grid-template-columns: repeat(4, minmax(0, 1fr));
-  margin-bottom: var(--im1-space-4);
+  margin-bottom: var(--im1-space-3);
 }
 
 .metric-grid article,
@@ -1175,7 +1176,7 @@ tr[data-row-url] {
   border: 1px solid var(--im1-color-border);
   border-radius: var(--im1-radius-md);
   box-shadow: var(--im1-shadow-card);
-  padding: var(--im1-space-4);
+  padding: var(--im1-space-3);
 }
 
 .metric-grid span {
@@ -1227,7 +1228,7 @@ tr[data-row-url] {
 .form-grid,
 .wizard {
   display: grid;
-  gap: var(--im1-space-3);
+  gap: var(--im1-space-2);
 }
 
 .toolbar {
@@ -1237,8 +1238,9 @@ tr[data-row-url] {
   border-radius: var(--im1-radius-md);
   display: flex;
   flex-wrap: wrap;
-  margin-bottom: var(--im1-space-4);
-  padding: var(--im1-space-2);
+  gap: var(--im1-space-1);
+  margin-bottom: var(--im1-space-3);
+  padding: var(--im1-space-1);
 }
 
 .form-grid {
@@ -1270,8 +1272,8 @@ tr[data-row-url] {
   border-radius: var(--im1-radius-sm);
   color: var(--im1-color-text);
   font: inherit;
-  min-height: 34px;
-  padding: var(--im1-space-2) var(--im1-space-3);
+  min-height: 32px;
+  padding: var(--im1-space-1) var(--im1-space-2);
 }
 
 .form-grid input:focus,
@@ -1362,7 +1364,7 @@ tr[data-row-url] {
   display: flex;
   gap: var(--im1-space-1);
   overflow-x: auto;
-  padding: var(--im1-space-1);
+  padding: 3px;
 }
 
 .im1-tab,
@@ -1376,8 +1378,8 @@ tr[data-row-url] {
   font-family: inherit;
   font-size: var(--im1-font-size-label);
   font-weight: 800;
-  min-height: 32px;
-  padding: 0 var(--im1-space-3);
+  min-height: 28px;
+  padding: 0 10px;
 }
 
 .im1-tab:hover,
