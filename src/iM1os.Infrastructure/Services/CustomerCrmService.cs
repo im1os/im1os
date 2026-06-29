@@ -3,6 +3,7 @@ using iM1os.Application.Common;
 using iM1os.Application.Customers;
 using iM1os.Domain.Audit;
 using iM1os.Domain.Customers;
+using iM1os.Domain.Vehicles;
 using Microsoft.EntityFrameworkCore;
 
 namespace iM1os.Infrastructure.Services;
@@ -79,14 +80,28 @@ public sealed class CustomerCrmService(
             .Where(x => x.OrganizationId == organizationId && x.CustomerId == customerId)
             .OrderByDescending(x => x.CreatedAtUtc)
             .ToListAsync(cancellationToken);
+        var unitIds = unitEntities.Select(x => x.Id).ToArray();
+        var attachmentLookup = (await dbContext.CustomerVehicleAttachments.IgnoreQueryFilters()
+                .Where(x => x.OrganizationId == organizationId && x.CustomerId == customerId && unitIds.Contains(x.CustomerVehicleId) && x.DeletedAtUtc == null)
+                .OrderByDescending(x => x.UploadedAtUtc)
+                .Select(x => new CustomerUnitAttachmentItem(x.Id, x.CustomerVehicleId, x.AttachmentType, x.FileName, x.Url, x.ContentType, x.UploadedAtUtc))
+                .ToListAsync(cancellationToken))
+            .ToLookup(x => x.CustomerVehicleId);
         var units = unitEntities
             .Select(x => new CustomerUnitItem(
                 x.Id,
-                string.Join(" ", new[] { x.Year?.ToString(), x.Make, x.Model, x.Trim }.Where(v => !string.IsNullOrWhiteSpace(v))),
+                x.Type,
+                x.Year,
+                x.Make,
+                x.Model,
                 x.Vin,
-                x.Mileage,
-                x.Hours,
-                x.IsActive))
+                x.Color,
+                x.TagPlate,
+                x.MileageIn ?? x.Mileage,
+                x.MileageOut,
+                x.Notes,
+                x.IsActive,
+                attachmentLookup[x.Id].ToList()))
             .ToList();
 
         var timeline = await dbContext.TimelineEvents.IgnoreQueryFilters()
@@ -340,6 +355,57 @@ public sealed class CustomerCrmService(
             CanText = request.CanText
         });
         AddActivity(organizationId, customer.Id, actorUserId, "CustomerPhoneAdded", "Customer phone added", ipAddress, new { request.PhoneType, request.PhoneNumber });
+        await dbContext.SaveChangesAsync(cancellationToken);
+    }
+
+    public async Task AddUnitAsync(Guid organizationId, Guid actorUserId, AddCustomerUnitRequest request, string? ipAddress, CancellationToken cancellationToken)
+    {
+        var customer = await LoadCustomerAsync(organizationId, request.CustomerId, cancellationToken);
+        var unit = new CustomerVehicle
+        {
+            OrganizationId = organizationId,
+            CustomerId = customer.Id,
+            Type = Required(request.Type, "Unit type"),
+            Year = request.Year,
+            Make = Clean(request.Make),
+            Model = Clean(request.Model),
+            Vin = Clean(request.Vin),
+            Color = Clean(request.Color),
+            TagPlate = Clean(request.TagPlate),
+            Mileage = request.MileageIn,
+            MileageIn = request.MileageIn,
+            MileageOut = request.MileageOut,
+            Notes = Clean(request.Notes),
+            IsActive = true
+        };
+        dbContext.CustomerVehicles.Add(unit);
+        AddActivity(organizationId, customer.Id, actorUserId, "CustomerUnitAdded", "Customer unit added", ipAddress, new { unit.Type, unit.Year, unit.Make, unit.Model, unit.Vin });
+        await dbContext.SaveChangesAsync(cancellationToken);
+    }
+
+    public async Task AddUnitAttachmentAsync(Guid organizationId, Guid actorUserId, AddCustomerUnitAttachmentRequest request, string? ipAddress, CancellationToken cancellationToken)
+    {
+        var customer = await LoadCustomerAsync(organizationId, request.CustomerId, cancellationToken);
+        var unitExists = await dbContext.CustomerVehicles.IgnoreQueryFilters()
+            .AnyAsync(x => x.OrganizationId == organizationId && x.CustomerId == customer.Id && x.Id == request.CustomerVehicleId, cancellationToken);
+        if (!unitExists)
+        {
+            throw new InvalidOperationException("Unit is required.");
+        }
+
+        var attachment = new CustomerVehicleAttachment
+        {
+            OrganizationId = organizationId,
+            CustomerId = customer.Id,
+            CustomerVehicleId = request.CustomerVehicleId,
+            AttachmentType = Required(request.AttachmentType, "Attachment type"),
+            FileName = Required(request.FileName, "File name"),
+            Url = Clean(request.Url),
+            ContentType = Clean(request.ContentType),
+            UploadedAtUtc = dateTimeProvider.UtcNow
+        };
+        dbContext.CustomerVehicleAttachments.Add(attachment);
+        AddActivity(organizationId, customer.Id, actorUserId, "CustomerUnitAttachmentAdded", "Customer unit attachment added", ipAddress, new { attachment.AttachmentType, attachment.FileName, attachment.Url });
         await dbContext.SaveChangesAsync(cancellationToken);
     }
 

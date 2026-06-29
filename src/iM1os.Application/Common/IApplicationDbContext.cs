@@ -77,6 +77,8 @@ public interface IApplicationDbContext
 
     DbSet<CustomerVehicle> CustomerVehicles { get; }
 
+    DbSet<CustomerVehicleAttachment> CustomerVehicleAttachments { get; }
+
     DbSet<WorkOrder> WorkOrders { get; }
 
     DbSet<Estimate> Estimates { get; }

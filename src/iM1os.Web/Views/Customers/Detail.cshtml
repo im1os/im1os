@@ -7,6 +7,8 @@
     var preferredContactOptions = new[] { "Phone", "Text", "Email", "Mail", "None" };
     var referralSourceOptions = new[] { "Walk-In", "Website", "Referral", "Employee", "Event", "Social Media", "Advertising", "Other" };
     var languageOptions = new[] { "English", "Spanish", "French", "Other" };
+    var unitTypeOptions = new[] { "Off-Road", "Motorcycle", "ATV", "UTV", "Watercraft", "Snowmobile", "Trailer", "Other" };
+    var attachmentTypeOptions = new[] { "Photo", "Video", "Document" };
     var page = new IM1PageModel(
         Model.DisplayName,
         "CRM / Customers",
@@ -146,21 +148,136 @@
     </section>
 
     <section class="tab-panel" id="units" role="tabpanel" hidden>
+        <form asp-action="AddUnit" method="post" class="im1-form im1-record-form">
+            <input type="hidden" name="CustomerId" value="@Model.Id" />
+            <fieldset class="im1-form-section">
+                <legend>Motorcycle / Unit Information</legend>
+                <div class="im1-form-grid">
+                    <label>Type
+                        <select name="Type" required>
+                            @foreach (var type in unitTypeOptions)
+                            {
+                                <option value="@type" selected="@(type == "Off-Road")">@type</option>
+                            }
+                        </select>
+                    </label>
+                    <label>Year <input name="Year" type="number" min="1900" max="2100" /></label>
+                    <label>Make <input name="Make" maxlength="120" /></label>
+                    <label>Model <input name="Model" maxlength="160" /></label>
+                    <label>VIN <input name="Vin" maxlength="80" /></label>
+                    <label>Color <input name="Color" maxlength="80" /></label>
+                    <label>Tag / Plate <input name="TagPlate" maxlength="80" /></label>
+                    <label>Mileage In <input name="MileageIn" type="number" step="0.1" min="0" /></label>
+                    <label>Mileage Out <input name="MileageOut" type="number" step="0.1" min="0" /></label>
+                    <label class="im1-full-span">Notes <textarea name="Notes" rows="3" maxlength="1000"></textarea></label>
+                </div>
+            </fieldset>
+            <fieldset class="im1-form-section">
+                <legend>YYM Database Placeholder</legend>
+                <div class="im1-form-grid">
+                    <label class="im1-full-span">Year / Make / Model Lookup <input value="Placeholder" readonly /></label>
+                </div>
+            </fieldset>
+            <div class="im1-form-actions">
+                <button class="im1-button im1-button-primary" type="submit">Add Unit</button>
+            </div>
+        </form>
+
         <div class="im1-data-grid">
             <table>
-                <thead><tr><th>Unit</th><th>VIN</th><th>Mileage</th><th>Hours</th><th>Status</th></tr></thead>
+                <thead>
+                    <tr>
+                        <th>Type</th>
+                        <th>Year</th>
+                        <th>Make</th>
+                        <th>Model</th>
+                        <th>VIN</th>
+                        <th>Color</th>
+                        <th>Tag / Plate</th>
+                        <th>Mileage In</th>
+                        <th>Mileage Out</th>
+                        <th>Attachments</th>
+                    </tr>
+                </thead>
                 <tbody>
                     @foreach (var unit in Model.Units)
                     {
-                        <tr><td>@unit.Description</td><td>@unit.Vin</td><td>@unit.Mileage</td><td>@unit.Hours</td><td>@(unit.IsActive ? "Active" : "Inactive")</td></tr>
+                        <tr>
+                            <td>@unit.Type</td>
+                            <td>@unit.Year</td>
+                            <td>@unit.Make</td>
+                            <td>@unit.Model</td>
+                            <td>@unit.Vin</td>
+                            <td>@unit.Color</td>
+                            <td>@unit.TagPlate</td>
+                            <td>@unit.MileageIn</td>
+                            <td>@unit.MileageOut</td>
+                            <td>@unit.Attachments.Count</td>
+                        </tr>
+                        @if (!string.IsNullOrWhiteSpace(unit.Notes))
+                        {
+                            <tr>
+                                <td colspan="10"><strong>Notes:</strong> @unit.Notes</td>
+                            </tr>
+                        }
+                        @foreach (var attachment in unit.Attachments)
+                        {
+                            <tr>
+                                <td colspan="10">
+                                    <strong>@attachment.AttachmentType:</strong>
+                                    @if (!string.IsNullOrWhiteSpace(attachment.Url))
+                                    {
+                                        <a href="@attachment.Url" target="_blank" rel="noopener">@attachment.FileName</a>
+                                    }
+                                    else
+                                    {
+                                        @attachment.FileName
+                                    }
+                                    <span class="subtle">@attachment.UploadedAtUtc.ToString("yyyy-MM-dd HH:mm")</span>
+                                </td>
+                            </tr>
+                        }
                     }
                     @if (Model.Units.Count == 0)
                     {
-                        <tr><td colspan="5">No units found.</td></tr>
+                        <tr><td colspan="10">No units found.</td></tr>
                     }
                 </tbody>
             </table>
         </div>
+
+        <form asp-action="AddUnitAttachment" method="post" class="im1-form">
+            <input type="hidden" name="CustomerId" value="@Model.Id" />
+            <fieldset class="im1-form-section">
+                <legend>Attachments / Photos and Videos</legend>
+                <div class="im1-form-grid">
+                    <label>Unit
+                        <select name="CustomerVehicleId" required>
+                            <option value="">Select unit</option>
+                            @foreach (var unit in Model.Units)
+                            {
+                                var label = string.Join(" ", new[] { unit.Year?.ToString(), unit.Make, unit.Model, unit.Vin }.Where(value => !string.IsNullOrWhiteSpace(value)));
+                                <option value="@unit.Id">@(string.IsNullOrWhiteSpace(label) ? unit.Type : label)</option>
+                            }
+                        </select>
+                    </label>
+                    <label>Attachment Type
+                        <select name="AttachmentType" required>
+                            @foreach (var type in attachmentTypeOptions)
+                            {
+                                <option>@type</option>
+                            }
+                        </select>
+                    </label>
+                    <label>File Name <input name="FileName" required maxlength="260" /></label>
+                    <label>URL <input name="Url" /></label>
+                    <label>Content Type <input name="ContentType" placeholder="image/jpeg, video/mp4" /></label>
+                </div>
+            </fieldset>
+            <div class="im1-form-actions">
+                <button class="im1-button im1-button-primary" type="submit">Add Attachment</button>
+            </div>
+        </form>
     </section>
 
     <section class="tab-panel" id="purchases" role="tabpanel" hidden>

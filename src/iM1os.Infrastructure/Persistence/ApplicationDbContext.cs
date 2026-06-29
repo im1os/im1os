@@ -84,6 +84,8 @@ public sealed class ApplicationDbContext(
 
     public DbSet<CustomerVehicle> CustomerVehicles => Set<CustomerVehicle>();
 
+    public DbSet<CustomerVehicleAttachment> CustomerVehicleAttachments => Set<CustomerVehicleAttachment>();
+
     public DbSet<WorkOrder> WorkOrders => Set<WorkOrder>();
 
     public DbSet<Estimate> Estimates => Set<Estimate>();
@@ -550,10 +552,28 @@ public sealed class ApplicationDbContext(
             entity.ToTable("customer_vehicles");
             entity.HasIndex(x => new { x.OrganizationId, x.CustomerId });
             entity.HasIndex(x => new { x.OrganizationId, x.Vin });
+            entity.Property(x => x.Type).HasMaxLength(80).IsRequired();
             entity.Property(x => x.Make).HasMaxLength(120);
             entity.Property(x => x.Model).HasMaxLength(160);
             entity.Property(x => x.Trim).HasMaxLength(120);
             entity.Property(x => x.Vin).HasMaxLength(80);
+            entity.Property(x => x.Color).HasMaxLength(80);
+            entity.Property(x => x.TagPlate).HasMaxLength(80);
+            entity.Property(x => x.Notes).HasMaxLength(1000);
+            entity.HasOne<Customer>().WithMany().HasForeignKey(x => x.CustomerId);
+            entity.HasQueryFilter(x => tenantProvider.CurrentOrganizationId == null || x.OrganizationId == tenantProvider.CurrentOrganizationId);
+        });
+
+        modelBuilder.Entity<CustomerVehicleAttachment>(entity =>
+        {
+            entity.ToTable("customer_vehicle_attachments");
+            entity.HasIndex(x => new { x.OrganizationId, x.CustomerVehicleId });
+            entity.HasIndex(x => new { x.OrganizationId, x.CustomerId });
+            entity.Property(x => x.AttachmentType).HasMaxLength(80).IsRequired();
+            entity.Property(x => x.FileName).HasMaxLength(260).IsRequired();
+            entity.Property(x => x.Url).HasMaxLength(1000);
+            entity.Property(x => x.ContentType).HasMaxLength(120);
+            entity.HasOne(x => x.CustomerVehicle).WithMany().HasForeignKey(x => x.CustomerVehicleId);
             entity.HasOne<Customer>().WithMany().HasForeignKey(x => x.CustomerId);
             entity.HasQueryFilter(x => tenantProvider.CurrentOrganizationId == null || x.OrganizationId == tenantProvider.CurrentOrganizationId);
         });

@@ -89,7 +89,29 @@ public sealed record CustomerPhoneItem(
     bool IsPrimary,
     bool CanText);
 
-public sealed record CustomerUnitItem(Guid Id, string Description, string? Vin, decimal? Mileage, decimal? Hours, bool IsActive);
+public sealed record CustomerUnitItem(
+    Guid Id,
+    string Type,
+    int? Year,
+    string? Make,
+    string? Model,
+    string? Vin,
+    string? Color,
+    string? TagPlate,
+    decimal? MileageIn,
+    decimal? MileageOut,
+    string? Notes,
+    bool IsActive,
+    IReadOnlyCollection<CustomerUnitAttachmentItem> Attachments);
+
+public sealed record CustomerUnitAttachmentItem(
+    Guid Id,
+    Guid CustomerVehicleId,
+    string AttachmentType,
+    string FileName,
+    string? Url,
+    string? ContentType,
+    DateTimeOffset UploadedAtUtc);
 
 public sealed record CustomerNoteItem(
     Guid Id,
@@ -197,6 +219,27 @@ public sealed record AddCustomerAddressRequest(
     bool IsShipping);
 
 public sealed record AddCustomerPhoneRequest(Guid CustomerId, string PhoneType, string PhoneNumber, string? Extension, bool IsPrimary, bool CanText);
+
+public sealed record AddCustomerUnitRequest(
+    Guid CustomerId,
+    string Type,
+    int? Year,
+    string? Make,
+    string? Model,
+    string? Vin,
+    string? Color,
+    string? TagPlate,
+    decimal? MileageIn,
+    decimal? MileageOut,
+    string? Notes);
+
+public sealed record AddCustomerUnitAttachmentRequest(
+    Guid CustomerId,
+    Guid CustomerVehicleId,
+    string AttachmentType,
+    string FileName,
+    string? Url,
+    string? ContentType);
 
 public sealed record AddCustomerTagRequest(Guid CustomerId, string Tag);
 

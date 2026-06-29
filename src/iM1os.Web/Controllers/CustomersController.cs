@@ -97,6 +97,38 @@ public sealed class CustomersController(ICustomerCrmService customerService) : C
 
     [HttpPost]
     [ValidateAntiForgeryToken]
+    public async Task<IActionResult> AddUnit(AddCustomerUnitRequest request, string? returnTab, CancellationToken cancellationToken)
+    {
+        try
+        {
+            await customerService.AddUnitAsync(OrganizationId(), UserId(), request, RemoteIp(), cancellationToken);
+        }
+        catch (InvalidOperationException ex)
+        {
+            TempData["CustomerError"] = ex.Message;
+        }
+
+        return RedirectToDetail(request.CustomerId, returnTab ?? "units");
+    }
+
+    [HttpPost]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> AddUnitAttachment(AddCustomerUnitAttachmentRequest request, string? returnTab, CancellationToken cancellationToken)
+    {
+        try
+        {
+            await customerService.AddUnitAttachmentAsync(OrganizationId(), UserId(), request, RemoteIp(), cancellationToken);
+        }
+        catch (InvalidOperationException ex)
+        {
+            TempData["CustomerError"] = ex.Message;
+        }
+
+        return RedirectToDetail(request.CustomerId, returnTab ?? "units");
+    }
+
+    [HttpPost]
+    [ValidateAntiForgeryToken]
     public async Task<IActionResult> AddTag(AddCustomerTagRequest request, string? returnTab, CancellationToken cancellationToken)
     {
         await customerService.AddTagAsync(OrganizationId(), UserId(), request, RemoteIp(), cancellationToken);

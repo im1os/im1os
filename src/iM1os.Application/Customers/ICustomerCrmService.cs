@@ -16,6 +16,10 @@ public interface ICustomerCrmService
 
     Task AddPhoneAsync(Guid organizationId, Guid actorUserId, AddCustomerPhoneRequest request, string? ipAddress, CancellationToken cancellationToken);
 
+    Task AddUnitAsync(Guid organizationId, Guid actorUserId, AddCustomerUnitRequest request, string? ipAddress, CancellationToken cancellationToken);
+
+    Task AddUnitAttachmentAsync(Guid organizationId, Guid actorUserId, AddCustomerUnitAttachmentRequest request, string? ipAddress, CancellationToken cancellationToken);
+
     Task AddTagAsync(Guid organizationId, Guid actorUserId, AddCustomerTagRequest request, string? ipAddress, CancellationToken cancellationToken);
 
     Task AddCustomFieldAsync(Guid organizationId, Guid actorUserId, AddCustomerCustomFieldRequest request, string? ipAddress, CancellationToken cancellationToken);
