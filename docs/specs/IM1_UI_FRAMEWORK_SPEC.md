@@ -26,6 +26,95 @@ The user experience should be predictable. Every module should use the same navi
 
 Consistency is more valuable than uniqueness. When adding a feature, first ask whether it can be built using an existing iM1 component. Only create a new component when the existing component set cannot express the workflow.
 
+## iM1 Experience Standard
+
+iM1 OS is not a collection of forms. It is a collection of workspaces.
+
+Every workspace exists to help a person complete a job. Do not design database editors. Design workspaces. Do not expose data without hierarchy. Present information in the order the user needs it. Do not ask users to manage records as the primary experience. Help them accomplish work.
+
+Every screen must answer:
+
+- Who am I?
+- What needs my attention?
+- What can I do next?
+
+Information should be presented before editing. Forms are secondary. Dashboards, summaries, timelines, status, and actions are primary. Users should rarely be dropped directly into a wall of editable fields. The default experience should optimize for reviewing information and taking the next action.
+
+### Dashboard First
+
+Record detail pages should lead with a useful workspace view, not a raw edit form.
+
+For example, a customer page should immediately surface the customer identity, status, relationship value, open work, balance, units, recent purchases, notes, and available actions such as Call, Text, Create Work Order, Invoice, or Take Payment. The database fields are underneath the experience; they are not the experience.
+
+### Progressive Disclosure
+
+Do not display every editable field immediately.
+
+Editing should be intentionally entered by the user. Hide complexity until it is needed. Use cards, tabs, actions, dialogs, and focused edit modes to reveal detail without making the default screen feel like a database maintenance page.
+
+### Information Hierarchy
+
+Every page must have visual hierarchy:
+
+- Primary information.
+- Secondary information.
+- Supporting information.
+- Metadata.
+- Audit information.
+
+Not all information is equally important. Created dates, modified dates, IDs, and audit fields must never visually compete with customer names, employee status, open balances, work order state, or other operationally important facts.
+
+### Workspace Composition
+
+Every major workspace should follow a predictable composition:
+
+```text
+Hero / Snapshot
+  Who or what is this?
+  What matters right now?
+  Quick actions.
+
+Snapshot Cards
+  Small groups of important facts that answer real user questions.
+
+Activity / Timeline
+  Recent work, changes, communications, and status movement.
+
+Related Information
+  Units, purchases, documents, notes, work orders, permissions, assets, or other module-specific context.
+
+Focused Edit Surfaces
+  Forms used only when the user chooses to change information.
+```
+
+Cards must answer questions. Forms collect answers. Page sections should not become walls of fields.
+
+### Workspaces By Role
+
+Every screen belongs to a workspace. The layout must reflect the employee's task.
+
+Management workspaces emphasize analytics, exceptions, review, and administration. Employee workspaces emphasize task completion, speed, next actions, and reduced typing. A technician and an owner should not experience the same interface when their jobs are different.
+
+### Actions Over Navigation
+
+Important actions should live beside the information they affect. Prefer action-led workflows such as Create Work Order, Take Payment, Text Customer, Print Estimate, Schedule Pickup, Reset Password, or Assign Asset over forcing users to navigate elsewhere and hunt.
+
+### Human Speed
+
+iM1 UI should reduce thinking:
+
+- Suggest the next action when possible.
+- Remember previous choices when appropriate.
+- Reduce typing.
+- Prioritize search over navigation.
+- Prioritize scanning over reading.
+- Prioritize clicking over typing.
+- Keep users oriented after save, refresh, and navigation events.
+
+### Emotional Goal
+
+The user should feel calm, never overwhelmed, never lost, and never forced to hunt for important information. Every screen should create confidence. The software should feel organized, intentional, and fast even before deeper performance optimization.
+
 ## Architectural Rule
 
 Nothing outside the iM1 UI component boundary may import third-party UI libraries directly.
@@ -101,9 +190,9 @@ Rules:
 - Navigation remains visible while users work.
 - Future support for favorites and recent items should be considered.
 
-## Standard Page Layout
+## Standard Workspace Layout
 
-Every administrative page follows the same structure:
+Every administrative page follows the same base structure:
 
 ```text
 Page Title
@@ -112,14 +201,14 @@ Breadcrumbs
 Toolbar
 -------------------------------------------------
 
-Filters, optional
+Hero / Snapshot, when a record or workspace has operational context
 
-Grid / Dashboard / Form
+Dashboard / Grid / Timeline / Related Information / Focused Form
 
 Status Bar / Pagination
 ```
 
-Pages should not invent their own layout.
+Pages should not invent their own layout. Record detail pages should use the iM1 Experience Standard and should not default to large edit forms unless the page is explicitly a creation or focused edit workflow.
 
 ## Core Components
 

@@ -37,4 +37,6 @@ Customer
 
 This repository is the foundation only. Business modules will be added behind clear module boundaries, shared authentication, organization-based tenant isolation, audit logging, configuration, feature flags, APIs, and background processing.
 
+The product experience is workspace-first. iM1 OS must not become a collection of CRUD screens. Each major screen should present the user with identity, operational status, important context, and next actions before exposing edit forms. The formal UI/UX scope is documented in `docs/specs/IM1_UI_FRAMEWORK_SPEC.md`.
+
 IM1OS is not a traditional Dealer Management System. Vehicle sales, F&I, deal jackets, floor planning, and unit inventory are not foundation concerns. They may become future optional modules, but they must not drive the platform architecture.

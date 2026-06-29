@@ -8,6 +8,8 @@ See `docs/MODULE_DEFINITIONS.md` for the current module families and boundaries.
 
 Before implementing any module, produce a short architecture proposal for review. Use `docs/LEGACY_FUNCTIONAL_SPEC.md` as the functional reference and preserve proven legacy workflows unless a change is explicitly approved.
 
+Module UI must follow the iM1 Experience Standard in `docs/specs/IM1_UI_FRAMEWORK_SPEC.md`. Modules should be designed as workspaces that present information, status, and next actions before exposing edit forms.
+
 When modules are introduced, each module should define:
 
 - Domain concepts and invariants.
