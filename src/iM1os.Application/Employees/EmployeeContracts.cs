@@ -45,6 +45,7 @@ public sealed record EmployeeEditor(
     bool IsManager,
     EmployeeLoginAccount? LoginAccount,
     IReadOnlyCollection<EmployeeCompensationItem> Compensation,
+    IReadOnlyCollection<EmployeeDocumentItem> Documents,
     IReadOnlyCollection<EmployeePermissionState> Permissions,
     IReadOnlyCollection<EmployeeActivity> Activity);
 
@@ -67,6 +68,14 @@ public sealed record EmployeeCompensationItem(
     DateOnly EffectiveStartDate,
     DateOnly? EffectiveEndDate,
     string? Notes);
+
+public sealed record EmployeeDocumentItem(
+    Guid Id,
+    string FileName,
+    string DocumentType,
+    string? Url,
+    string? ContentType,
+    DateTimeOffset UploadedAtUtc);
 
 public sealed record EmployeeRoleOption(Guid Id, string Name, bool IsSystemRole);
 
@@ -147,6 +156,8 @@ public sealed record SaveEmployeeCompensationRequest(
     string? Notes);
 
 public sealed record DeleteEmployeeCompensationRequest(Guid EmployeeId, Guid CompensationId);
+
+public sealed record AddEmployeeDocumentRequest(Guid EmployeeId, string FileName, string DocumentType, string? Url, string? ContentType, string? StorageKey = null);
 
 public sealed record SaveEmployeePinRequest(Guid EmployeeId, string Pin);
 

@@ -2,7 +2,9 @@ using iM1os.Application.Common;
 using iM1os.Infrastructure;
 using iM1os.Infrastructure.Persistence;
 using iM1os.Web.Security;
+using iM1os.Web.Services;
 using Microsoft.AspNetCore.Authentication.Cookies;
+using Microsoft.Extensions.FileProviders;
 using Serilog;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -48,6 +50,13 @@ if (!app.Environment.IsDevelopment())
 }
 
 app.UseSerilogRequestLogging();
+var uploadRoot = DocumentUploadStorage.UploadRoot(app.Environment);
+Directory.CreateDirectory(uploadRoot);
+app.UseStaticFiles(new StaticFileOptions
+{
+    FileProvider = new PhysicalFileProvider(uploadRoot),
+    RequestPath = "/uploads"
+});
 app.UseStaticFiles();
 app.Use(async (context, next) =>
 {

@@ -50,4 +50,6 @@ public sealed class Employee : AuditableEntity, IOrganizationOwned
     public ApplicationUser? LoginAccount { get; set; }
 
     public ICollection<EmployeeCompensation> CompensationRecords { get; } = new List<EmployeeCompensation>();
+
+    public ICollection<EmployeeDocument> Documents { get; } = new List<EmployeeDocument>();
 }

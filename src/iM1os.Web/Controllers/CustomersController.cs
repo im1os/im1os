@@ -1,12 +1,13 @@
 using System.Security.Claims;
 using iM1os.Application.Customers;
+using iM1os.Web.Services;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
 namespace iM1os.Web.Controllers;
 
 [Authorize]
-public sealed class CustomersController(ICustomerCrmService customerService) : Controller
+public sealed class CustomersController(ICustomerCrmService customerService, IWebHostEnvironment environment) : Controller
 {
     [HttpGet]
     public async Task<IActionResult> Index(string? query, string? status, CancellationToken cancellationToken)
@@ -153,10 +154,41 @@ public sealed class CustomersController(ICustomerCrmService customerService) : C
 
     [HttpPost]
     [ValidateAntiForgeryToken]
-    public async Task<IActionResult> AddDocument(AddCustomerDocumentRequest request, string? returnTab, CancellationToken cancellationToken)
+    public async Task<IActionResult> AddDocument(AddCustomerDocumentRequest request, IReadOnlyCollection<IFormFile>? files, string? returnTab, CancellationToken cancellationToken)
     {
-        await customerService.AddDocumentAsync(OrganizationId(), UserId(), request, RemoteIp(), cancellationToken);
-        return RedirectToDetail(request.CustomerId, returnTab);
+        try
+        {
+            var organizationId = OrganizationId();
+            var uploads = await DocumentUploadStorage.SaveAsync(environment, organizationId, "customers", request.CustomerId, files, cancellationToken);
+            if (uploads.Count == 0)
+            {
+                await customerService.AddDocumentAsync(organizationId, UserId(), request, RemoteIp(), cancellationToken);
+            }
+            else
+            {
+                foreach (var upload in uploads)
+                {
+                    await customerService.AddDocumentAsync(
+                        organizationId,
+                        UserId(),
+                        request with
+                        {
+                            FileName = upload.FileName,
+                            Url = upload.Url,
+                            ContentType = upload.ContentType,
+                            StorageKey = upload.StorageKey
+                        },
+                        RemoteIp(),
+                        cancellationToken);
+                }
+            }
+        }
+        catch (InvalidOperationException ex)
+        {
+            TempData["CustomerError"] = ex.Message;
+        }
+
+        return RedirectToDetail(request.CustomerId, returnTab ?? "documents");
     }
 
     private Guid OrganizationId()

@@ -1,0 +1,44 @@
+@model IM1DocumentDropzoneModel
+
+@{
+    var documentTypes = Model.DocumentTypes is { Count: > 0 }
+        ? Model.DocumentTypes
+        : new[] { "General", "Tax", "Agreement", "Photo", "Video", "HR", "Payroll", "Certification", "Safety" };
+}
+
+<form action="@Model.FormAction" method="post" enctype="multipart/form-data" class="im1-form im1-document-form" data-document-dropzone>
+    @Html.AntiForgeryToken()
+    <input type="hidden" name="@Model.OwnerIdFieldName" value="@Model.OwnerId" />
+    <input type="hidden" name="returnTab" value="@Model.ReturnTab" />
+
+    <fieldset class="im1-form-section">
+        <legend>@Model.Title</legend>
+        <p class="im1-form-section-note">@Model.Description</p>
+
+        <div class="im1-document-dropzone-target" data-document-dropzone-target tabindex="0" role="button" aria-label="Choose files">
+            <input class="im1-document-file-input" name="Files" type="file" multiple data-document-file-input />
+            <strong>Drop files here</strong>
+            <span>or click to choose files</span>
+        </div>
+
+        <ul class="im1-document-file-list" data-document-file-list hidden></ul>
+
+        <div class="im1-form-grid">
+            <label>Document Type
+                <select name="DocumentType" required>
+                    @foreach (var type in documentTypes)
+                    {
+                        <option value="@type" selected="@(type == "General")">@type</option>
+                    }
+                </select>
+            </label>
+            <label>File Name <input name="FileName" maxlength="260" data-document-file-name /></label>
+            <label>URL <input name="Url" placeholder="Optional external link" /></label>
+            <label>Content Type <input name="ContentType" maxlength="120" data-document-content-type /></label>
+        </div>
+
+        <div class="im1-form-actions">
+            <button class="im1-button im1-button-primary" type="submit">@Model.SubmitLabel</button>
+        </div>
+    </fieldset>
+</form>

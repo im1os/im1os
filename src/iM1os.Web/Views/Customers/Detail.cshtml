@@ -390,25 +390,22 @@
     </section>
 
     <section class="tab-panel" id="documents" role="tabpanel" hidden>
-        <form asp-action="AddDocument" method="post" class="im1-form">
-            <input type="hidden" name="CustomerId" value="@Model.Id" />
-            <div class="im1-form-grid">
-                <label>File Name <input name="FileName" required /></label>
-                <label>Document Type <input name="DocumentType" value="General" required /></label>
-                <label>URL <input name="Url" /></label>
-                <label>Content Type <input name="ContentType" /></label>
-            </div>
-            <div class="im1-form-actions">
-                <button class="im1-button im1-button-primary" type="submit">Register Document</button>
-            </div>
-        </form>
+        @await Html.PartialAsync("IM1DocumentDropzone", new IM1DocumentDropzoneModel(
+            Url.Action("AddDocument", "Customers") ?? "/Customers/AddDocument",
+            "CustomerId",
+            Model.Id,
+            "documents",
+            "Add Customer Document",
+            "Drop customer documents, photos, videos, or add an external document link.",
+            "Add Document",
+            new[] { "General", "Tax", "Agreement", "Photo", "Video", "Finance", "Service", "Marketing" }))
         <div class="im1-data-grid">
             <table>
                 <thead><tr><th>Type</th><th>File</th><th>Uploaded</th><th>Link</th></tr></thead>
                 <tbody>
                     @foreach (var document in Model.Documents)
                     {
-                        <tr><td>@document.DocumentType</td><td>@document.FileName</td><td>@document.UploadedAtUtc.ToString("yyyy-MM-dd HH:mm")</td><td>@if (!string.IsNullOrWhiteSpace(document.Url)) { <a href="@document.Url">Open</a> }</td></tr>
+                        <tr><td>@document.DocumentType</td><td>@document.FileName</td><td>@document.UploadedAtUtc.ToString("yyyy-MM-dd HH:mm")</td><td>@if (!string.IsNullOrWhiteSpace(document.Url)) { <a href="@document.Url" target="_blank" rel="noopener">Open</a> }</td></tr>
                     }
                     @if (Model.Documents.Count == 0)
                     {

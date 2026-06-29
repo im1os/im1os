@@ -26,11 +26,17 @@
             new IM1TabItemModel("login-account", "Login Account"),
             new IM1TabItemModel("permissions", "Permissions"),
             new IM1TabItemModel("security", "Security"),
+            new IM1TabItemModel("documents", "Documents"),
             new IM1TabItemModel("activity", "Activity")
         });
 }
 
 @await Html.PartialAsync("IM1Page", page)
+
+@if (TempData["EmployeeError"] is string errorMessage)
+{
+    <div class="form-alert error">@errorMessage</div>
+}
 
 <section class="im1-page">
     @await Html.PartialAsync("IM1Tabs", editorTabs)
@@ -281,6 +287,39 @@
                 }
             </div>
         }
+    </section>
+
+    <section class="tab-panel" id="documents" role="tabpanel" hidden>
+        @await Html.PartialAsync("IM1DocumentDropzone", new IM1DocumentDropzoneModel(
+            Url.Action("AddDocument", "Employees") ?? "/Employees/AddDocument",
+            "EmployeeId",
+            employee.Id,
+            "documents",
+            "Add Employee Document",
+            "Drop HR, payroll, certification, safety, and employee documents here.",
+            "Add Document",
+            new[] { "General", "HR", "Payroll", "Certification", "Safety", "Agreement", "Photo", "Video" }))
+
+        <div class="im1-data-grid">
+            <table>
+                <thead><tr><th>Type</th><th>File</th><th>Uploaded</th><th>Link</th></tr></thead>
+                <tbody>
+                    @foreach (var document in employee.Documents)
+                    {
+                        <tr>
+                            <td>@document.DocumentType</td>
+                            <td>@document.FileName</td>
+                            <td>@document.UploadedAtUtc.ToString("yyyy-MM-dd HH:mm")</td>
+                            <td>@if (!string.IsNullOrWhiteSpace(document.Url)) { <a href="@document.Url" target="_blank" rel="noopener">Open</a> }</td>
+                        </tr>
+                    }
+                    @if (employee.Documents.Count == 0)
+                    {
+                        <tr><td colspan="4">No documents found.</td></tr>
+                    }
+                </tbody>
+            </table>
+        </div>
     </section>
 
     <section class="tab-panel" id="activity" role="tabpanel" hidden>

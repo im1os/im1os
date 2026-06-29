@@ -432,6 +432,87 @@ window.IM1.activateZipLookup = function activateZipLookup(root) {
   });
 };
 
+window.IM1.activateDocumentDropzones = function activateDocumentDropzones(root) {
+  const scope = root || document;
+
+  scope.querySelectorAll("[data-document-dropzone]").forEach((form) => {
+    const target = form.querySelector("[data-document-dropzone-target]");
+    const input = form.querySelector("[data-document-file-input]");
+    const fileName = form.querySelector("[data-document-file-name]");
+    const contentType = form.querySelector("[data-document-content-type]");
+    const fileList = form.querySelector("[data-document-file-list]");
+    if (!target || !input || !fileList) {
+      return;
+    }
+
+    const render = () => {
+      const files = Array.from(input.files || []);
+      fileList.replaceChildren();
+      fileList.hidden = files.length === 0;
+      target.classList.toggle("has-files", files.length > 0);
+
+      files.forEach((file) => {
+        const item = document.createElement("li");
+        item.textContent = `${file.name} (${Math.ceil(file.size / 1024).toLocaleString()} KB)`;
+        fileList.appendChild(item);
+      });
+
+      if (files[0]) {
+        if (fileName && !fileName.value) {
+          fileName.value = fileName.value || files[0].name;
+        }
+        if (contentType) {
+          contentType.value = files[0].type || contentType.value;
+        }
+      }
+    };
+
+    target.addEventListener("click", (event) => {
+      if (event.target !== input) {
+        input.click();
+      }
+    });
+
+    target.addEventListener("keydown", (event) => {
+      if (event.key === "Enter" || event.key === " ") {
+        event.preventDefault();
+        input.click();
+      }
+    });
+
+    ["dragenter", "dragover"].forEach((name) => {
+      target.addEventListener(name, (event) => {
+        event.preventDefault();
+        target.classList.add("is-dragging");
+      });
+    });
+
+    ["dragleave", "drop"].forEach((name) => {
+      target.addEventListener(name, (event) => {
+        event.preventDefault();
+        target.classList.remove("is-dragging");
+      });
+    });
+
+    target.addEventListener("drop", (event) => {
+      if (event.dataTransfer?.files?.length) {
+        input.files = event.dataTransfer.files;
+        if (fileName) {
+          fileName.value = "";
+        }
+        render();
+      }
+    });
+
+    input.addEventListener("change", () => {
+      if (fileName) {
+        fileName.value = "";
+      }
+      render();
+    });
+  });
+};
+
 document.addEventListener("keydown", (event) => {
   if (event.key !== "Escape") {
     return;
@@ -459,4 +540,5 @@ document.addEventListener("DOMContentLoaded", () => {
   window.IM1.activateTabReturnFields(document);
   window.IM1.activateTaxExemptFields(document);
   window.IM1.activateZipLookup(document);
+  window.IM1.activateDocumentDropzones(document);
 });

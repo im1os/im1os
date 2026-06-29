@@ -466,6 +466,7 @@ public sealed class CustomerCrmService(
             CustomerId = customer.Id,
             FileName = Required(request.FileName, "File name"),
             DocumentType = Required(request.DocumentType, "Document type"),
+            StorageKey = Clean(request.StorageKey),
             Url = Clean(request.Url),
             ContentType = Clean(request.ContentType),
             UploadedAtUtc = dateTimeProvider.UtcNow

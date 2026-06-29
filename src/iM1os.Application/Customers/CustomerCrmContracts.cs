@@ -253,4 +253,4 @@ public sealed record AddCustomerCustomFieldRequest(Guid CustomerId, string Field
 
 public sealed record AddCustomerExternalLinkRequest(Guid CustomerId, string Provider, string ExternalCustomerId, string? ExternalUrl);
 
-public sealed record AddCustomerDocumentRequest(Guid CustomerId, string FileName, string DocumentType, string? Url, string? ContentType);
+public sealed record AddCustomerDocumentRequest(Guid CustomerId, string FileName, string DocumentType, string? Url, string? ContentType, string? StorageKey = null);

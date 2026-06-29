@@ -1,12 +1,13 @@
 using System.Security.Claims;
 using iM1os.Application.Employees;
+using iM1os.Web.Services;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
 namespace iM1os.Web.Controllers;
 
 [Authorize]
-public sealed class EmployeesController(IEmployeeService employeeService) : Controller
+public sealed class EmployeesController(IEmployeeService employeeService, IWebHostEnvironment environment) : Controller
 {
     private static readonly HashSet<string> EmployeeEditorTabs = new(StringComparer.OrdinalIgnoreCase)
     {
@@ -16,6 +17,7 @@ public sealed class EmployeesController(IEmployeeService employeeService) : Cont
         "login-account",
         "permissions",
         "security",
+        "documents",
         "activity"
     };
 
@@ -166,6 +168,50 @@ public sealed class EmployeesController(IEmployeeService employeeService) : Cont
         catch (UnauthorizedAccessException)
         {
             return RedirectToAction("AccessDenied", "Business");
+        }
+    }
+
+    [HttpPost]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> AddDocument(AddEmployeeDocumentRequest request, IReadOnlyCollection<IFormFile>? files, string? returnTab, CancellationToken cancellationToken)
+    {
+        try
+        {
+            var organizationId = OrganizationId();
+            var uploads = await DocumentUploadStorage.SaveAsync(environment, organizationId, "employees", request.EmployeeId, files, cancellationToken);
+            if (uploads.Count == 0)
+            {
+                await employeeService.AddDocumentAsync(organizationId, UserId(), request, RemoteIp(), cancellationToken);
+            }
+            else
+            {
+                foreach (var upload in uploads)
+                {
+                    await employeeService.AddDocumentAsync(
+                        organizationId,
+                        UserId(),
+                        request with
+                        {
+                            FileName = upload.FileName,
+                            Url = upload.Url,
+                            ContentType = upload.ContentType,
+                            StorageKey = upload.StorageKey
+                        },
+                        RemoteIp(),
+                        cancellationToken);
+                }
+            }
+
+            return RedirectToEdit(request.EmployeeId, returnTab ?? "documents");
+        }
+        catch (UnauthorizedAccessException)
+        {
+            return RedirectToAction("AccessDenied", "Business");
+        }
+        catch (InvalidOperationException ex)
+        {
+            TempData["EmployeeError"] = ex.Message;
+            return RedirectToEdit(request.EmployeeId, returnTab ?? "documents");
         }
     }
 

@@ -266,6 +266,27 @@ public sealed class EmployeeService(
         await dbContext.SaveChangesAsync(cancellationToken);
     }
 
+    public async Task AddDocumentAsync(Guid organizationId, Guid actorUserId, AddEmployeeDocumentRequest request, string? ipAddress, CancellationToken cancellationToken)
+    {
+        await EnsureCanManageEmployeesAsync(organizationId, actorUserId, cancellationToken);
+        var employee = await LoadEmployeeAsync(organizationId, request.EmployeeId, cancellationToken);
+        var document = new EmployeeDocument
+        {
+            OrganizationId = organizationId,
+            EmployeeId = employee.Id,
+            FileName = Required(request.FileName, "File name"),
+            DocumentType = Required(request.DocumentType, "Document type"),
+            StorageKey = Clean(request.StorageKey),
+            Url = Clean(request.Url),
+            ContentType = Clean(request.ContentType),
+            UploadedAtUtc = dateTimeProvider.UtcNow
+        };
+
+        dbContext.EmployeeDocuments.Add(document);
+        AddActivity(organizationId, employee.Id, actorUserId, "EmployeeDocumentAdded", "Employee document added", ipAddress, new { document.FileName, document.DocumentType });
+        await dbContext.SaveChangesAsync(cancellationToken);
+    }
+
     public async Task SavePinAsync(Guid organizationId, Guid actorUserId, SaveEmployeePinRequest request, string? ipAddress, CancellationToken cancellationToken)
     {
         await EnsureCanManageEmployeesAsync(organizationId, actorUserId, cancellationToken);
@@ -417,6 +438,7 @@ public sealed class EmployeeService(
             .Include(x => x.LoginAccount!).ThenInclude(x => x.PermissionOverrides).ThenInclude(x => x.Permission)
             .Include(x => x.LoginAccount!).ThenInclude(x => x.Sessions)
             .Include(x => x.CompensationRecords)
+            .Include(x => x.Documents)
             .SingleOrDefaultAsync(cancellationToken);
         if (employee is null)
         {
@@ -470,6 +492,17 @@ public sealed class EmployeeService(
                 x.EffectiveEndDate,
                 x.Notes))
             .ToList();
+        var documents = employee.Documents
+            .Where(x => x.DeletedAtUtc == null)
+            .OrderByDescending(x => x.UploadedAtUtc)
+            .Select(x => new EmployeeDocumentItem(
+                x.Id,
+                x.FileName,
+                x.DocumentType,
+                x.Url,
+                x.ContentType,
+                x.UploadedAtUtc))
+            .ToList();
 
         return new EmployeeEditor(
             employee.Id,
@@ -494,6 +527,7 @@ public sealed class EmployeeService(
             employee.IsManager,
             loginAccount,
             compensation,
+            documents,
             permissionStates,
             activity);
     }

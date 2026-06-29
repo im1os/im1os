@@ -32,6 +32,8 @@ public sealed class ApplicationDbContext(
 
     public DbSet<EmployeeCompensation> EmployeeCompensations => Set<EmployeeCompensation>();
 
+    public DbSet<EmployeeDocument> EmployeeDocuments => Set<EmployeeDocument>();
+
     public DbSet<UserInvitation> UserInvitations => Set<UserInvitation>();
 
     public DbSet<PasswordResetRequest> PasswordResetRequests => Set<PasswordResetRequest>();
@@ -233,6 +235,20 @@ public sealed class ApplicationDbContext(
             entity.Property(x => x.SalesCommissionRate).HasPrecision(8, 4);
             entity.Property(x => x.Notes).HasMaxLength(500);
             entity.HasOne(x => x.Employee).WithMany(x => x.CompensationRecords).HasForeignKey(x => x.EmployeeId);
+            entity.HasQueryFilter(x => x.DeletedAtUtc == null && (tenantProvider.CurrentOrganizationId == null || x.OrganizationId == tenantProvider.CurrentOrganizationId));
+        });
+
+        modelBuilder.Entity<EmployeeDocument>(entity =>
+        {
+            entity.ToTable("employee_documents");
+            entity.HasIndex(x => new { x.OrganizationId, x.EmployeeId });
+            entity.HasIndex(x => new { x.OrganizationId, x.DocumentType });
+            entity.Property(x => x.FileName).HasMaxLength(260).IsRequired();
+            entity.Property(x => x.DocumentType).HasMaxLength(80).IsRequired();
+            entity.Property(x => x.StorageKey).HasMaxLength(500);
+            entity.Property(x => x.Url).HasMaxLength(1000);
+            entity.Property(x => x.ContentType).HasMaxLength(120);
+            entity.HasOne(x => x.Employee).WithMany(x => x.Documents).HasForeignKey(x => x.EmployeeId);
             entity.HasQueryFilter(x => x.DeletedAtUtc == null && (tenantProvider.CurrentOrganizationId == null || x.OrganizationId == tenantProvider.CurrentOrganizationId));
         });
 

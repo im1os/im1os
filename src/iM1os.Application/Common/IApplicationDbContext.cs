@@ -25,6 +25,8 @@ public interface IApplicationDbContext
 
     DbSet<EmployeeCompensation> EmployeeCompensations { get; }
 
+    DbSet<EmployeeDocument> EmployeeDocuments { get; }
+
     DbSet<UserInvitation> UserInvitations { get; }
 
     DbSet<PasswordResetRequest> PasswordResetRequests { get; }

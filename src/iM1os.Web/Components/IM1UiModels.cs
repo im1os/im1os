@@ -90,6 +90,16 @@ public sealed record IM1TabItemModel(
     string Label,
     bool IsActive = false);
 
+public sealed record IM1DocumentDropzoneModel(
+    string FormAction,
+    string OwnerIdFieldName,
+    Guid OwnerId,
+    string ReturnTab = "documents",
+    string Title = "Add Document",
+    string Description = "Drop files here or choose files from your computer.",
+    string SubmitLabel = "Add Document",
+    IReadOnlyCollection<string>? DocumentTypes = null);
+
 public sealed record IM1ShellNavigationModel(
     string ProductName,
     IReadOnlyCollection<IM1ShellNavigationItemModel> Items,
