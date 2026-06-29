@@ -2,32 +2,32 @@
 
 @{
     ViewData["Title"] = Model.Tenant.OrganizationName;
+    var hero = new IM1WorkspaceHeroModel(
+        Model.Tenant.OrganizationName,
+        "Company workspace",
+        $"{Model.Tenant.Status} company on {Model.Tenant.SubscriptionPlan}. Health: {Model.Tenant.HealthStatus}.",
+        new[]
+        {
+            new IM1WorkspaceStatModel("Users", Model.Tenant.ActiveUsers.ToString(), "Active company users"),
+            new IM1WorkspaceStatModel("Locations", Model.Tenant.Locations.ToString(), "Provisioned locations"),
+            new IM1WorkspaceStatModel("Billing", Model.Tenant.BillingStatus, "Current billing state"),
+            new IM1WorkspaceStatModel("Version", Model.Tenant.CurrentVersion, "Deployed company version")
+        },
+        new[]
+        {
+            new IM1ActionModel("Edit Company", Url.Action("EditTenant", new { organizationId = Model.Tenant.OrganizationId }), "primary"),
+            new IM1ActionModel("Open Dashboard", Url.Action("Dashboard", "Business", new { organizationId = Model.Tenant.OrganizationId }), "secondary"),
+            new IM1ActionModel("Company Admin", Url.Action("Administration", "Business", new { organizationId = Model.Tenant.OrganizationId }), "secondary"),
+            new IM1ActionModel("Company Manager", Url.Action("Tenants"), "secondary")
+        },
+        Model.Tenant.HealthStatus);
 }
 
-<section class="dashboard-header">
-    <div>
-        <p class="eyebrow">Company Details</p>
-        <h1>@Model.Tenant.OrganizationName</h1>
-        <p class="subtle">@Model.Tenant.Status - @Model.Tenant.SubscriptionPlan - @Model.Tenant.HealthStatus</p>
-    </div>
-    <div class="action-row">
-        <a class="primary-action" asp-action="EditTenant" asp-route-organizationId="@Model.Tenant.OrganizationId">Edit Company</a>
-        <a class="secondary-action" asp-controller="Business" asp-action="Dashboard" asp-route-organizationId="@Model.Tenant.OrganizationId">Open Company Dashboard</a>
-        <a class="secondary-action" asp-controller="Business" asp-action="Administration" asp-route-organizationId="@Model.Tenant.OrganizationId">Company Admin</a>
-        <a class="secondary-action" asp-action="Tenants">Company Manager</a>
-    </div>
-</section>
+@await Html.PartialAsync("IM1WorkspaceHero", hero)
 
-<section class="metric-grid">
-    <article><span>Users</span><strong>@Model.Tenant.ActiveUsers</strong><p>Active company users.</p></article>
-    <article><span>Locations</span><strong>@Model.Tenant.Locations</strong><p>Provisioned locations.</p></article>
-    <article><span>Billing</span><strong>@Model.Tenant.BillingStatus</strong><p>Current billing state.</p></article>
-    <article><span>Version</span><strong>@Model.Tenant.CurrentVersion</strong><p>Company version.</p></article>
-</section>
-
-<section class="split-grid">
-    <article class="page-band">
-        <h2>Owner Access</h2>
+<section class="im1-workspace-grid">
+    <article class="im1-workspace-card span-4">
+        <header class="im1-section-header"><div><h2>Owner Access</h2><p>Primary owner account state.</p></div></header>
         <p><strong>@(Model.OwnerName ?? "No owner found")</strong></p>
         <p>@(Model.OwnerEmail ?? "Owner email unavailable")</p>
         <p>@(Model.OwnerActivated ? "Activated" : "Pending activation")</p>
@@ -36,20 +36,20 @@
             <button class="secondary-action" type="submit">Resend Owner Invitation</button>
         </form>
     </article>
-    <article class="page-band">
-        <h2>Modules Enabled</h2>
+    <article class="im1-workspace-card span-4">
+        <header class="im1-section-header"><div><h2>Modules Enabled</h2><p>Available company capabilities.</p></div></header>
         <ul class="event-list">@foreach (var item in Model.ModulesEnabled) { <li>@item</li> }</ul>
     </article>
-    <article class="page-band">
-        <h2>Provisioning History</h2>
+    <article class="im1-workspace-card span-4">
+        <header class="im1-section-header"><div><h2>Provisioning History</h2><p>Recent lifecycle movement.</p></div></header>
         <ul class="event-list">@foreach (var item in Model.ProvisioningHistory) { <li>@item</li> }</ul>
     </article>
-    <article class="page-band">
-        <h2>Audit History</h2>
+    <article class="im1-workspace-card span-6">
+        <header class="im1-section-header"><div><h2>Audit History</h2><p>Platform changes against this company.</p></div></header>
         <ul class="event-list">@foreach (var item in Model.AuditHistory) { <li>@item</li> }</ul>
     </article>
-    <article class="page-band">
-        <h2>Welcome Emails</h2>
+    <article class="im1-workspace-card span-6">
+        <header class="im1-section-header"><div><h2>Welcome Emails</h2><p>Outbound owner onboarding messages.</p></div></header>
         <ul class="event-list">@foreach (var item in Model.WelcomeEmails) { <li>@item</li> }</ul>
     </article>
 </section>

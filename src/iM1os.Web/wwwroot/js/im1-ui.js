@@ -35,9 +35,32 @@ window.IM1.activateTabs = function activateTabs(root) {
       button.addEventListener("click", () => activate(button.dataset.tabTarget, true));
     });
 
+    panelScope.querySelectorAll("a[href^='#']").forEach((link) => {
+      link.addEventListener("click", () => {
+        const id = link.getAttribute("href")?.slice(1);
+        if (id && panels.some((item) => item.id === id)) {
+          activate(id, true);
+        }
+      });
+    });
+
     const initialId = window.location.hash ? window.location.hash.slice(1) : buttons[0]?.dataset.tabTarget;
     activate(initialId, false);
   });
+};
+
+window.IM1.openTabById = function openTabById(id) {
+  if (!id) {
+    return false;
+  }
+
+  const button = document.querySelector(`[data-tab-target='${CSS.escape(id)}']`);
+  if (!button) {
+    return false;
+  }
+
+  button.click();
+  return true;
 };
 
 window.IM1.activateDialogs = function activateDialogs(root) {
@@ -526,6 +549,12 @@ document.addEventListener("keydown", (event) => {
 document.addEventListener("click", (event) => {
   if (!event.target.closest(".im1-context-menu")) {
     document.querySelector(".im1-context-menu")?.remove();
+  }
+
+  const tabLink = event.target.closest("a[href^='#']");
+  const id = tabLink?.getAttribute("href")?.slice(1);
+  if (id && window.IM1.openTabById(id)) {
+    event.preventDefault();
   }
 });
 

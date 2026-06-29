@@ -22,7 +22,8 @@
         "Company administration sections",
         new[]
         {
-            new IM1TabItemModel("profile", "Profile", true),
+            new IM1TabItemModel("overview", "Overview", true),
+            new IM1TabItemModel("profile", "Company Profile"),
             new IM1TabItemModel("locations", "Locations"),
             new IM1TabItemModel("roles", "Roles"),
             new IM1TabItemModel("operations", "Operations"),
@@ -51,9 +52,23 @@
         Toolbar: new IM1ToolbarModel(SearchPlaceholder: "Search locations", ShowRefresh: true, ShowFilters: true, ShowExport: true),
         EmptyText: "No company locations have been configured.",
         PageSize: 10);
+    var hero = new IM1WorkspaceHeroModel(
+        Model.Profile.BusinessName,
+        "Company administration",
+        Model.IsReadyForOperations ? "Ready for daily operations." : "Finish required setup before daily operations begin.",
+        new[]
+        {
+            new IM1WorkspaceStatModel("Setup", $"{Model.SetupProgress}%", "Administration readiness"),
+            new IM1WorkspaceStatModel("Locations", Model.Locations.Count.ToString(), "Configured shops"),
+            new IM1WorkspaceStatModel("Employees", Model.Employees.Count.ToString(), "People records"),
+            new IM1WorkspaceStatModel("Status", Model.IsReadyForOperations ? "Ready" : "Setup", "Operational state")
+        },
+        new[] { new IM1ActionModel("Company Dashboard", Url.Action("Dashboard", "Business", new { organizationId = administrationRoute }), "secondary") },
+        Model.IsReadyForOperations ? "Ready" : "Setup needed");
 }
 
 @await Html.PartialAsync("IM1Page", page)
+@await Html.PartialAsync("IM1WorkspaceHero", hero)
 
 @if (TempData["CompanyAdminStatus"] is string statusMessage)
 {
@@ -64,19 +79,56 @@
     <div class="form-alert error">@errorMessage</div>
 }
 
-<section class="im1-metric-grid">
-    @await Html.PartialAsync("IM1Card", new IM1CardModel("Setup", $"{Model.SetupProgress}%", "Administration readiness."))
-    @await Html.PartialAsync("IM1Card", new IM1CardModel("Locations", Model.Locations.Count.ToString(), "Configured shops."))
-    @await Html.PartialAsync("IM1Card", new IM1CardModel("Employees", Model.Employees.Count.ToString(), "People records."))
-    @await Html.PartialAsync("IM1Card", new IM1CardModel("Status", Model.IsReadyForOperations ? "Ready" : "Setup", "Operational readiness."))
-</section>
-
 <section class="admin-tabs" data-tabs>
     @await Html.PartialAsync("IM1Tabs", tabs)
 
-    <div class="tab-panel is-active" id="profile" role="tabpanel">
-        <article class="page-band">
-            <h2>Company Profile</h2>
+    <div class="tab-panel is-active" id="overview" role="tabpanel">
+        <section class="im1-workspace-grid">
+            <article class="im1-workspace-card span-4">
+                <header class="im1-section-header"><div><h2>Company</h2><p>Identity and billing-facing information.</p></div></header>
+                <dl class="im1-key-value-list">
+                    <div><dt>Legal Name</dt><dd>@(Model.Profile.LegalName ?? "-")</dd></div>
+                    <div><dt>DBA</dt><dd>@(Model.Profile.Dba ?? "-")</dd></div>
+                    <div><dt>Email</dt><dd>@(Model.Profile.Email ?? "-")</dd></div>
+                    <div><dt>Phone</dt><dd>@(Model.Profile.Phone ?? "-")</dd></div>
+                </dl>
+            </article>
+            <article class="im1-workspace-card span-4">
+                <header class="im1-section-header"><div><h2>Operations</h2><p>Defaults that affect service work.</p></div></header>
+                <dl class="im1-key-value-list">
+                    <div><dt>Labor Rate</dt><dd>@Model.Configuration.DefaultLaborRate.ToString("C")</dd></div>
+                    <div><dt>Tax Rate</dt><dd>@Model.Configuration.DefaultTaxRate.ToString("P2")</dd></div>
+                    <div><dt>Currency</dt><dd>@Model.Profile.Currency</dd></div>
+                    <div><dt>Time Zone</dt><dd>@Model.Profile.TimeZone</dd></div>
+                </dl>
+            </article>
+            <article class="im1-workspace-card span-4">
+                <header class="im1-section-header"><div><h2>Next Actions</h2><p>Common administration work.</p></div></header>
+                <div class="im1-action-strip">
+                    <button class="im1-button im1-button-secondary" type="button" data-tab-target="profile">Edit Profile</button>
+                    <button class="im1-button im1-button-secondary" type="button" data-tab-target="locations">Add Location</button>
+                    <button class="im1-button im1-button-secondary" type="button" data-tab-target="operations">Configure Operations</button>
+                </div>
+            </article>
+            <article class="im1-workspace-card span-12">
+                <header class="im1-section-header"><div><h2>Recent Activity</h2><p>Latest administration events.</p></div></header>
+                <ul class="event-list">
+                    @foreach (var item in Model.RecentActivity.Take(8))
+                    {
+                        <li>@item</li>
+                    }
+                    @if (Model.RecentActivity.Count == 0)
+                    {
+                        <li>No recent activity.</li>
+                    }
+                </ul>
+            </article>
+        </section>
+    </div>
+
+    <div class="tab-panel" id="profile" role="tabpanel" hidden>
+        <article class="im1-workspace-card span-12">
+            <header class="im1-section-header"><div><h2>Company Profile</h2><p>Edit identity, contact, address, and formatting defaults.</p></div></header>
             <form asp-action="Profile" asp-route-organizationId="@administrationRoute" method="post" class="form-grid">
                 <input type="hidden" name="organizationId" value="@Model.OrganizationId" />
                 <label>Company Name <input name="BusinessName" value="@Model.Profile.BusinessName" /></label>

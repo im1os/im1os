@@ -2,15 +2,25 @@
 
 @{
     ViewData["Title"] = "Company Manager";
+    var activeCount = Model.Count(x => x.Status == "Active");
+    var trialCount = Model.Count(x => x.Status == "Trial");
+    var suspendedCount = Model.Count(x => x.Status == "Suspended");
+    var hero = new IM1WorkspaceHeroModel(
+        "IM1OS Companies",
+        "Company manager",
+        "Review company health, billing state, provisioning status, and open the company workspace when support is needed.",
+        new[]
+        {
+            new IM1WorkspaceStatModel("Companies", Model.Count.ToString(), "Visible records"),
+            new IM1WorkspaceStatModel("Active", activeCount.ToString(), "Operational"),
+            new IM1WorkspaceStatModel("Trials", trialCount.ToString(), "Evaluating"),
+            new IM1WorkspaceStatModel("Suspended", suspendedCount.ToString(), "Needs attention")
+        },
+        new[] { new IM1ActionModel("Create Company", Url.Action("CreateTenant"), "primary") },
+        suspendedCount > 0 ? $"{suspendedCount} companies need review" : "No suspended companies");
 }
 
-<section class="dashboard-header">
-    <div>
-        <p class="eyebrow">Company Manager</p>
-        <h1>IM1OS Companies</h1>
-    </div>
-    <a class="primary-action" asp-action="CreateTenant">Create New IM1OS Company</a>
-</section>
+@await Html.PartialAsync("IM1WorkspaceHero", hero)
 
 <form method="get" class="toolbar">
     <input name="query" value="@ViewData["Query"]" placeholder="Search companies" />

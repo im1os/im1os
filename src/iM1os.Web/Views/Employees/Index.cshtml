@@ -2,6 +2,21 @@
 
 @{
     ViewData["Title"] = "Employees";
+    var activeCount = Model.Employees.Count(x => x.Status == "Active");
+    var loginEnabledCount = Model.Employees.Count(x => x.HasLoginAccount);
+    var noLoginCount = Model.Employees.Count - loginEnabledCount;
+    var hero = new IM1WorkspaceHeroModel(
+        "Employees",
+        "HR workspace",
+        "Employee master records with optional login accounts, job function eligibility, compensation, security, and HR documents.",
+        new[]
+        {
+            new IM1WorkspaceStatModel("Employees", Model.Employees.Count.ToString(), "Visible records"),
+            new IM1WorkspaceStatModel("Active", activeCount.ToString(), "Available for work"),
+            new IM1WorkspaceStatModel("Login Accounts", loginEnabledCount.ToString(), "Can authenticate"),
+            new IM1WorkspaceStatModel("No Login", noLoginCount.ToString(), "Employee record only")
+        },
+        new[] { new IM1ActionModel("New Employee", Url.Action("New", "Employees"), "primary") });
     var grid = new IM1DataGridModel(
         Columns: new[]
         {
@@ -48,6 +63,7 @@
 }
 
 @await Html.PartialAsync("IM1Page", page)
+@await Html.PartialAsync("IM1WorkspaceHero", hero)
 
 <form class="im1-toolbar" method="get" asp-controller="Employees" asp-action="Index">
     <select name="status">

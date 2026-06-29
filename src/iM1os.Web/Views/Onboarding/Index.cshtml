@@ -2,15 +2,22 @@
 
 @{
     ViewData["Title"] = "Company Setup";
+    var hero = new IM1WorkspaceHeroModel(
+        "Welcome to IM1OS",
+        "Company setup workspace",
+        "Confirm the operating basics needed before opening the company dashboard.",
+        new[]
+        {
+            new IM1WorkspaceStatModel("Company", "Confirm", "Identity and contact"),
+            new IM1WorkspaceStatModel("Hours", "Configure", "Operating schedule"),
+            new IM1WorkspaceStatModel("Labor", "Set Rate", "Service default"),
+            new IM1WorkspaceStatModel("Launch", "Complete", "Open dashboard")
+        },
+        null,
+        "Setup required");
 }
 
-<section class="dashboard-header">
-    <div>
-        <p class="eyebrow">First-time setup</p>
-        <h1>Welcome to IM1OS</h1>
-        <p class="subtle">Complete the initial setup before opening the company dashboard.</p>
-    </div>
-</section>
+@await Html.PartialAsync("IM1WorkspaceHero", hero)
 
 <form asp-action="Index" method="post" class="wizard onboarding-wizard">
     <fieldset>

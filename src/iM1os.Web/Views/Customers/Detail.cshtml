@@ -11,6 +11,33 @@
     var unitTypeOptions = new[] { "Off-Road", "Motorcycle", "ATV", "UTV", "Watercraft", "Snowmobile", "Trailer", "Other" };
     var attachmentTypeOptions = new[] { "Photo", "Video", "Document" };
     var primaryAddress = Model.Addresses.OrderByDescending(address => address.IsPrimary).FirstOrDefault();
+    var contactValue = Model.MobilePhone ?? Model.Phone ?? Model.Email ?? "No contact method";
+    var heroActions = new List<IM1ActionModel>();
+    if (!string.IsNullOrWhiteSpace(Model.MobilePhone ?? Model.Phone))
+    {
+        heroActions.Add(new IM1ActionModel("Call", $"tel:{Model.MobilePhone ?? Model.Phone}", "primary"));
+    }
+    if (!string.IsNullOrWhiteSpace(Model.Email))
+    {
+        heroActions.Add(new IM1ActionModel("Email", $"mailto:{Model.Email}", "secondary"));
+    }
+    heroActions.Add(new IM1ActionModel("Insert Note", "#notes", "secondary"));
+    heroActions.Add(new IM1ActionModel("Add Unit", "#units", "secondary"));
+    var hero = new IM1WorkspaceHeroModel(
+        Model.DisplayName,
+        "Customer workspace",
+        $"{Model.CustomerType} customer. Preferred contact: {(Model.PreferredContactMethod ?? "Not set")}.",
+        new[]
+        {
+            new IM1WorkspaceStatModel("Status", Model.Status, "Customer state"),
+            new IM1WorkspaceStatModel("Contact", contactValue, "Primary reach method"),
+            new IM1WorkspaceStatModel("Lifetime Sales", Model.LifetimeSales.ToString("C"), "Recorded value"),
+            new IM1WorkspaceStatModel("Balance", Model.CurrentBalance.ToString("C"), "Open balance"),
+            new IM1WorkspaceStatModel("Units", Model.Units.Count.ToString(), "Customer vehicles"),
+            new IM1WorkspaceStatModel("Last Purchase", Model.LastPurchaseAtUtc?.ToString("yyyy-MM-dd") ?? "None", "Most recent sale")
+        },
+        heroActions,
+        Model.TaxExempt ? "Tax exempt" : Model.Status);
     var page = new IM1PageModel(
         Model.DisplayName,
         "CRM / Customers",
@@ -26,7 +53,8 @@
         "Customer sections",
         new[]
         {
-            new IM1TabItemModel("general", "General", true),
+            new IM1TabItemModel("overview", "Overview", true),
+            new IM1TabItemModel("general", "Edit Details"),
             new IM1TabItemModel("units", "Units"),
             new IM1TabItemModel("purchases", "Purchases"),
             new IM1TabItemModel("timeline", "Timeline"),
@@ -38,6 +66,7 @@
 }
 
 @await Html.PartialAsync("IM1Page", page)
+@await Html.PartialAsync("IM1WorkspaceHero", hero)
 
 @if (TempData["CustomerError"] is string errorMessage)
 {
@@ -47,7 +76,85 @@
 <section class="im1-page">
     @await Html.PartialAsync("IM1Tabs", tabs)
 
-    <section class="tab-panel is-active" id="general" role="tabpanel">
+    <section class="tab-panel is-active" id="overview" role="tabpanel">
+        <section class="im1-workspace-grid">
+            <article class="im1-workspace-card span-4">
+                <header class="im1-section-header"><div><h2>Contact</h2><p>How this customer prefers to communicate.</p></div></header>
+                <dl class="im1-key-value-list">
+                    <div><dt>Email</dt><dd>@(Model.Email ?? "-")</dd></div>
+                    <div><dt>Mobile</dt><dd>@(Model.MobilePhone ?? Model.Phone ?? "-")</dd></div>
+                    <div><dt>Work</dt><dd>@(Model.WorkPhone ?? "-")</dd></div>
+                    <div><dt>Preferred</dt><dd>@(Model.PreferredContactMethod ?? "Not set")</dd></div>
+                </dl>
+            </article>
+            <article class="im1-workspace-card span-4">
+                <header class="im1-section-header"><div><h2>Primary Address</h2><p>Default billing and service location.</p></div></header>
+                @if (primaryAddress is null)
+                {
+                    <p class="im1-empty-state">No primary address on file.</p>
+                }
+                else
+                {
+                    <dl class="im1-key-value-list">
+                        <div><dt>Address</dt><dd>@primaryAddress.Line1 @(primaryAddress.Line2)</dd></div>
+                        <div><dt>City/State</dt><dd>@primaryAddress.City, @primaryAddress.Region @primaryAddress.PostalCode</dd></div>
+                        <div><dt>Country</dt><dd>@primaryAddress.Country</dd></div>
+                    </dl>
+                }
+            </article>
+            <article class="im1-workspace-card span-4">
+                <header class="im1-section-header"><div><h2>Financial</h2><p>Account state at a glance.</p></div></header>
+                <dl class="im1-key-value-list">
+                    <div><dt>Lifetime Sales</dt><dd>@Model.LifetimeSales.ToString("C")</dd></div>
+                    <div><dt>Balance</dt><dd>@Model.CurrentBalance.ToString("C")</dd></div>
+                    <div><dt>Store Credit</dt><dd>@Model.StoreCredit.ToString("C")</dd></div>
+                    <div><dt>Credit Limit</dt><dd>@(Model.CreditLimit?.ToString("C") ?? "Not set")</dd></div>
+                </dl>
+            </article>
+            <article class="im1-workspace-card span-6">
+                <header class="im1-section-header"><div><h2>Recent Notes</h2><p>Newest customer context.</p></div><a class="im1-button im1-button-secondary" href="#notes">Insert Note</a></header>
+                <ol class="company-activity-list">
+                    @foreach (var note in Model.Notes.Take(3))
+                    {
+                        <li><strong>@(note.IsPinned ? "Anchored " : "")@note.NoteType</strong><span>@note.OccurredAtUtc.ToString("yyyy-MM-dd HH:mm") by @(note.AuthorDisplayName ?? "Unknown")</span><p>@note.Body</p></li>
+                    }
+                    @if (Model.Notes.Count == 0)
+                    {
+                        <li>No notes found.</li>
+                    }
+                </ol>
+            </article>
+            <article class="im1-workspace-card span-6">
+                <header class="im1-section-header"><div><h2>Units</h2><p>Customer vehicles and equipment.</p></div><a class="im1-button im1-button-secondary" href="#units">Manage Units</a></header>
+                <div class="im1-key-value-list">
+                    @foreach (var unit in Model.Units.Take(4))
+                    {
+                        var unitName = string.Join(" ", new[] { unit.Year?.ToString(), unit.Make, unit.Model }.Where(value => !string.IsNullOrWhiteSpace(value)));
+                        <div><dt>@unit.Type</dt><dd>@(string.IsNullOrWhiteSpace(unitName) ? "Unnamed unit" : unitName) @(string.IsNullOrWhiteSpace(unit.Vin) ? "" : $"VIN {unit.Vin}")</dd></div>
+                    }
+                    @if (Model.Units.Count == 0)
+                    {
+                        <p class="im1-empty-state">No units found.</p>
+                    }
+                </div>
+            </article>
+            <article class="im1-workspace-card span-12">
+                <header class="im1-section-header"><div><h2>Recent Activity</h2><p>Timeline events across CRM and service work.</p></div></header>
+                <ol class="company-activity-list">
+                    @foreach (var item in Model.Timeline.Take(6))
+                    {
+                        <li><strong>@item.EventType</strong><span>@item.OccurredAtUtc.ToString("yyyy-MM-dd HH:mm")</span><p>@item.Summary</p></li>
+                    }
+                    @if (Model.Timeline.Count == 0)
+                    {
+                        <li>No timeline events found.</li>
+                    }
+                </ol>
+            </article>
+        </section>
+    </section>
+
+    <section class="tab-panel" id="general" role="tabpanel" hidden>
         <form asp-action="Update" method="post" class="im1-form im1-record-form">
             <input type="hidden" name="CustomerId" value="@Model.Id" />
             <fieldset class="im1-form-section">

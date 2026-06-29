@@ -2,15 +2,22 @@
 
 @{
     ViewData["Title"] = "Create IM1OS Company";
+    var hero = new IM1WorkspaceHeroModel(
+        "Create New IM1OS Company",
+        "Provisioning workflow",
+        "Create the company, owner access, default location, subscription, module entitlements, welcome email, platform events, and audit trail.",
+        new[]
+        {
+            new IM1WorkspaceStatModel("Step 1", "Company", "Business identity"),
+            new IM1WorkspaceStatModel("Step 2", "Owner", "Initial account"),
+            new IM1WorkspaceStatModel("Step 3", "Location", "Default shop"),
+            new IM1WorkspaceStatModel("Step 4", "Modules", "Initial capabilities")
+        },
+        new[] { new IM1ActionModel("Company Manager", Url.Action("Tenants"), "secondary") },
+        "Focused setup");
 }
 
-<section class="dashboard-header">
-    <div>
-        <p class="eyebrow">Provisioning wizard</p>
-        <h1>Create New IM1OS Company</h1>
-        <p class="subtle">This creates the company, default location, owner user, subscription, modules, settings, welcome email, platform events, and audit trail.</p>
-    </div>
-</section>
+@await Html.PartialAsync("IM1WorkspaceHero", hero)
 
 <form asp-action="CreateTenant" method="post" class="wizard">
     <div asp-validation-summary="ModelOnly" class="validation"></div>

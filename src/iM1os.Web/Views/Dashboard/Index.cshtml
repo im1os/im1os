@@ -1,35 +1,23 @@
 @{
     ViewData["Title"] = "Dashboard";
+    var hero = new IM1WorkspaceHeroModel(
+        "iM1 OS Platform",
+        "Foundation workspace",
+        "Foundation shell for authentication, company context, configuration, audit, background processing, and future modules.",
+        new[]
+        {
+            new IM1WorkspaceStatModel("Identity", "Ready", "Authentication and roles"),
+            new IM1WorkspaceStatModel("Company Context", "Ready", "Tenant boundaries"),
+            new IM1WorkspaceStatModel("Operations", "Ready", "Health and audit"),
+            new IM1WorkspaceStatModel("Extensibility", "Ready", "Feature flags and settings")
+        },
+        new[] { new IM1ActionModel("Health", "/health", "primary") },
+        "Healthy");
 }
 
-<section class="dashboard-header">
-    <div>
-        <p class="eyebrow">im1os.com</p>
-        <h1>iM1 OS Platform</h1>
-        <p class="subtle">Foundation shell for authentication, company context, configuration, audit, background processing, and future modules.</p>
-    </div>
-    <a class="primary-action" href="/health">Health</a>
-</section>
+@await Html.PartialAsync("IM1WorkspaceHero", hero)
 
-<section class="metric-grid" aria-label="Platform foundation status">
-    <article>
-        <span>Identity</span>
-        <strong>Ready</strong>
-        <p>JWT authentication, roles, permissions, and user management contracts.</p>
-    </article>
-    <article>
-        <span>Company Context</span>
-        <strong>Ready</strong>
-        <p>Company-first model with company-scoped persistence boundaries.</p>
-    </article>
-    <article>
-        <span>Operations</span>
-        <strong>Ready</strong>
-        <p>Health checks, structured logging, audit logs, and worker host.</p>
-    </article>
-    <article>
-        <span>Extensibility</span>
-        <strong>Ready</strong>
-        <p>Feature flags and settings for future independently added modules.</p>
-    </article>
+<section class="im1-workspace-card">
+    <header class="im1-section-header"><div><h2>Foundation Scope</h2><p>The platform foundation is ready for module workspaces.</p></div></header>
+    <p class="im1-empty-state">Business modules should now be designed as workspaces following the iM1 Experience Standard.</p>
 </section>

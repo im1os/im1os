@@ -2,27 +2,26 @@
 
 @{
     ViewData["Title"] = "Platform Dashboard";
+    var hero = new IM1WorkspaceHeroModel(
+        "IM1 Platform",
+        "SaaS control plane",
+        "Provision companies, monitor health, and manage platform-level operational exceptions.",
+        new[]
+        {
+            new IM1WorkspaceStatModel("Total Companies", Model.TotalTenants.ToString(), "All provisioned companies"),
+            new IM1WorkspaceStatModel("Active", Model.ActiveTenants.ToString(), "Currently active"),
+            new IM1WorkspaceStatModel("Trials", Model.TrialTenants.ToString(), "Trial companies"),
+            new IM1WorkspaceStatModel("Suspended", Model.SuspendedTenants.ToString(), "Needs attention")
+        },
+        new[] { new IM1ActionModel("Create Company", Url.Action("CreateTenant"), "primary"), new IM1ActionModel("Company Manager", Url.Action("Tenants"), "secondary") },
+        Model.SuspendedTenants > 0 ? $"{Model.SuspendedTenants} suspended companies" : "Platform healthy");
 }
 
-<section class="dashboard-header">
-    <div class="platform-title">
-        <p class="eyebrow">SaaS control plane</p>
-        <h1>IM1 Platform</h1>
-        <p class="subtle">Provision and manage IM1OS companies from the platform control plane.</p>
-    </div>
-    <a class="primary-action" asp-action="CreateTenant">Create New IM1OS Company</a>
-</section>
+@await Html.PartialAsync("IM1WorkspaceHero", hero)
 
-<section class="metric-grid" aria-label="Company status">
-    <article><span>Total Companies</span><strong>@Model.TotalTenants</strong><p>All provisioned companies.</p></article>
-    <article><span>Trial Companies</span><strong>@Model.TrialTenants</strong><p>Companies currently in trial.</p></article>
-    <article><span>Active Companies</span><strong>@Model.ActiveTenants</strong><p>Companies currently active.</p></article>
-    <article><span>Suspended</span><strong>@Model.SuspendedTenants</strong><p>Companies requiring attention.</p></article>
-</section>
-
-<section class="split-grid">
-    <article class="page-band">
-        <h2>Recent Provisioning Activity</h2>
+<section class="im1-workspace-grid">
+    <article class="im1-workspace-card span-6">
+        <header class="im1-section-header"><div><h2>Recent Provisioning</h2><p>Newest company lifecycle events.</p></div></header>
         <ul class="event-list">
             @foreach (var item in Model.RecentProvisioningActivity)
             {
@@ -30,8 +29,8 @@
             }
         </ul>
     </article>
-    <article class="page-band">
-        <h2>Latest Platform Events</h2>
+    <article class="im1-workspace-card span-6">
+        <header class="im1-section-header"><div><h2>Latest Platform Events</h2><p>Operational events that may need review.</p></div></header>
         <ul class="event-list">
             @foreach (var item in Model.LatestPlatformEvents)
             {

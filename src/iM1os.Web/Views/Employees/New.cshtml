@@ -2,6 +2,19 @@
 
 @{
     ViewData["Title"] = "New Employee";
+    var hero = new IM1WorkspaceHeroModel(
+        "New Employee",
+        "Focused create workflow",
+        "Create the employee master record first. Login access is optional and can be enabled now or later.",
+        new[]
+        {
+            new IM1WorkspaceStatModel("Employee", "Required", "Person record"),
+            new IM1WorkspaceStatModel("Login", "Optional", "Authentication capability"),
+            new IM1WorkspaceStatModel("Role", "If Login", "Company permissions"),
+            new IM1WorkspaceStatModel("Next", "Employee Workspace", "Employment, documents, compensation")
+        },
+        new[] { new IM1ActionModel("Back to Employees", Url.Action("Index", "Employees"), "secondary") },
+        "Create mode");
     var page = new IM1PageModel(
         "New Employee",
         "HR / Employees",
@@ -16,6 +29,7 @@
 }
 
 @await Html.PartialAsync("IM1Page", page)
+@await Html.PartialAsync("IM1WorkspaceHero", hero)
 
 <section class="im1-page">
     <form asp-action="Create" method="post" class="im1-form im1-record-form">

@@ -2,11 +2,29 @@
 
 @{
     ViewData["Title"] = "Company Provisioned";
+    var hero = new IM1WorkspaceHeroModel(
+        $"{Model.Tenant.OrganizationName} is ready",
+        "Provisioning complete",
+        "The company foundation is created and ready for owner onboarding.",
+        new[]
+        {
+            new IM1WorkspaceStatModel("Company", "Created", "Organization record"),
+            new IM1WorkspaceStatModel("Owner", Model.OwnerActivated ? "Activated" : "Pending", "Initial access"),
+            new IM1WorkspaceStatModel("Location", "Created", "Default shop"),
+            new IM1WorkspaceStatModel("Modules", Model.ModulesEnabled.Count.ToString(), "Enabled")
+        },
+        new[]
+        {
+            new IM1ActionModel("Open Company Details", Url.Action("Tenant", new { organizationId = Model.Tenant.OrganizationId }), "primary"),
+            new IM1ActionModel("Open IM1OS", Url.Action("Index", "Dashboard"), "secondary")
+        },
+        "Ready");
 }
 
-<section class="success-panel">
-    <p class="eyebrow">Provisioning complete</p>
-    <h1>@Model.Tenant.OrganizationName is ready</h1>
+@await Html.PartialAsync("IM1WorkspaceHero", hero)
+
+<section class="im1-workspace-card">
+    <header class="im1-section-header"><div><h2>Provisioning Checklist</h2><p>Foundation tasks completed for the new company.</p></div></header>
     <ul class="check-list">
         <li>Company Created</li>
         <li>Owner Created</li>
@@ -14,8 +32,4 @@
         <li>Modules Enabled</li>
         <li>Welcome Email Sent</li>
     </ul>
-    <div class="action-row">
-        <a class="primary-action" asp-action="Tenant" asp-route-organizationId="@Model.Tenant.OrganizationId">Open Company Details</a>
-        <a class="secondary-action" asp-controller="Dashboard" asp-action="Index">Open IM1OS</a>
-    </div>
 </section>

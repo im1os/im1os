@@ -40,6 +40,19 @@ public sealed record IM1CardModel(
     IHtmlContent? Content = null,
     IReadOnlyCollection<IM1ActionModel>? Actions = null);
 
+public sealed record IM1WorkspaceHeroModel(
+    string Title,
+    string Eyebrow,
+    string? Summary = null,
+    IReadOnlyCollection<IM1WorkspaceStatModel>? Stats = null,
+    IReadOnlyCollection<IM1ActionModel>? Actions = null,
+    string? Status = null);
+
+public sealed record IM1WorkspaceStatModel(
+    string Label,
+    string Value,
+    string? Detail = null);
+
 public sealed record IM1DialogModel(
     string Id,
     string Title,

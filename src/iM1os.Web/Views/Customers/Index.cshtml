@@ -3,6 +3,20 @@
 @{
     ViewData["Title"] = "Customers";
     var statusOptions = new[] { "Active", "Prospect", "Inactive", "Archived" };
+    var activeCount = Model.Customers.Count(x => x.Status == "Active");
+    var prospectCount = Model.Customers.Count(x => x.Status == "Prospect");
+    var customerHero = new IM1WorkspaceHeroModel(
+        "Customers",
+        "CRM workspace",
+        "Master customer records used across sales, service, work orders, invoicing, payments, scheduling, and marketing.",
+        new[]
+        {
+            new IM1WorkspaceStatModel("Customers", Model.Customers.Count.ToString(), "Visible records"),
+            new IM1WorkspaceStatModel("Active", activeCount.ToString(), "Ready for work"),
+            new IM1WorkspaceStatModel("Prospects", prospectCount.ToString(), "Needs follow-up"),
+            new IM1WorkspaceStatModel("Filter", string.IsNullOrWhiteSpace(Model.Status) ? "All" : Model.Status, "Current view")
+        },
+        new[] { new IM1ActionModel("New Customer", Url.Action("New", "Customers"), "primary") });
     var grid = new IM1DataGridModel(
         Columns: new[]
         {
@@ -49,6 +63,7 @@
 }
 
 @await Html.PartialAsync("IM1Page", page)
+@await Html.PartialAsync("IM1WorkspaceHero", customerHero)
 
 <form class="im1-toolbar" method="get" asp-controller="Customers" asp-action="Index">
     <select name="status">

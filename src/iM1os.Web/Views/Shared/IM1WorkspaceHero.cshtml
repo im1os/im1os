@@ -1,0 +1,41 @@
+@model IM1WorkspaceHeroModel
+
+<section class="im1-workspace-hero">
+    <div class="im1-workspace-identity">
+        <span class="im1-workspace-eyebrow">@Model.Eyebrow</span>
+        <h1>@Model.Title</h1>
+        @if (!string.IsNullOrWhiteSpace(Model.Summary))
+        {
+            <p>@Model.Summary</p>
+        }
+        @if (!string.IsNullOrWhiteSpace(Model.Status))
+        {
+            <strong class="im1-workspace-status">@Model.Status</strong>
+        }
+    </div>
+    @if (Model.Stats?.Count > 0)
+    {
+        <div class="im1-workspace-stats" aria-label="Workspace snapshot">
+            @foreach (var stat in Model.Stats)
+            {
+                <article>
+                    <span>@stat.Label</span>
+                    <strong>@stat.Value</strong>
+                    @if (!string.IsNullOrWhiteSpace(stat.Detail))
+                    {
+                        <p>@stat.Detail</p>
+                    }
+                </article>
+            }
+        </div>
+    }
+    @if (Model.Actions?.Count > 0)
+    {
+        <div class="im1-workspace-actions" aria-label="Next actions">
+            @foreach (var action in Model.Actions.Where(x => x.IsEnabled))
+            {
+                <a class="im1-button im1-button-@action.Kind" href="@action.Url">@action.Label</a>
+            }
+        </div>
+    }
+</section>

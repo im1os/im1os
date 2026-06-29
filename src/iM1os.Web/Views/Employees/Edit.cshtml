@@ -4,6 +4,37 @@
     var employee = Model.SelectedEmployee ?? throw new InvalidOperationException("Employee is required.");
     var login = employee.LoginAccount;
     ViewData["Title"] = $"Edit {employee.DisplayName}";
+    var activeCompensation = employee.Compensation.OrderByDescending(x => x.EffectiveStartDate).FirstOrDefault();
+    var jobFlags = new[]
+    {
+        employee.IsTechnician ? "Technician" : null,
+        employee.IsServiceAdvisor ? "Service Advisor" : null,
+        employee.IsSales ? "Sales" : null,
+        employee.IsParts ? "Parts" : null,
+        employee.IsAccounting ? "Accounting" : null,
+        employee.IsInventory ? "Inventory" : null,
+        employee.IsManager ? "Manager" : null
+    }.Where(x => !string.IsNullOrWhiteSpace(x)).ToArray();
+    var hero = new IM1WorkspaceHeroModel(
+        employee.DisplayName,
+        "Employee workspace",
+        $"{employee.EmploymentType} employee. {(string.IsNullOrWhiteSpace(employee.JobTitle) ? "No job title set." : employee.JobTitle)}",
+        new[]
+        {
+            new IM1WorkspaceStatModel("Status", employee.Status, "Employment state"),
+            new IM1WorkspaceStatModel("Login", login?.Status ?? "No Login", login is null ? "Employee record only" : login.CompanyRole),
+            new IM1WorkspaceStatModel("Payroll", activeCompensation?.PayrollType ?? "Not Set", activeCompensation is null ? "No active compensation" : $"Effective {activeCompensation.EffectiveStartDate:yyyy-MM-dd}"),
+            new IM1WorkspaceStatModel("Job Functions", jobFlags.Length == 0 ? "None" : jobFlags.Length.ToString(), jobFlags.Length == 0 ? "No dropdown eligibility" : string.Join(", ", jobFlags)),
+            new IM1WorkspaceStatModel("Documents", employee.Documents.Count.ToString(), "HR files"),
+            new IM1WorkspaceStatModel("Activity", employee.Activity.Count.ToString(), "Recent events")
+        },
+        new[]
+        {
+            new IM1ActionModel("Edit Details", "#general", "primary"),
+            new IM1ActionModel("Add Compensation", "#compensation", "secondary"),
+            new IM1ActionModel("Documents", "#documents", "secondary")
+        },
+        employee.Status);
     var page = new IM1PageModel(
         employee.DisplayName,
         "HR / Employees",
@@ -20,7 +51,8 @@
         "Employee editor sections",
         new[]
         {
-            new IM1TabItemModel("general", "General", true),
+            new IM1TabItemModel("overview", "Overview", true),
+            new IM1TabItemModel("general", "Edit Details"),
             new IM1TabItemModel("employment", "Employment"),
             new IM1TabItemModel("compensation", "Compensation"),
             new IM1TabItemModel("login-account", "Login Account"),
@@ -32,6 +64,7 @@
 }
 
 @await Html.PartialAsync("IM1Page", page)
+@await Html.PartialAsync("IM1WorkspaceHero", hero)
 
 @if (TempData["EmployeeError"] is string errorMessage)
 {
@@ -41,9 +74,77 @@
 <section class="im1-page">
     @await Html.PartialAsync("IM1Tabs", editorTabs)
 
+    <section class="tab-panel is-active" id="overview" role="tabpanel">
+            <section class="im1-workspace-grid">
+                <article class="im1-workspace-card span-4">
+                    <header class="im1-section-header"><div><h2>Employee</h2><p>Primary employee information.</p></div></header>
+                    <dl class="im1-key-value-list">
+                        <div><dt>Email</dt><dd>@(employee.Email ?? "-")</dd></div>
+                        <div><dt>Phone</dt><dd>@(employee.Phone ?? "-")</dd></div>
+                        <div><dt>Department</dt><dd>@(employee.Department ?? "-")</dd></div>
+                        <div><dt>Employee #</dt><dd>@(employee.EmployeeNumber ?? "Not assigned")</dd></div>
+                    </dl>
+                </article>
+                <article class="im1-workspace-card span-4">
+                    <header class="im1-section-header"><div><h2>Employment</h2><p>Work status and eligibility.</p></div></header>
+                    <dl class="im1-key-value-list">
+                        <div><dt>Type</dt><dd>@employee.EmploymentType</dd></div>
+                        <div><dt>Hire Date</dt><dd>@(employee.HireDate?.ToString("yyyy-MM-dd") ?? "-")</dd></div>
+                        <div><dt>Termination</dt><dd>@(employee.TerminationDate?.ToString("yyyy-MM-dd") ?? "-")</dd></div>
+                        <div><dt>Functions</dt><dd>@(jobFlags.Length == 0 ? "None" : string.Join(", ", jobFlags))</dd></div>
+                    </dl>
+                </article>
+                <article class="im1-workspace-card span-4">
+                    <header class="im1-section-header"><div><h2>Login Account</h2><p>Authentication is optional.</p></div></header>
+                    @if (login is null)
+                    {
+                        <p class="im1-empty-state">This employee does not have a login account.</p>
+                    }
+                    else
+                    {
+                        <dl class="im1-key-value-list">
+                            <div><dt>Username</dt><dd>@login.Username</dd></div>
+                            <div><dt>Role</dt><dd>@login.CompanyRole</dd></div>
+                            <div><dt>Status</dt><dd>@login.Status</dd></div>
+                            <div><dt>PIN</dt><dd>@(login.HasPin ? "Set" : "Not Set")</dd></div>
+                        </dl>
+                    }
+                </article>
+                <article class="im1-workspace-card span-6">
+                    <header class="im1-section-header"><div><h2>Compensation</h2><p>Current payroll and commission context.</p></div><a class="im1-button im1-button-secondary" href="#compensation">Manage</a></header>
+                    @if (activeCompensation is null)
+                    {
+                        <p class="im1-empty-state">No compensation records found.</p>
+                    }
+                    else
+                    {
+                        <dl class="im1-key-value-list">
+                            <div><dt>Payroll Type</dt><dd>@activeCompensation.PayrollType</dd></div>
+                            <div><dt>Hourly</dt><dd>@(activeCompensation.HourlyRate?.ToString("C") ?? "-")</dd></div>
+                            <div><dt>Salary</dt><dd>@(activeCompensation.SalaryAmount?.ToString("C") ?? "-")</dd></div>
+                            <div><dt>Commissions</dt><dd>WO @(activeCompensation.WorkOrderCommissionRate?.ToString("P2") ?? "-") / Sales @(activeCompensation.SalesCommissionRate?.ToString("P2") ?? "-")</dd></div>
+                        </dl>
+                    }
+                </article>
+                <article class="im1-workspace-card span-6">
+                    <header class="im1-section-header"><div><h2>Recent Activity</h2><p>Employee and login timeline.</p></div></header>
+                    <ol class="company-activity-list">
+                        @foreach (var item in employee.Activity.Take(5))
+                        {
+                            <li><strong>@item.EventType</strong><span>@item.OccurredAtUtc.ToString("yyyy-MM-dd HH:mm")</span><p>@item.Summary</p></li>
+                        }
+                        @if (employee.Activity.Count == 0)
+                        {
+                            <li>No activity found.</li>
+                        }
+                    </ol>
+                </article>
+            </section>
+    </section>
+
     <form asp-action="Update" method="post" class="im1-form">
         <input type="hidden" name="EmployeeId" value="@employee.Id" />
-        <section class="tab-panel is-active" id="general" role="tabpanel">
+        <section class="tab-panel" id="general" role="tabpanel" hidden>
             <div class="im1-form-grid">
                 <label>First Name <input name="FirstName" value="@employee.FirstName" /></label>
                 <label>Last Name <input name="LastName" value="@employee.LastName" /></label>

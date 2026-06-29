@@ -6,6 +6,19 @@
     var referralSourceOptions = new[] { "Walk-In", "Website", "Referral", "Employee", "Event", "Social Media", "Advertising", "Other" };
     var languageOptions = new[] { "English", "Spanish", "French", "Other" };
     var stateOptions = new[] { "AL", "AK", "AZ", "AR", "CA", "CO", "CT", "DE", "FL", "GA", "HI", "IA", "ID", "IL", "IN", "KS", "KY", "LA", "MA", "MD", "ME", "MI", "MN", "MO", "MS", "MT", "NC", "ND", "NE", "NH", "NJ", "NM", "NV", "NY", "OH", "OK", "OR", "PA", "RI", "SC", "SD", "TN", "TX", "UT", "VA", "VT", "WA", "WI", "WV", "WY" };
+    var hero = new IM1WorkspaceHeroModel(
+        "New Customer",
+        "Focused create workflow",
+        "Create the customer master record first. Units, notes, documents, purchases, and financial history are managed after the profile exists.",
+        new[]
+        {
+            new IM1WorkspaceStatModel("Required", "Name or Company", "Used for display name"),
+            new IM1WorkspaceStatModel("Contact", "Optional", "Email or phone recommended"),
+            new IM1WorkspaceStatModel("Address", "Optional", "Can be added now"),
+            new IM1WorkspaceStatModel("Next", "Customer Workspace", "Review and take action")
+        },
+        new[] { new IM1ActionModel("Back to Customers", Url.Action("Index", "Customers"), "secondary") },
+        "Create mode");
     var page = new IM1PageModel(
         "New Customer",
         "CRM / Customers",
@@ -20,6 +33,7 @@
 }
 
 @await Html.PartialAsync("IM1Page", page)
+@await Html.PartialAsync("IM1WorkspaceHero", hero)
 
 @if (TempData["CustomerError"] is string errorMessage)
 {

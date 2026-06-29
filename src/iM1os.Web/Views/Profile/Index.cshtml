@@ -2,20 +2,25 @@
 
 @{
     ViewData["Title"] = "Profile";
+    var hero = new IM1WorkspaceHeroModel(
+        Model.Name,
+        "Personal workspace",
+        Model.Email,
+        new[]
+        {
+            new IM1WorkspaceStatModel("Language", Model.Language, "Display preference"),
+            new IM1WorkspaceStatModel("Time Zone", Model.TimeZone, "Local time"),
+            new IM1WorkspaceStatModel("Phone", string.IsNullOrWhiteSpace(Model.Phone) ? "Not set" : Model.Phone, "Contact"),
+            new IM1WorkspaceStatModel("Security", "Password", "Managed here")
+        },
+        new[] { new IM1ActionModel("Company Dashboard", Url.Action("Dashboard", "Business"), "primary") });
 }
 
-<section class="dashboard-header">
-    <div>
-        <p class="eyebrow">User profile</p>
-        <h1>@Model.Name</h1>
-        <p class="subtle">@Model.Email</p>
-    </div>
-    <a class="primary-action" asp-controller="Business" asp-action="Dashboard">Company Dashboard</a>
-</section>
+@await Html.PartialAsync("IM1WorkspaceHero", hero)
 
-<section class="split-grid">
-    <article class="page-band">
-        <h2>Profile</h2>
+<section class="im1-workspace-grid">
+    <article class="im1-workspace-card span-6">
+        <header class="im1-section-header"><div><h2>Profile</h2><p>Personal settings used across iM1 OS.</p></div></header>
         <form asp-action="Index" method="post" class="form-grid single">
             <label>Name <input name="Name" value="@Model.Name" /></label>
             <label>Phone <input name="Phone" value="@Model.Phone" /></label>
@@ -27,8 +32,8 @@
         </form>
     </article>
 
-    <article class="page-band">
-        <h2>Password Change</h2>
+    <article class="im1-workspace-card span-6">
+        <header class="im1-section-header"><div><h2>Password Change</h2><p>Update authentication credentials.</p></div></header>
         @if (TempData["PasswordError"] is not null)
         {
             <p class="validation">@TempData["PasswordError"]</p>

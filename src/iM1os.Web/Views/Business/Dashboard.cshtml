@@ -8,54 +8,80 @@
 
 @{
     ViewData["Title"] = "Company Dashboard";
+    var dashboardHero = new IM1WorkspaceHeroModel(
+        Model.BusinessName,
+        "Company workspace",
+        Model.SetupProgress >= 100 ? "Ready for daily operations." : "Finish the remaining setup items before opening full operations.",
+        new[]
+        {
+            new IM1WorkspaceStatModel("Subscription", Model.Subscription, "Current plan"),
+            new IM1WorkspaceStatModel("Status", Model.OrganizationStatus, "Company state"),
+            new IM1WorkspaceStatModel("Locations", Model.Locations.ToString(), "Configured shops"),
+            new IM1WorkspaceStatModel("Employees", Model.Employees.ToString(), "People records")
+        },
+        isOwner || isCompanyAdmin || isPlatformAdmin
+            ? new[]
+            {
+                new IM1ActionModel("Company Administration", Url.Action("Administration", "Business", new { organizationId }), "primary"),
+                new IM1ActionModel("New Employee", Url.Action("New", "Employees"), "secondary"),
+                new IM1ActionModel("Configure Labor", Url.Action("Administration", "Business", new { organizationId }) + "#operations", "secondary")
+            }
+            : Array.Empty<IM1ActionModel>(),
+        $"{Model.SetupProgress}% setup complete");
 }
 
-<section class="dashboard-header">
-    <div>
-        <p class="eyebrow">Company dashboard</p>
-        <h1>@Model.BusinessName</h1>
-        <p class="subtle">@(Model.SetupProgress >= 100 ? "Your company is now ready to begin operations." : "Finish company administration to prepare this shop for operations.")</p>
-    </div>
-    @if (isOwner || isCompanyAdmin || isPlatformAdmin)
-    {
-        <a class="primary-action" asp-controller="Business" asp-action="Administration" asp-route-organizationId="@organizationId">Company Administration</a>
-    }
-</section>
+@await Html.PartialAsync("IM1WorkspaceHero", dashboardHero)
 
-<section class="metric-grid">
-    <article><span>Subscription</span><strong>@Model.Subscription</strong><p>Current plan.</p></article>
-    <article><span>Status</span><strong>@Model.OrganizationStatus</strong><p>Company state.</p></article>
-    <article><span>Locations</span><strong>@Model.Locations</strong><p>Configured locations.</p></article>
-    <article><span>Employees</span><strong>@Model.Employees</strong><p>Active users.</p></article>
-</section>
-
-<section class="split-grid">
-    <article class="page-band">
-        <h2>Setup Progress</h2>
-        <p>@Model.SetupProgress% complete</p>
+<section class="im1-workspace-grid">
+    <article class="im1-workspace-card span-6">
+        <header class="im1-section-header">
+            <div>
+                <h2>What Needs Attention</h2>
+                <p>Setup and administration work that affects daily operations.</p>
+            </div>
+        </header>
+        <div class="im1-key-value-list">
+            <div><dt>Setup Progress</dt><dd>@Model.SetupProgress% complete</dd></div>
+            <div><dt>Company Status</dt><dd>@Model.OrganizationStatus</dd></div>
+            <div><dt>Configured Locations</dt><dd>@Model.Locations</dd></div>
+        </div>
     </article>
-    <article class="page-band">
-        <h2>Quick Actions</h2>
+    <article class="im1-workspace-card span-6">
+        <header class="im1-section-header">
+            <div>
+                <h2>Next Actions</h2>
+                <p>Common setup actions for owners and administrators.</p>
+            </div>
+        </header>
         @if (isOwner || isCompanyAdmin || isPlatformAdmin)
         {
-            <div class="action-row">
-                <a class="secondary-action" asp-controller="Employees" asp-action="New">Invite Employee</a>
-                <a class="secondary-action" asp-controller="Business" asp-action="Administration" asp-route-organizationId="@organizationId" asp-fragment="connectors">Connect Supplier</a>
-                <a class="secondary-action" asp-controller="Business" asp-action="Administration" asp-route-organizationId="@organizationId" asp-fragment="labor">Configure Labor Rates</a>
-                <a class="secondary-action" asp-controller="Business" asp-action="Administration" asp-route-organizationId="@organizationId">Open Company Administration</a>
+            <div class="im1-action-strip">
+                <a class="im1-button im1-button-secondary" asp-controller="Employees" asp-action="New">Invite Employee</a>
+                <a class="im1-button im1-button-secondary" asp-controller="Business" asp-action="Administration" asp-route-organizationId="@organizationId" asp-fragment="connectors">Connect Supplier</a>
+                <a class="im1-button im1-button-secondary" asp-controller="Business" asp-action="Administration" asp-route-organizationId="@organizationId" asp-fragment="labor">Configure Labor Rates</a>
+                <a class="im1-button im1-button-secondary" asp-controller="Business" asp-action="Administration" asp-route-organizationId="@organizationId">Open Administration</a>
             </div>
         }
         else
         {
-            <p>Administration actions are available to company owners and administrators.</p>
+            <p class="im1-empty-state">Administration actions are available to company owners and administrators.</p>
         }
     </article>
-    <article class="page-band">
-        <h2>Recent Activity</h2>
+    <article class="im1-workspace-card span-12">
+        <header class="im1-section-header">
+            <div>
+                <h2>Recent Activity</h2>
+                <p>Latest company-level events.</p>
+            </div>
+        </header>
         <ul class="event-list">
             @foreach (var item in Model.RecentActivity)
             {
                 <li>@item</li>
+            }
+            @if (Model.RecentActivity.Count == 0)
+            {
+                <li>No recent activity.</li>
             }
         </ul>
     </article>

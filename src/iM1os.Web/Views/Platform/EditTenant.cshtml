@@ -2,18 +2,25 @@
 
 @{
     ViewData["Title"] = "Edit Company";
+    var hero = new IM1WorkspaceHeroModel(
+        Model.OrganizationName,
+        "Focused company edit",
+        "Update lifecycle, billing, plan, health, and deployment metadata for this company.",
+        new[]
+        {
+            new IM1WorkspaceStatModel("Status", Model.Status, "Lifecycle state"),
+            new IM1WorkspaceStatModel("Plan", Model.SubscriptionPlan, "Subscription"),
+            new IM1WorkspaceStatModel("Health", Model.HealthStatus, "Operational signal"),
+            new IM1WorkspaceStatModel("Billing", Model.BillingStatus, "Payment state")
+        },
+        new[] { new IM1ActionModel("Cancel", Url.Action("Tenant", new { organizationId = Model.OrganizationId }), "secondary") },
+        "Edit mode");
 }
 
-<section class="dashboard-header">
-    <div>
-        <p class="eyebrow">Edit company</p>
-        <h1>@Model.OrganizationName</h1>
-        <p class="subtle">Manage company lifecycle, billing status, plan, health, and version metadata.</p>
-    </div>
-    <a class="secondary-action" asp-action="Tenant" asp-route-organizationId="@Model.OrganizationId">Cancel</a>
-</section>
+@await Html.PartialAsync("IM1WorkspaceHero", hero)
 
-<section class="page-band">
+<section class="im1-workspace-card">
+    <header class="im1-section-header"><div><h2>Company Metadata</h2><p>Change only the platform state needed for support, billing, or deployment work.</p></div></header>
     <form asp-action="EditTenant" method="post" class="form-grid">
         <input asp-for="OrganizationId" type="hidden" />
         <label>Company Name <input asp-for="OrganizationName" /></label>
