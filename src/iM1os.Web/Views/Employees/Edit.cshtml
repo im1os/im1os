@@ -15,10 +15,11 @@
         employee.IsInventory ? "Inventory" : null,
         employee.IsManager ? "Manager" : null
     }.Where(x => !string.IsNullOrWhiteSpace(x)).ToArray();
+    var jobTitleSummary = string.IsNullOrWhiteSpace(employee.JobTitle) ? "Job title not set" : employee.JobTitle;
     var hero = new IM1WorkspaceHeroModel(
         employee.DisplayName,
         "Employee workspace",
-        $"{employee.EmploymentType} employee. {(string.IsNullOrWhiteSpace(employee.JobTitle) ? "No job title set." : employee.JobTitle)}",
+        $"Employment type: {employee.EmploymentType}. {jobTitleSummary}.",
         new[]
         {
             new IM1WorkspaceStatModel("Status", employee.Status, "Employment state"),

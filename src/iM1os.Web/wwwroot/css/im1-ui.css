@@ -385,15 +385,15 @@
   border-radius: var(--im1-radius-md);
   box-shadow: var(--im1-shadow-card);
   display: grid;
-  gap: var(--im1-space-5);
-  grid-template-columns: minmax(260px, 1.2fr) minmax(320px, 1fr);
-  padding: var(--im1-space-5);
+  gap: var(--im1-space-3);
+  grid-template-columns: minmax(220px, 0.85fr) minmax(360px, 1.15fr);
+  padding: var(--im1-space-3);
 }
 
 .im1-workspace-identity {
   align-content: start;
   display: grid;
-  gap: var(--im1-space-2);
+  gap: var(--im1-space-1);
 }
 
 .im1-workspace-eyebrow {
@@ -405,27 +405,30 @@
 
 .im1-workspace-identity h1 {
   color: var(--im1-color-text);
-  font-size: var(--im1-font-size-display);
-  line-height: 1.1;
+  font-size: var(--im1-font-size-title);
+  line-height: 1.05;
   margin: 0;
 }
 
 .im1-workspace-identity p {
   color: var(--im1-color-text-muted);
-  line-height: 1.5;
+  font-size: var(--im1-font-size-label);
+  line-height: 1.25;
   margin: 0;
   max-width: 760px;
 }
 
 .im1-workspace-status {
   color: var(--im1-color-accent);
-  font-size: var(--im1-font-size-label);
+  font-size: var(--im1-font-size-caption);
+  font-weight: 900;
+  text-transform: uppercase;
 }
 
 .im1-workspace-stats {
   display: grid;
-  gap: var(--im1-space-2);
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--im1-space-1);
+  grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
 }
 
 .im1-workspace-stats article,
@@ -433,11 +436,10 @@
   background: var(--im1-color-surface);
   border: 1px solid var(--im1-color-border);
   border-radius: var(--im1-radius-sm);
-  box-shadow: 0 8px 22px rgba(15, 23, 42, 0.04);
   display: grid;
-  gap: var(--im1-space-1);
-  min-height: 86px;
-  padding: var(--im1-space-3);
+  gap: 2px;
+  min-height: 0;
+  padding: 6px var(--im1-space-2);
 }
 
 .im1-workspace-stats span,
@@ -451,15 +453,15 @@
 .im1-workspace-stats strong,
 .im1-snapshot-card strong {
   color: var(--im1-color-text);
-  font-size: var(--im1-font-size-title);
-  line-height: 1.15;
+  font-size: var(--im1-font-size-label);
+  line-height: 1.2;
 }
 
 .im1-workspace-stats p,
 .im1-snapshot-card p {
   color: var(--im1-color-text-muted);
-  font-size: var(--im1-font-size-label);
-  line-height: 1.35;
+  font-size: var(--im1-font-size-caption);
+  line-height: 1.2;
   margin: 0;
 }
 
@@ -468,7 +470,7 @@
   align-items: center;
   display: flex;
   flex-wrap: wrap;
-  gap: var(--im1-space-2);
+  gap: var(--im1-space-1);
   grid-column: 1 / -1;
 }
 
