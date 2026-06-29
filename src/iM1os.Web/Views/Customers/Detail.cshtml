@@ -23,9 +23,8 @@
         new[]
         {
             new IM1TabItemModel("general", "General", true),
-            new IM1TabItemModel("contact", "Contact"),
-            new IM1TabItemModel("addresses", "Addresses"),
             new IM1TabItemModel("units", "Units"),
+            new IM1TabItemModel("purchases", "Purchases"),
             new IM1TabItemModel("timeline", "Timeline"),
             new IM1TabItemModel("notes", "Notes"),
             new IM1TabItemModel("documents", "Documents"),
@@ -80,9 +79,7 @@
                 <legend>Contact</legend>
                 <div class="im1-form-grid">
                     <label>Email <input name="Email" value="@Model.Email" type="email" /></label>
-                    <label>Secondary Email <input name="SecondaryEmail" value="@Model.SecondaryEmail" type="email" /></label>
                     <label>Mobile Phone <input name="MobilePhone" value="@(Model.MobilePhone ?? Model.Phone)" /></label>
-                    <label>Home Phone <input name="HomePhone" value="@Model.HomePhone" /></label>
                     <label>Work Phone <input name="WorkPhone" value="@Model.WorkPhone" /></label>
                     <label>Preferred Contact
                         <select name="PreferredContactMethod">
@@ -107,7 +104,6 @@
             <fieldset class="im1-form-section">
                 <legend>Preferences & Accounting</legend>
                 <div class="im1-form-grid">
-                    <label>Lifecycle Stage <input name="LifecycleStage" value="@Model.LifecycleStage" /></label>
                     <label>Referral Source
                         <select name="Source">
                             <option value="">Not Set</option>
@@ -118,7 +114,6 @@
                         </select>
                     </label>
                     <label>Date of Birth <input name="DateOfBirth" value="@Model.DateOfBirth?.ToString("yyyy-MM-dd")" type="date" /></label>
-                    <label>Anniversary <input name="Anniversary" value="@Model.Anniversary?.ToString("yyyy-MM-dd")" type="date" /></label>
                     <label>Customer Since <input value="@((Model.CustomerSince ?? DateOnly.FromDateTime(Model.CreatedAtUtc.DateTime)).ToString("yyyy-MM-dd"))" readonly /></label>
                     <label>Last Purchase <input value="@(Model.LastPurchaseAtUtc?.ToString("yyyy-MM-dd") ?? "None")" readonly /></label>
                     <label>Reseller Tax Certificate Number <input name="TaxExemptNumber" value="@Model.TaxExemptNumber" maxlength="50" data-tax-exempt-number /></label>
@@ -150,87 +145,6 @@
         </form>
     </section>
 
-    <section class="tab-panel" id="contact" role="tabpanel" hidden>
-        <form asp-action="AddPhone" method="post" class="im1-form">
-            <input type="hidden" name="CustomerId" value="@Model.Id" />
-            <div class="im1-form-grid">
-                <label>Phone Type
-                    <select name="PhoneType">
-                        <option>Mobile</option>
-                        <option>Home</option>
-                        <option>Work</option>
-                        <option>Other</option>
-                    </select>
-                </label>
-                <label>Phone Number <input name="PhoneNumber" required /></label>
-                <label>Extension <input name="Extension" /></label>
-                <label class="im1-checkbox"><input name="IsPrimary" type="checkbox" value="true" /> Primary</label><input name="IsPrimary" type="hidden" value="false" />
-                <label class="im1-checkbox"><input name="CanText" type="checkbox" value="true" /> Can Text</label><input name="CanText" type="hidden" value="false" />
-            </div>
-            <div class="im1-form-actions">
-                <button class="im1-button im1-button-primary" type="submit">Add Phone</button>
-            </div>
-        </form>
-        <div class="im1-data-grid">
-            <table>
-                <thead><tr><th>Type</th><th>Number</th><th>Extension</th><th>Primary</th><th>Text</th></tr></thead>
-                <tbody>
-                    @foreach (var phone in Model.PhoneNumbers)
-                    {
-                        <tr><td>@phone.PhoneType</td><td>@phone.PhoneNumber</td><td>@phone.Extension</td><td>@(phone.IsPrimary ? "Yes" : "No")</td><td>@(phone.CanText ? "Yes" : "No")</td></tr>
-                    }
-                    @if (Model.PhoneNumbers.Count == 0)
-                    {
-                        <tr><td colspan="5">No phone numbers found.</td></tr>
-                    }
-                </tbody>
-            </table>
-        </div>
-    </section>
-
-    <section class="tab-panel" id="addresses" role="tabpanel" hidden>
-        <form asp-action="AddAddress" method="post" class="im1-form">
-            <input type="hidden" name="CustomerId" value="@Model.Id" />
-            <div class="im1-form-grid">
-                <label>Address Type <input name="AddressType" value="Primary" required /></label>
-                <label>Line 1 <input name="Line1" /></label>
-                <label>Line 2 <input name="Line2" /></label>
-                <label>City <input name="City" /></label>
-                <label>State / Region <input name="Region" /></label>
-                <label>Postal Code <input name="PostalCode" /></label>
-                <label>Country <input name="Country" value="US" required /></label>
-                <label class="im1-checkbox"><input name="IsPrimary" type="checkbox" value="true" /> Primary</label><input name="IsPrimary" type="hidden" value="false" />
-                <label class="im1-checkbox"><input name="IsBilling" type="checkbox" value="true" /> Billing</label><input name="IsBilling" type="hidden" value="false" />
-                <label class="im1-checkbox"><input name="IsShipping" type="checkbox" value="true" /> Shipping</label><input name="IsShipping" type="hidden" value="false" />
-            </div>
-            <div class="im1-form-actions">
-                <button class="im1-button im1-button-primary" type="submit">Add Address</button>
-            </div>
-        </form>
-        <div class="im1-data-grid">
-            <table>
-                <thead><tr><th>Type</th><th>Address</th><th>City</th><th>State</th><th>Postal</th><th>Flags</th></tr></thead>
-                <tbody>
-                    @foreach (var address in Model.Addresses)
-                    {
-                        <tr>
-                            <td>@address.AddressType</td>
-                            <td>@address.Line1 @address.Line2</td>
-                            <td>@address.City</td>
-                            <td>@address.Region</td>
-                            <td>@address.PostalCode</td>
-                            <td>@(address.IsPrimary ? "Primary " : "")@(address.IsBilling ? "Billing " : "")@(address.IsShipping ? "Shipping" : "")</td>
-                        </tr>
-                    }
-                    @if (Model.Addresses.Count == 0)
-                    {
-                        <tr><td colspan="6">No addresses found.</td></tr>
-                    }
-                </tbody>
-            </table>
-        </div>
-    </section>
-
     <section class="tab-panel" id="units" role="tabpanel" hidden>
         <div class="im1-data-grid">
             <table>
@@ -243,6 +157,40 @@
                     @if (Model.Units.Count == 0)
                     {
                         <tr><td colspan="5">No units found.</td></tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    </section>
+
+    <section class="tab-panel" id="purchases" role="tabpanel" hidden>
+        <div class="im1-data-grid">
+            <table>
+                <thead>
+                    <tr>
+                        <th>Date</th>
+                        <th>Type</th>
+                        <th>Reference</th>
+                        <th>Status</th>
+                        <th>Description</th>
+                        <th>Total</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var purchase in Model.Purchases)
+                    {
+                        <tr>
+                            <td>@purchase.PurchasedAtUtc.ToString("yyyy-MM-dd")</td>
+                            <td>@purchase.PurchaseType</td>
+                            <td>@purchase.ReferenceNumber</td>
+                            <td>@purchase.Status</td>
+                            <td>@purchase.Description</td>
+                            <td>@(purchase.Total?.ToString("C") ?? "-")</td>
+                        </tr>
+                    }
+                    @if (Model.Purchases.Count == 0)
+                    {
+                        <tr><td colspan="6">No in-store, online, work order, or special order purchases found.</td></tr>
                     }
                 </tbody>
             </table>

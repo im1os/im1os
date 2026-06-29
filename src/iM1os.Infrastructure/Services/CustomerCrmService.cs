@@ -95,6 +95,32 @@ public sealed class CustomerCrmService(
             .Take(50)
             .Select(x => new CustomerTimelineItem(x.OccurredAtUtc, x.EventType, x.Summary))
             .ToListAsync(cancellationToken);
+        var workOrders = await dbContext.WorkOrders.IgnoreQueryFilters()
+            .Where(x => x.OrganizationId == organizationId && x.CustomerId == customerId)
+            .OrderByDescending(x => x.OpenedAtUtc)
+            .Take(50)
+            .ToListAsync(cancellationToken);
+        var workOrderIds = workOrders.Select(x => x.Id).ToArray();
+        var estimateTotals = await dbContext.Estimates.IgnoreQueryFilters()
+            .Where(x => x.OrganizationId == organizationId && workOrderIds.Contains(x.WorkOrderId))
+            .GroupBy(x => x.WorkOrderId)
+            .Select(x => new
+            {
+                WorkOrderId = x.Key,
+                Total = x.OrderByDescending(estimate => estimate.ApprovedAtUtc ?? estimate.CreatedForCustomerAtUtc)
+                    .Select(estimate => (decimal?)estimate.GrandTotal)
+                    .FirstOrDefault()
+            })
+            .ToDictionaryAsync(x => x.WorkOrderId, x => x.Total, cancellationToken);
+        var workOrderPurchases = workOrders
+            .Select(x => new CustomerPurchaseItem(
+                x.OpenedAtUtc,
+                "Work Order",
+                x.WorkOrderNumber,
+                x.Stage,
+                x.RequestedService,
+                estimateTotals.GetValueOrDefault(x.Id)))
+            .ToList();
 
         var squareCustomerId = customer.ExternalLinks
             .Where(x => x.Provider == "Square" && x.IsActive)
@@ -150,6 +176,7 @@ public sealed class CustomerCrmService(
             customer.CustomFields.OrderBy(x => x.FieldKey).Select(x => new CustomerCustomFieldItem(x.Id, x.FieldKey, x.FieldLabel, x.FieldValue)).ToList(),
             customer.ExternalLinks.OrderBy(x => x.Provider).Select(x => new CustomerExternalLinkItem(x.Id, x.Provider, x.ExternalCustomerId, x.ExternalUrl, x.IsActive)).ToList(),
             customer.Documents.Where(x => x.DeletedAtUtc == null).OrderByDescending(x => x.UploadedAtUtc).Select(x => new CustomerDocumentItem(x.Id, x.FileName, x.DocumentType, x.Url, x.ContentType, x.UploadedAtUtc)).ToList(),
+            workOrderPurchases,
             timeline);
     }
 

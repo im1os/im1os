@@ -12,7 +12,6 @@
             new IM1DataGridColumnModel("email", "Email"),
             new IM1DataGridColumnModel("phone", "Phone"),
             new IM1DataGridColumnModel("status", "Status"),
-            new IM1DataGridColumnModel("stage", "Stage"),
             new IM1DataGridColumnModel("source", "Source"),
             new IM1DataGridColumnModel("created", "Created"),
             new IM1DataGridColumnModel("actions", "Actions", false, false)
@@ -26,7 +25,6 @@
             ["email"] = customer.Email ?? "",
             ["phone"] = customer.Phone ?? "",
             ["status"] = customer.Status,
-            ["stage"] = customer.LifecycleStage ?? "",
             ["source"] = customer.Source ?? "",
             ["created"] = customer.CreatedAtUtc.ToString("yyyy-MM-dd"),
             ["actions"] = new Microsoft.AspNetCore.Html.HtmlString($"<a class=\"im1-button im1-button-secondary\" href=\"{Url.Action("Detail", "Customers", new { customerId = customer.Id })}\">Open</a>")

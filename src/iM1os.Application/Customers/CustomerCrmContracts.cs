@@ -65,6 +65,7 @@ public sealed record CustomerDetail(
     IReadOnlyCollection<CustomerCustomFieldItem> CustomFields,
     IReadOnlyCollection<CustomerExternalLinkItem> ExternalLinks,
     IReadOnlyCollection<CustomerDocumentItem> Documents,
+    IReadOnlyCollection<CustomerPurchaseItem> Purchases,
     IReadOnlyCollection<CustomerTimelineItem> Timeline);
 
 public sealed record CustomerAddressItem(
@@ -106,6 +107,14 @@ public sealed record CustomerCustomFieldItem(Guid Id, string FieldKey, string? F
 public sealed record CustomerExternalLinkItem(Guid Id, string Provider, string ExternalCustomerId, string? ExternalUrl, bool IsActive);
 
 public sealed record CustomerDocumentItem(Guid Id, string FileName, string DocumentType, string? Url, string? ContentType, DateTimeOffset UploadedAtUtc);
+
+public sealed record CustomerPurchaseItem(
+    DateTimeOffset PurchasedAtUtc,
+    string PurchaseType,
+    string ReferenceNumber,
+    string Status,
+    string? Description,
+    decimal? Total);
 
 public sealed record CustomerTimelineItem(DateTimeOffset OccurredAtUtc, string EventType, string Summary);
 
