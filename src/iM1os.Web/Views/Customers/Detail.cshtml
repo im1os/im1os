@@ -7,8 +7,10 @@
     var preferredContactOptions = new[] { "Phone", "Text", "Email", "Mail", "None" };
     var referralSourceOptions = new[] { "Walk-In", "Website", "Referral", "Employee", "Event", "Social Media", "Advertising", "Other" };
     var languageOptions = new[] { "English", "Spanish", "French", "Other" };
+    var stateOptions = new[] { "AL", "AK", "AZ", "AR", "CA", "CO", "CT", "DE", "FL", "GA", "HI", "IA", "ID", "IL", "IN", "KS", "KY", "LA", "MA", "MD", "ME", "MI", "MN", "MO", "MS", "MT", "NC", "ND", "NE", "NH", "NJ", "NM", "NV", "NY", "OH", "OK", "OR", "PA", "RI", "SC", "SD", "TN", "TX", "UT", "VA", "VT", "WA", "WI", "WV", "WY" };
     var unitTypeOptions = new[] { "Off-Road", "Motorcycle", "ATV", "UTV", "Watercraft", "Snowmobile", "Trailer", "Other" };
     var attachmentTypeOptions = new[] { "Photo", "Video", "Document" };
+    var primaryAddress = Model.Addresses.OrderByDescending(address => address.IsPrimary).FirstOrDefault();
     var page = new IM1PageModel(
         Model.DisplayName,
         "CRM / Customers",
@@ -100,6 +102,26 @@
                             }
                         </select>
                     </label>
+                </div>
+            </fieldset>
+
+            <fieldset class="im1-form-section">
+                <legend>Primary Address</legend>
+                <div class="im1-form-grid" data-zip-lookup>
+                    <label>Address Line 1 <input name="Line1" value="@primaryAddress?.Line1" /></label>
+                    <label>Address Line 2 <input name="Line2" value="@primaryAddress?.Line2" /></label>
+                    <label>City <input name="City" value="@primaryAddress?.City" data-zip-lookup-city /></label>
+                    <label>State
+                        <select name="Region" data-zip-lookup-state>
+                            <option value="">Select</option>
+                            @foreach (var state in stateOptions)
+                            {
+                                <option value="@state" selected="@(primaryAddress?.Region == state)">@state</option>
+                            }
+                        </select>
+                    </label>
+                    <label>Postal Code <input name="PostalCode" value="@primaryAddress?.PostalCode" data-zip-lookup-postal /></label>
+                    <input type="hidden" name="Country" value="US" data-zip-lookup-country />
                 </div>
             </fieldset>
 

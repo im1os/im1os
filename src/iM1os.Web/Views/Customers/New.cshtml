@@ -85,12 +85,12 @@
 
         <fieldset class="im1-form-section">
             <legend>Primary Address</legend>
-            <div class="im1-form-grid">
+            <div class="im1-form-grid" data-zip-lookup>
                 <label>Address Line 1 <input name="Line1" /></label>
                 <label>Address Line 2 <input name="Line2" /></label>
-                <label>City <input name="City" /></label>
+                <label>City <input name="City" data-zip-lookup-city /></label>
                 <label>State
-                    <select name="Region">
+                    <select name="Region" data-zip-lookup-state>
                         <option value="">Select</option>
                         @foreach (var state in stateOptions)
                         {
@@ -98,9 +98,9 @@
                         }
                     </select>
                 </label>
-                <label>Postal Code <input name="PostalCode" /></label>
+                <label>Postal Code <input name="PostalCode" data-zip-lookup-postal /></label>
                 <label>Country
-                    <select name="Country">
+                    <select name="Country" data-zip-lookup-country>
                         <option value="US">USA</option>
                     </select>
                 </label>

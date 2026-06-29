@@ -201,7 +201,13 @@ public sealed record UpdateCustomerRequest(
     DateOnly? Anniversary,
     string? PreferredLanguage,
     decimal? CreditLimit,
-    string? SummaryNotes);
+    string? SummaryNotes,
+    string? Line1,
+    string? Line2,
+    string? City,
+    string? Region,
+    string? PostalCode,
+    string? Country);
 
 public sealed record AddCustomerNoteRequest(Guid CustomerId, string NoteType, string? Subject, string Body, bool IsPinned);
 

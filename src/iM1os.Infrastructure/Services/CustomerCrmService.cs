@@ -293,6 +293,7 @@ public sealed class CustomerCrmService(
         customer.CreditLimit = request.CreditLimit;
         customer.SummaryNotes = request.SummaryNotes is null ? customer.SummaryNotes : Clean(request.SummaryNotes);
         customer.IsActive = customer.Status.Equals("Active", StringComparison.OrdinalIgnoreCase);
+        await UpsertPrimaryAddressAsync(organizationId, customer.Id, request.Line1, request.Line2, request.City, request.Region, request.PostalCode, request.Country, cancellationToken);
 
         AddActivity(organizationId, customer.Id, actorUserId, "CustomerUpdated", "Customer updated", ipAddress, new { before, after = Snapshot(customer) });
         await dbContext.SaveChangesAsync(cancellationToken);
@@ -478,6 +479,58 @@ public sealed class CustomerCrmService(
     {
         return await dbContext.Customers.IgnoreQueryFilters()
             .SingleAsync(x => x.OrganizationId == organizationId && x.Id == customerId && x.DeletedAtUtc == null, cancellationToken);
+    }
+
+    private async Task UpsertPrimaryAddressAsync(
+        Guid organizationId,
+        Guid customerId,
+        string? line1,
+        string? line2,
+        string? city,
+        string? region,
+        string? postalCode,
+        string? country,
+        CancellationToken cancellationToken)
+    {
+        var hasAddressValue = !string.IsNullOrWhiteSpace(line1) ||
+            !string.IsNullOrWhiteSpace(line2) ||
+            !string.IsNullOrWhiteSpace(city) ||
+            !string.IsNullOrWhiteSpace(region) ||
+            !string.IsNullOrWhiteSpace(postalCode);
+
+        var address = await dbContext.CustomerAddresses.IgnoreQueryFilters()
+            .Where(x => x.OrganizationId == organizationId && x.CustomerId == customerId && x.DeletedAtUtc == null)
+            .OrderByDescending(x => x.IsPrimary)
+            .ThenBy(x => x.CreatedAtUtc)
+            .FirstOrDefaultAsync(cancellationToken);
+
+        if (address is null && !hasAddressValue)
+        {
+            return;
+        }
+
+        if (address is null)
+        {
+            address = new CustomerAddress
+            {
+                OrganizationId = organizationId,
+                CustomerId = customerId,
+                AddressType = "Primary",
+                IsPrimary = true,
+                IsBilling = true,
+                IsShipping = true
+            };
+            dbContext.CustomerAddresses.Add(address);
+        }
+
+        address.AddressType = "Primary";
+        address.Line1 = Clean(line1);
+        address.Line2 = Clean(line2);
+        address.City = Clean(city);
+        address.Region = Clean(region);
+        address.PostalCode = Clean(postalCode);
+        address.Country = Clean(country) ?? "US";
+        address.IsPrimary = true;
     }
 
     private async Task<Guid?> ActorEmployeeIdAsync(Guid organizationId, Guid actorUserId, CancellationToken cancellationToken)

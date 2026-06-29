@@ -389,6 +389,49 @@ window.IM1.activateTaxExemptFields = function activateTaxExemptFields(root) {
   });
 };
 
+window.IM1.activateZipLookup = function activateZipLookup(root) {
+  const scope = root || document;
+
+  scope.querySelectorAll("[data-zip-lookup]").forEach((container) => {
+    const postalCode = container.querySelector("[data-zip-lookup-postal]");
+    const city = container.querySelector("[data-zip-lookup-city]");
+    const state = container.querySelector("[data-zip-lookup-state]");
+    const country = container.querySelector("[data-zip-lookup-country]");
+    if (!postalCode || !city || !state || !country) {
+      return;
+    }
+
+    const lookup = async () => {
+      const zip = postalCode.value.trim().slice(0, 5);
+      const countryCode = (country.value || "US").trim().toLowerCase();
+      if (countryCode !== "us" || !/^\d{5}$/.test(zip)) {
+        return;
+      }
+
+      try {
+        const response = await fetch(`https://api.zippopotam.us/us/${zip}`, { mode: "cors" });
+        if (!response.ok) {
+          return;
+        }
+
+        const result = await response.json();
+        const place = result.places?.[0];
+        if (!place) {
+          return;
+        }
+
+        city.value = place["place name"] || city.value;
+        state.value = place["state abbreviation"] || state.value;
+      } catch {
+        // Manual entry remains available if lookup cannot be reached.
+      }
+    };
+
+    postalCode.addEventListener("blur", lookup);
+    postalCode.addEventListener("change", lookup);
+  });
+};
+
 document.addEventListener("keydown", (event) => {
   if (event.key !== "Escape") {
     return;
@@ -415,4 +458,5 @@ document.addEventListener("DOMContentLoaded", () => {
   window.IM1.activateCompensationForms(document);
   window.IM1.activateTabReturnFields(document);
   window.IM1.activateTaxExemptFields(document);
+  window.IM1.activateZipLookup(document);
 });
