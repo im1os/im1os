@@ -1,0 +1,248 @@
+@model iM1os.Application.CompanySuppliers.CompanyWpsConnectorPage
+
+@{
+    ViewData["Title"] = "Company WPS Supplier";
+    var message = TempData["CompanySupplierMessage"] as string;
+    var organizationId = ViewBag.OrganizationId as Guid?;
+    var routeOrganizationId = User.FindFirst("platform_user_id") is null ? null : organizationId;
+    var enabledSupplierCodes = ViewBag.CompanySupplierConnectorCodes as IReadOnlySet<string> ?? new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+    var supplierActions = new List<IM1ActionModel>
+    {
+        new("Item Search", Url.Action("SupplierItemSearch", "Business", new { organizationId = routeOrganizationId }), "secondary")
+    };
+    if (enabledSupplierCodes.Contains("PU"))
+    {
+        supplierActions.Add(new IM1ActionModel("Parts Unlimited", Url.Action("SupplierPartsUnlimitedConnector", "Business", new { organizationId = routeOrganizationId }), "secondary"));
+    }
+
+    if (enabledSupplierCodes.Contains("TURN14"))
+    {
+        supplierActions.Add(new IM1ActionModel("Turn14", Url.Action("SupplierTurn14Connector", "Business", new { organizationId = routeOrganizationId }), "secondary"));
+    }
+
+    var hero = new IM1WorkspaceHeroModel(
+        "WPS",
+        "Company Suppliers",
+        "Configure company-owned WPS credentials and dealer actual cost sync.",
+        new[]
+        {
+            new IM1WorkspaceStatModel("Supplier", Model.Status.IsEnabled ? "Enabled" : "Disabled", Model.Status.ConnectorKey),
+            new IM1WorkspaceStatModel("Configured", Model.Status.IsConfigured ? "Ready" : "Incomplete", Model.Status.SupplierName),
+            new IM1WorkspaceStatModel("Pricing", Model.Status.SyncDealerPricingOnSchedule ? "Scheduled" : "Manual", $"{Model.Settings.DealerPricingScheduleIntervalHours} hr interval")
+        },
+        supplierActions,
+        Model.Status.LastConnectionStatus ?? "Company WPS supplier setup");
+}
+
+<nav class="im1-breadcrumbs" aria-label="Breadcrumb">
+    <span>Company Suppliers</span>
+    <span>WPS</span>
+</nav>
+
+@await Html.PartialAsync("IM1WorkspaceHero", hero)
+
+@if (!string.IsNullOrWhiteSpace(message))
+{
+    <section class="im1-status-strip">
+        <strong>Status</strong>
+        <span>@message</span>
+    </section>
+}
+
+<section class="im1-wps-dashboard-grid">
+    <article class="im1-settings-panel im1-wps-dashboard-card">
+        <header class="im1-section-header">
+            <div>
+                <h2>Dealer Price File</h2>
+                <p>Latest WPS dealer pricing file applied for this company.</p>
+            </div>
+            <strong class="@(Model.PriceFileStatus.LastAppliedAtUtc is null ? "im1-status-pill" : "im1-status-pill im1-status-success")">
+                @(Model.PriceFileStatus.LastAppliedAtUtc is null ? "Not synced" : "Applied")
+            </strong>
+        </header>
+        <dl class="im1-wps-status-grid">
+            <div>
+                <dt>Price File Date</dt>
+                <dd>@((Model.PriceFileStatus.PriceFileLastModifiedUtc ?? Model.PriceFileStatus.LastDownloadedAtUtc ?? Model.PriceFileStatus.LastAppliedAtUtc)?.ToString("yyyy-MM-dd HH:mm") ?? "-")</dd>
+            </div>
+            <div>
+                <dt>Applied</dt>
+                <dd>@(Model.PriceFileStatus.LastAppliedAtUtc?.ToString("yyyy-MM-dd HH:mm") ?? "-")</dd>
+            </div>
+            <div>
+                <dt>Downloaded</dt>
+                <dd>@(Model.PriceFileStatus.LastDownloadedAtUtc?.ToString("yyyy-MM-dd HH:mm") ?? "-")</dd>
+            </div>
+            <div>
+                <dt>Source</dt>
+                <dd>@(string.IsNullOrWhiteSpace(Model.PriceFileStatus.Source) ? "-" : Model.PriceFileStatus.Source)</dd>
+            </div>
+        </dl>
+        @if (!string.IsNullOrWhiteSpace(Model.PriceFileStatus.Message))
+        {
+            <p class="im1-settings-note">@Model.PriceFileStatus.Message</p>
+        }
+    </article>
+</section>
+
+<section class="im1-wps-connector-layout">
+    <article class="im1-settings-panel im1-wps-primary-panel">
+        <header class="im1-section-header">
+            <div>
+                <h2>Dealer Pricing Scheduler</h2>
+                <p>Company-specific sync for WPS actual dealer cost. Catalog, fitment, and warehouse inventory remain platform-managed.</p>
+            </div>
+        </header>
+
+        <form class="im1-settings-form" asp-action="SaveSupplierWpsConnector" asp-route-organizationId="@routeOrganizationId" method="post" autocomplete="off">
+            @Html.AntiForgeryToken()
+            <input class="im1-autofill-decoy" type="text" name="company-wps-decoy-username" autocomplete="username" tabindex="-1" aria-hidden="true" />
+            <input class="im1-autofill-decoy" type="password" name="company-wps-decoy-password" autocomplete="current-password" tabindex="-1" aria-hidden="true" />
+            <input type="hidden" name="organizationId" value="@Model.OrganizationId" />
+            <section class="im1-scheduler-connector-bar im1-scheduler-connector-bar-single">
+                <label class="im1-setting-option">
+                    <input type="checkbox" name="IsEnabled" value="true" checked="@Model.Settings.IsEnabled" />
+                    <span>
+                        <strong>Enabled</strong>
+                        <small>Allow company WPS pricing operations.</small>
+                    </span>
+                </label>
+                <input type="hidden" name="IsEnabled" value="false" />
+            </section>
+
+            <section class="im1-scheduler-config-list" aria-label="Dealer pricing schedule">
+                <article class="im1-scheduler-config-row">
+                    <div class="im1-scheduler-config-summary">
+                        <label class="im1-setting-option">
+                            <input type="checkbox" name="SyncDealerPricingOnSchedule" value="true" checked="@Model.Settings.SyncDealerPricingOnSchedule" />
+                            <span>
+                                <strong>Dealer actual cost schedule</strong>
+                                <small>Syncs WPS company pricing into per-company supplier prices.</small>
+                            </span>
+                        </label>
+                        <input type="hidden" name="SyncDealerPricingOnSchedule" value="false" />
+                    </div>
+                    <div class="im1-scheduler-config-fields">
+                        <label class="im1-field">
+                            <span>Schedule Interval (hours)</span>
+                            <input name="DealerPricingScheduleIntervalHours" type="number" min="1" max="168" step="1" value="@Model.Settings.DealerPricingScheduleIntervalHours" />
+                        </label>
+                        <label class="im1-field">
+                            <span>Scheduled max items</span>
+                            <input name="DealerPricingScheduleMaxItems" type="number" min="1" step="1" value="@Model.Settings.DealerPricingScheduleMaxItems" placeholder="Blank for full sync" />
+                        </label>
+                    </div>
+                </article>
+            </section>
+
+            <details class="im1-disclosure-panel">
+                <summary>
+                    <span>Connection details</span>
+                    <small>Dealer account and credentials</small>
+                </summary>
+                <div class="im1-settings-grid">
+                    <label class="im1-field im1-field-wide">
+                        <span>Base API URL</span>
+                        <input name="BaseApiUrl" value="@Model.Settings.BaseApiUrl" placeholder="https://api.wps-inc.com" autocomplete="off" />
+                    </label>
+                    <label class="im1-field">
+                        <span>Dealer Account Number</span>
+                        <input name="DealerAccountNumber" value="@Model.Settings.DealerAccountNumber" placeholder="D2240487" autocomplete="off" />
+                    </label>
+                    <label class="im1-field">
+                        <span>Username</span>
+                        <input name="Username" value="@Model.Settings.Username" autocomplete="section-company-wps off" spellcheck="false" autocapitalize="none" />
+                    </label>
+                    <label class="im1-field im1-field-wide">
+                        <span>API Key</span>
+                        <input name="ApiKey" value="@Model.Settings.ApiKey" autocomplete="off" />
+                    </label>
+                    <label class="im1-field im1-field-wide">
+                        <span>API Secret</span>
+                        <input name="ApiSecret" value="" placeholder="Leave blank to keep existing secret" type="password" autocomplete="section-company-wps new-password" spellcheck="false" autocapitalize="none" />
+                    </label>
+                </div>
+            </details>
+
+            <footer class="im1-settings-actions">
+                <button class="im1-button im1-button-primary" type="submit">Save Settings</button>
+            </footer>
+        </form>
+    </article>
+
+    <aside class="im1-wps-action-stack">
+        <article class="im1-settings-panel">
+            <header class="im1-section-header">
+                <div>
+                    <h2>Dealer Cost Sync</h2>
+                    <p>Queue company-specific WPS actual cost. This does not import catalog, fitment, or warehouse inventory.</p>
+                </div>
+            </header>
+
+            <form class="im1-settings-form" asp-action="SyncSupplierWpsDealerPricing" asp-route-organizationId="@routeOrganizationId" method="post">
+                @Html.AntiForgeryToken()
+                <input type="hidden" name="organizationId" value="@Model.OrganizationId" />
+                <label class="im1-field">
+                    <span>Max Items</span>
+                    <input name="MaxItems" type="number" min="1" step="1" value="500" placeholder="Blank for full sync" />
+                </label>
+                <footer class="im1-settings-actions">
+                    <button class="im1-button im1-button-primary" type="submit">Sync Dealer Cost</button>
+                </footer>
+            </form>
+        </article>
+    </aside>
+</section>
+
+<section class="im1-settings-panel">
+    <header class="im1-section-header">
+        <div>
+            <h2>Recent Pricing Syncs</h2>
+            <p>Latest company WPS dealer actual cost sync requests.</p>
+        </div>
+    </header>
+    <div class="table-wrap im1-table-compact">
+        <table>
+            <thead>
+                <tr>
+                    <th>Requested</th>
+                    <th>Type</th>
+                    <th>Status</th>
+                    <th>Progress</th>
+                    <th>Source</th>
+                    <th>Started</th>
+                    <th>Completed</th>
+                    <th>Message</th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var run in Model.RecentImportRuns)
+                {
+                    <tr>
+                        <td>@run.RequestedAtUtc.ToString("yyyy-MM-dd HH:mm")</td>
+                        <td>@run.ImportType</td>
+                        <td>@run.Status</td>
+                        <td>
+                            <div class="im1-import-progress" aria-label="Import progress @run.ProgressPercent%">
+                                <span style="width: @run.ProgressPercent%"></span>
+                            </div>
+                            <span class="im1-import-progress-count">
+                                @(run.ProgressTotal is null ? run.ProgressProcessed.ToString("N0") : $"{run.ProgressProcessed:N0} / {run.ProgressTotal.Value:N0}")
+                            </span>
+                        </td>
+                        <td>@run.Source</td>
+                        <td>@(run.StartedAtUtc?.ToString("yyyy-MM-dd HH:mm") ?? "-")</td>
+                        <td>@(run.CompletedAtUtc?.ToString("yyyy-MM-dd HH:mm") ?? "-")</td>
+                        <td>@run.Message</td>
+                    </tr>
+                }
+                @if (Model.RecentImportRuns.Count == 0)
+                {
+                    <tr>
+                        <td colspan="8">No company WPS pricing syncs have been requested.</td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </div>
+</section>

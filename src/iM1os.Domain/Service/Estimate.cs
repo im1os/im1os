@@ -14,6 +14,16 @@ public sealed class Estimate : AuditableEntity, IOrganizationOwned, ILocationSco
 
     public required string Status { get; set; }
 
+    public string DepositTerms { get; set; } = "No Deposit";
+
+    public string? PaymentTerms { get; set; }
+
+    public decimal FeesTotal { get; set; }
+
+    public decimal DiscountTotal { get; set; }
+
+    public decimal Subtotal { get; set; }
+
     public decimal LaborTotal { get; set; }
 
     public decimal PartsTotal { get; set; }
@@ -27,4 +37,6 @@ public sealed class Estimate : AuditableEntity, IOrganizationOwned, ILocationSco
     public DateTimeOffset? ApprovedAtUtc { get; set; }
 
     public DateTimeOffset? DeclinedAtUtc { get; set; }
+
+    public ICollection<EstimateLineItem> LineItems { get; } = new List<EstimateLineItem>();
 }

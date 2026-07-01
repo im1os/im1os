@@ -1,0 +1,401 @@
+@model iM1os.Application.Platform.PartsUnlimitedConnectorPage
+
+@{
+    ViewData["Title"] = "Parts Unlimited Connector";
+    var message = TempData["PlatformMessage"] as string;
+    var hero = new IM1WorkspaceHeroModel(
+        "Parts Unlimited",
+        "Suppliers",
+        "Configure Parts Unlimited bundle imports and fitment enrichment.",
+        new[]
+        {
+            new IM1WorkspaceStatModel("Connector", Model.Status.IsEnabled ? "Enabled" : "Disabled", Model.Status.ConnectorKey),
+            new IM1WorkspaceStatModel("Configured", Model.Status.IsConfigured ? "Ready" : "Incomplete", Model.Status.SupplierName),
+            new IM1WorkspaceStatModel("Items", Model.DatabaseMetrics.SupplierProductCount.ToString("N0"), "In database"),
+            new IM1WorkspaceStatModel("Fitment Records", Model.DatabaseMetrics.FitmentRecordCount.ToString("N0"), "In database"),
+            new IM1WorkspaceStatModel("Bundle", Model.Settings.ImportMasterFileOnSchedule ? "Scheduled" : "Manual", $"{Model.Settings.MasterFileScheduleIntervalHours} hr interval"),
+            new IM1WorkspaceStatModel("Brand Images", Model.Settings.ImportBrandImagesOnSchedule ? "Scheduled" : "Manual", $"{Model.Settings.BrandImagesScheduleIntervalHours} hr interval"),
+            new IM1WorkspaceStatModel("Fitment", Model.Settings.ImportFitmentOnSchedule ? "Scheduled" : "Manual", $"{Model.Settings.FitmentScheduleIntervalHours} hr interval")
+        },
+        new[] { new IM1ActionModel("Global Scheduler", Url.Action("Scheduler"), "secondary") },
+        Model.Status.LastConnectionStatus ?? "Parts Unlimited supplier setup");
+}
+
+<nav class="im1-breadcrumbs" aria-label="Breadcrumb">
+    <span>Platform Suppliers</span>
+    <span>Connectors</span>
+    <span>Parts Unlimited</span>
+</nav>
+
+@await Html.PartialAsync("IM1WorkspaceHero", hero)
+
+@if (!string.IsNullOrWhiteSpace(message))
+{
+    <section class="im1-status-strip">
+        <strong>Status</strong>
+        <span>@message</span>
+    </section>
+}
+
+<section class="im1-wps-connector-layout">
+    <article class="im1-settings-panel im1-wps-primary-panel">
+        <header class="im1-section-header">
+            <div>
+                <h2>Scheduler</h2>
+                <p>Automated bundle imports run through the connector worker. Fitment remains a separate enrichment step.</p>
+            </div>
+        </header>
+
+        <form class="im1-settings-form" asp-action="SavePartsUnlimitedConnector" method="post" autocomplete="off">
+            @Html.AntiForgeryToken()
+            <input class="im1-autofill-decoy" type="text" name="platform-pu-decoy-username" autocomplete="username" tabindex="-1" aria-hidden="true" />
+            <input class="im1-autofill-decoy" type="password" name="platform-pu-decoy-password" autocomplete="current-password" tabindex="-1" aria-hidden="true" />
+            <section class="im1-scheduler-connector-bar im1-scheduler-connector-bar-single">
+                <label class="im1-setting-option">
+                    <input type="checkbox" name="IsEnabled" value="true" checked="@Model.Settings.IsEnabled" />
+                    <span>
+                        <strong>Enabled</strong>
+                        <small>Allow Parts Unlimited connector operations.</small>
+                    </span>
+                </label>
+                <input type="hidden" name="IsEnabled" value="false" />
+            </section>
+
+            <section class="im1-scheduler-config-list" aria-label="Parts Unlimited schedules">
+                <article class="im1-scheduler-config-row">
+                    <div class="im1-scheduler-config-summary">
+                        <label class="im1-setting-option">
+                            <input type="checkbox" name="ImportMasterFileOnSchedule" value="true" checked="@Model.Settings.ImportMasterFileOnSchedule" />
+                            <span>
+                                <strong>Bundle schedule</strong>
+                                <small>Downloads the Parts Unlimited bundle ZIP for catalog and pricing rows.</small>
+                            </span>
+                        </label>
+                        <input type="hidden" name="ImportMasterFileOnSchedule" value="false" />
+                    </div>
+                    <div class="im1-scheduler-config-fields">
+                        <label class="im1-field">
+                            <span>Mode</span>
+                            <select name="MasterFileImportMode">
+                                <option value="Manual" selected="@(Model.Settings.MasterFileImportMode == "Manual")">Manual</option>
+                                <option value="Scheduled" selected="@(Model.Settings.MasterFileImportMode == "Scheduled")">Scheduled</option>
+                                <option value="ManualAndScheduled" selected="@(Model.Settings.MasterFileImportMode == "ManualAndScheduled")">Manual and Scheduled</option>
+                            </select>
+                        </label>
+                        <label class="im1-field">
+                            <span>Schedule Interval (hours)</span>
+                            <input name="MasterFileScheduleIntervalHours" type="number" min="1" max="168" step="1" value="@Model.Settings.MasterFileScheduleIntervalHours" />
+                        </label>
+                        <label class="im1-field">
+                            <span>Scheduled max parts</span>
+                            <input name="MasterFileScheduleMaxItems" type="number" min="1" step="1" value="@Model.Settings.MasterFileScheduleMaxItems" placeholder="Blank for full import" />
+                        </label>
+                    </div>
+                </article>
+
+                <article class="im1-scheduler-config-row">
+                    <div class="im1-scheduler-config-summary">
+                        <label class="im1-setting-option">
+                            <input type="checkbox" name="ImportBrandImagesOnSchedule" value="true" checked="@Model.Settings.ImportBrandImagesOnSchedule" />
+                            <span>
+                                <strong>Brand image schedule</strong>
+                                <small>Processes configured or cached brand reports as a separate enrichment run.</small>
+                            </span>
+                        </label>
+                        <input type="hidden" name="ImportBrandImagesOnSchedule" value="false" />
+                    </div>
+                    <div class="im1-scheduler-config-fields">
+                        <label class="im1-field">
+                            <span>Schedule Interval (hours)</span>
+                            <input name="BrandImagesScheduleIntervalHours" type="number" min="1" max="168" step="1" value="@Model.Settings.BrandImagesScheduleIntervalHours" />
+                        </label>
+                        <label class="im1-field">
+                            <span>Scheduled max brand files</span>
+                            <input name="BrandImagesScheduleMaxFiles" type="number" min="1" step="1" value="@Model.Settings.BrandImagesScheduleMaxFiles" placeholder="Blank for all" />
+                        </label>
+                    </div>
+                </article>
+
+                <article class="im1-scheduler-config-row">
+                    <div class="im1-scheduler-config-summary">
+                        <label class="im1-setting-option">
+                            <input type="checkbox" name="ImportFitmentOnSchedule" value="true" checked="@Model.Settings.ImportFitmentOnSchedule" />
+                            <span>
+                                <strong>Fitment schedule</strong>
+                                <small>Calls the Indie Moto fitment source for active Parts Unlimited SKUs.</small>
+                            </span>
+                        </label>
+                        <input type="hidden" name="ImportFitmentOnSchedule" value="false" />
+                    </div>
+                    <div class="im1-scheduler-config-fields im1-scheduler-config-fields-fitment">
+                        <label class="im1-field">
+                            <span>Schedule Interval (hours)</span>
+                            <input name="FitmentScheduleIntervalHours" type="number" min="1" max="168" step="1" value="@Model.Settings.FitmentScheduleIntervalHours" />
+                        </label>
+                        <label class="im1-field">
+                            <span>Max SKUs</span>
+                            <input name="FitmentScheduleMaxSkus" type="number" min="1" step="1" value="@Model.Settings.FitmentScheduleMaxSkus" placeholder="Blank for all active" />
+                        </label>
+                        <label class="im1-field">
+                            <span>Fitment limit</span>
+                            <input name="FitmentScheduleFitmentLimit" type="number" min="1" step="1" value="@Model.Settings.FitmentScheduleFitmentLimit" placeholder="Blank for all rows" />
+                        </label>
+                        <label class="im1-field">
+                            <span>Delay ms</span>
+                            <input name="FitmentScheduleDelayMilliseconds" type="number" min="0" max="5000" step="50" value="@Model.Settings.FitmentScheduleDelayMilliseconds" />
+                        </label>
+                        <label class="im1-field im1-scheduler-config-source">
+                            <span>Fitment source URL</span>
+                            <input name="FitmentSourceBaseUrl" value="@Model.Settings.FitmentSourceBaseUrl" placeholder="https://saas.indie-moto.com" autocomplete="off" />
+                        </label>
+                    </div>
+                </article>
+            </section>
+
+            <details class="im1-disclosure-panel">
+                <summary>
+                    <span>Connection details</span>
+                    <small>API URL and API key</small>
+                </summary>
+                <div class="im1-settings-grid">
+                    <label class="im1-field im1-field-wide">
+                        <span>Base API URL</span>
+                        <input name="BaseApiUrl" value="@Model.Settings.BaseApiUrl" placeholder="https://api.parts-unlimited.com/api" autocomplete="off" />
+                    </label>
+                    <label class="im1-field im1-field-wide">
+                        <span>API Key</span>
+                        <input name="ApiKey" value="@Model.Settings.ApiKey" type="password" autocomplete="section-platform-pu-api new-password" spellcheck="false" autocapitalize="none" />
+                    </label>
+                    <label class="im1-field">
+                        <span>Dealer Portal User ID</span>
+                        <input name="DealerPortalUsername" value="@Model.Settings.DealerPortalUsername" autocomplete="section-platform-pu off" spellcheck="false" autocapitalize="none" />
+                    </label>
+                    <label class="im1-field">
+                        <span>Dealer Number</span>
+                        <input name="DealerPortalDealerCode" value="@Model.Settings.DealerPortalDealerCode" autocomplete="off" />
+                    </label>
+                    <label class="im1-field im1-field-wide">
+                        <span>Dealer Portal Password</span>
+                        <input name="DealerPortalPassword" value="" type="password" placeholder="Leave blank to keep existing password" autocomplete="section-platform-pu new-password" spellcheck="false" autocapitalize="none" />
+                    </label>
+                    <label class="im1-field">
+                        <span>Manual max brand files</span>
+                        <input name="BrandFileMaxFiles" type="number" min="1" step="1" value="@Model.Settings.BrandFileMaxFiles" placeholder="Blank for all" />
+                    </label>
+                    <label class="im1-field im1-field-wide">
+                        <span>Brand file URL(s)</span>
+                        <textarea name="BrandFileUrls" rows="5" placeholder="Optional. Leave blank to use the refreshed brand cache.">@Model.Settings.BrandFileUrls</textarea>
+                    </label>
+                </div>
+                <p class="im1-settings-note">When URLs are blank, cached brand IDs are used to download Parts Unlimited brand reports one at a time. The connector decodes <code>partImage</code> values into CDN image URLs.</p>
+                <div class="im1-status-strip">
+                    <strong>Brand Cache</strong>
+                    <span>
+                        @Model.BrandCacheStatus.BrandCount.ToString("N0") brands cached
+                        @(Model.BrandCacheStatus.CachedAtUtc is null ? string.Empty : $"as of {Model.BrandCacheStatus.CachedAtUtc.Value:yyyy-MM-dd HH:mm}")
+                    </span>
+                </div>
+                @if (Model.BrandCacheStatus.SampleBrands.Count > 0)
+                {
+                    <div class="im1-chip-list">
+                        @foreach (var brand in Model.BrandCacheStatus.SampleBrands)
+                        {
+                            <span class="im1-chip">@brand.DisplayName (@brand.Count.ToString("N0"))</span>
+                        }
+                    </div>
+                }
+            </details>
+
+            <footer class="im1-settings-actions">
+                <button class="im1-button im1-button-primary" type="submit">Save Settings</button>
+            </footer>
+        </form>
+
+        <form asp-action="TestPartsUnlimitedConnector" method="post" class="im1-inline-action-bar">
+            @Html.AntiForgeryToken()
+            <button class="im1-button im1-button-secondary" type="submit">Test Configuration</button>
+            <p>@(Model.Status.LastConnectionMessage ?? "Connection has not been tested.")</p>
+        </form>
+        <form asp-action="RefreshPartsUnlimitedBrandCache" method="post" class="im1-inline-action-bar">
+            @Html.AntiForgeryToken()
+            <button class="im1-button im1-button-secondary" type="submit">Refresh Brand Cache</button>
+            <p>Uses dealer portal credentials to cache active brand names and IDs.</p>
+        </form>
+    </article>
+
+    <aside class="im1-wps-action-stack">
+        <article class="im1-settings-panel">
+            <header class="im1-section-header">
+                <div>
+                    <h2>Bundle Import</h2>
+                    <p>Queue the Parts Unlimited bundle ZIP. Part Number maps to SKU; Vendor Part Number maps to MFG Part#.</p>
+                </div>
+            </header>
+
+            <form class="im1-settings-form" asp-action="ImportPartsUnlimitedMasterFile" method="post">
+                @Html.AntiForgeryToken()
+                <div class="im1-settings-grid">
+                    <label class="im1-field">
+                        <span>Import Mode</span>
+                        <select name="ImportMode">
+                            <option value="LimitedTest">Limited test</option>
+                            <option value="Delta">Delta</option>
+                            <option value="Full">Full</option>
+                            <option value="ValidateOnly">Validate only</option>
+                        </select>
+                    </label>
+                    <label class="im1-field">
+                        <span>Max Parts</span>
+                        <input name="MaxItems" type="number" min="1" step="1" value="500" />
+                    </label>
+                </div>
+                <div class="im1-option-grid">
+                    <label class="im1-setting-option">
+                        <input type="checkbox" name="ImportProducts" value="true" checked />
+                        <span><strong>Products</strong></span>
+                    </label>
+                    <input type="hidden" name="ImportProducts" value="false" />
+                    <label class="im1-setting-option">
+                        <input type="checkbox" name="ImportSupplierPricing" value="true" checked />
+                        <span><strong>Retail pricing</strong></span>
+                    </label>
+                    <input type="hidden" name="ImportSupplierPricing" value="false" />
+                    <label class="im1-setting-option">
+                        <input type="checkbox" name="UpdateExistingProducts" value="true" checked />
+                        <span><strong>Update existing</strong></span>
+                    </label>
+                    <input type="hidden" name="UpdateExistingProducts" value="false" />
+                    <label class="im1-setting-option">
+                        <input type="checkbox" name="CreateMissingProducts" value="true" checked />
+                        <span><strong>Create missing</strong></span>
+                    </label>
+                    <input type="hidden" name="CreateMissingProducts" value="false" />
+                </div>
+                <footer class="im1-settings-actions">
+                    <button class="im1-button im1-button-primary" type="submit">Import Bundle</button>
+                </footer>
+            </form>
+        </article>
+
+        <article class="im1-settings-panel">
+            <header class="im1-section-header">
+                <div>
+                    <h2>Brand Images</h2>
+                    <p>Queue brand report image enrichment separately from the bundle import.</p>
+                </div>
+            </header>
+
+            <form class="im1-settings-form" asp-action="ImportPartsUnlimitedBrandImages" method="post">
+                @Html.AntiForgeryToken()
+                <div class="im1-settings-grid">
+                    <label class="im1-field">
+                        <span>Import Mode</span>
+                        <select name="ImportMode">
+                            <option value="LimitedTest">Limited test</option>
+                            <option value="Delta">Delta</option>
+                            <option value="Full">Full</option>
+                        </select>
+                    </label>
+                    <label class="im1-field">
+                        <span>Max Brand Files</span>
+                        <input name="MaxFiles" type="number" min="1" step="1" value="10" />
+                    </label>
+                </div>
+                <footer class="im1-settings-actions">
+                    <button class="im1-button im1-button-primary" type="submit">Import Brand Images</button>
+                </footer>
+            </form>
+        </article>
+
+        <article class="im1-settings-panel">
+            <header class="im1-section-header">
+                <div>
+                    <h2>Fitment Import</h2>
+                    <p>Queue YMM fitment enrichment for active Parts Unlimited SKUs.</p>
+                </div>
+            </header>
+
+            <form class="im1-settings-form" asp-action="ImportPartsUnlimitedFitment" method="post">
+                @Html.AntiForgeryToken()
+                <div class="im1-settings-grid">
+                    <label class="im1-field">
+                        <span>Import Mode</span>
+                        <select name="ImportMode">
+                            <option value="LimitedTest">Limited test</option>
+                            <option value="Delta">Delta</option>
+                            <option value="Full">Full</option>
+                        </select>
+                    </label>
+                    <label class="im1-field">
+                        <span>Max SKUs</span>
+                        <input name="MaxSkus" type="number" min="1" step="1" value="500" />
+                    </label>
+                    <label class="im1-field">
+                        <span>Fitment limit</span>
+                        <input name="FitmentLimit" type="number" min="1" step="1" placeholder="Blank for all rows" />
+                    </label>
+                    <label class="im1-field">
+                        <span>Delay ms</span>
+                        <input name="DelayMilliseconds" type="number" min="0" max="5000" step="50" value="@Model.Settings.FitmentScheduleDelayMilliseconds" />
+                    </label>
+                </div>
+                <footer class="im1-settings-actions">
+                    <button class="im1-button im1-button-primary" type="submit">Import Fitment</button>
+                </footer>
+            </form>
+        </article>
+    </aside>
+</section>
+
+<section class="im1-settings-panel">
+    <header class="im1-section-header">
+        <div>
+            <h2>Recent Imports</h2>
+            <p>Latest Parts Unlimited bundle and fitment import requests.</p>
+        </div>
+    </header>
+    <div class="table-wrap im1-table-compact">
+        <table>
+            <thead>
+                <tr>
+                    <th>Requested</th>
+                    <th>Type</th>
+                    <th>Status</th>
+                    <th>Progress</th>
+                    <th>Source</th>
+                    <th>Started</th>
+                    <th>Completed</th>
+                    <th>Message</th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var run in Model.RecentImportRuns)
+                {
+                    <tr>
+                        <td>@run.RequestedAtUtc.ToString("yyyy-MM-dd HH:mm")</td>
+                        <td>@run.ImportType</td>
+                        <td>@run.Status</td>
+                        <td>
+                            <div class="im1-import-progress" aria-label="Import progress @run.ProgressPercent%">
+                                <span style="width: @run.ProgressPercent%"></span>
+                            </div>
+                            <span class="im1-import-progress-count">
+                                @(run.ProgressTotal is null ? run.ProgressProcessed.ToString("N0") : $"{run.ProgressProcessed:N0} / {run.ProgressTotal.Value:N0}")
+                            </span>
+                        </td>
+                        <td>@run.Source</td>
+                        <td>@(run.StartedAtUtc?.ToString("yyyy-MM-dd HH:mm") ?? "-")</td>
+                        <td>@(run.CompletedAtUtc?.ToString("yyyy-MM-dd HH:mm") ?? "-")</td>
+                        <td>@run.Message</td>
+                    </tr>
+                }
+                @if (Model.RecentImportRuns.Count == 0)
+                {
+                    <tr>
+                        <td colspan="8">No Parts Unlimited imports have been requested.</td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </div>
+</section>

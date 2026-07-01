@@ -1,0 +1,990 @@
+@model iM1os.Application.WorkOrders.WorkOrderEditor
+
+@{
+    ViewData["Title"] = Model.WorkOrderId is null ? "New Work Order" : Model.WorkOrderNumber;
+    var stageOptions = new[]
+    {
+        "Intake / Check-in",
+        "Diagnosis",
+        "Awaiting Approval",
+        "Awaiting Deposit / Payment",
+        "Declined / Not Approved",
+        "Parts Ordered",
+        "Scheduled",
+        "In Progress",
+        "Ready for Pickup",
+        "Completed",
+        "Lost / Abandoned",
+        "Closed / Archived"
+    };
+    var priorityOptions = new[] { "Low", "Normal", "High", "Urgent" };
+    var contactOptions = new[] { "Phone", "Text", "Email" };
+    var typeOptions = new[] { "Street", "Off-Road", "ATV", "UTV", "PWC", "Snow", "Other" };
+    var lineTypeOptions = new[] { "Labor", "Parts", "Fees / Diagnostics" };
+    var depositTermOptions = new[] { "No Deposit", "Deposit Required", "Paid in Full" };
+    var technicianAssignments = new List<iM1os.Application.WorkOrders.WorkOrderTechnicianAssignmentItem>();
+    if (Model.LeadTechnician is not null)
+    {
+        technicianAssignments.Add(Model.LeadTechnician);
+    }
+
+    technicianAssignments.AddRange(Model.AdditionalTechnicians);
+    technicianAssignments = technicianAssignments.OrderBy(x => x.SortOrder).ToList();
+    var technicianSplitSeed = technicianAssignments
+        .Where(x => x.EmployeeId is not null)
+        .Select(x => new
+        {
+            employeeId = x.EmployeeId!.Value.ToString(),
+            displayName = Model.Technicians.FirstOrDefault(technician => technician.Id == x.EmployeeId)?.DisplayName ?? "Unknown Technician",
+            splitPercent = x.SplitPercent
+        })
+        .ToList();
+    var selectedCustomer = Model.SelectedCustomer;
+    var selectedVehicle = Model.SelectedVehicle;
+    var fitmentItemCountInitial = selectedVehicle?.Year is not null && !string.IsNullOrWhiteSpace(selectedVehicle.Make) && !string.IsNullOrWhiteSpace(selectedVehicle.Model) ? "Loading..." : "No unit fitment";
+    var lineItems = Model.LineItems.ToList();
+    while (lineItems.Count < 5)
+    {
+        lineItems.Add(new iM1os.Application.WorkOrders.EstimateLineItemEditor(null, "Labor", null, null, null, 1m, 0m, 0m, 0m, 0m, true, false, false, lineItems.Count));
+    }
+
+    var page = new IM1PageModel(
+        Model.WorkOrderId is null ? "New Work Order" : Model.WorkOrderNumber,
+        "Service / Work Orders",
+        "Build the company-scoped work order, customer unit, technician split, and first estimate.",
+        Breadcrumbs: new[]
+        {
+            new IM1BreadcrumbModel("Company", Url.Action("Dashboard", "Business")),
+            new IM1BreadcrumbModel("Work Orders", Url.Action("Index", "WorkOrders")),
+            new IM1BreadcrumbModel(Model.WorkOrderId is null ? "New" : Model.WorkOrderNumber)
+        },
+        Toolbar: new IM1ToolbarModel(Actions: new[] { new IM1ActionModel("Back to Work Orders", Url.Action("Index", "WorkOrders"), "secondary") }));
+}
+
+@await Html.PartialAsync("IM1Page", page)
+
+@if (TempData["WorkOrderError"] is string errorMessage)
+{
+    <div class="form-alert error">@errorMessage</div>
+}
+
+<section class="im1-page">
+    <form asp-action="Save" method="post" class="im1-form im1-record-form">
+        <input type="hidden" name="WorkOrderId" value="@Model.WorkOrderId" />
+
+        <fieldset class="im1-form-section">
+            <legend>Work Order Scope</legend>
+            <div class="im1-form-grid">
+                <label>WO Number <input name="WorkOrderNumber" value="@Model.WorkOrderNumber" maxlength="80" /></label>
+                <label>RO Number <input name="RepairOrderNumber" value="@Model.RepairOrderNumber" maxlength="80" /></label>
+                <label>Stage
+                    <select name="Stage">
+                        @foreach (var stage in stageOptions)
+                        {
+                            <option value="@stage" selected="@(Model.Stage == stage)">@stage</option>
+                        }
+                    </select>
+                </label>
+                <label>Priority
+                    <select name="Priority">
+                        @foreach (var priority in priorityOptions)
+                        {
+                            <option value="@priority" selected="@(Model.Priority == priority)">@priority</option>
+                        }
+                    </select>
+                </label>
+                <label>Promise Date <input name="PromiseDate" value="@Model.PromiseDate?.ToString("yyyy-MM-dd")" type="date" /></label>
+                <label>Intake Date <input name="IntakeDate" value="@Model.IntakeDate?.ToString("yyyy-MM-dd")" type="date" /></label>
+                <label>Service Advisor
+                    <select name="ServiceAdvisorEmployeeId">
+                        <option value="">Select</option>
+                        @foreach (var advisor in Model.ServiceAdvisors)
+                        {
+                            <option value="@advisor.Id" selected="@(Model.ServiceAdvisorEmployeeId == advisor.Id)">@advisor.DisplayName</option>
+                        }
+                    </select>
+                </label>
+                <div class="im1-full-span im1-technician-splits" data-technician-splits>
+                    <div class="im1-technician-split-entry">
+                        <label>Technician
+                            <select data-technician-select>
+                                <option value="">Select</option>
+                                @foreach (var technician in Model.Technicians)
+                                {
+                                    <option value="@technician.Id">@technician.DisplayName</option>
+                                }
+                            </select>
+                        </label>
+                        <label>Split %
+                            <input data-technician-percent type="number" min="1" max="100" step="0.01" />
+                        </label>
+                        <button class="im1-button im1-button-secondary" type="button" data-technician-add>Add Split</button>
+                    </div>
+                    <div class="im1-technician-split-total" data-technician-total>0%</div>
+                    <div class="form-alert error im1-technician-split-warning" data-technician-warning hidden></div>
+                    <div class="im1-technician-split-list" data-technician-list></div>
+                    <div data-technician-fields></div>
+                </div>
+                <input name="LeadTechnicianEmployeeId" type="hidden" />
+                <input name="LeadTechnicianSplitPercent" type="hidden" />
+                <input name="AdditionalTechnician1EmployeeId" type="hidden" />
+                <input name="AdditionalTechnician1SplitPercent" type="hidden" />
+                <input name="AdditionalTechnician2EmployeeId" type="hidden" />
+                <input name="AdditionalTechnician2SplitPercent" type="hidden" />
+                <label class="im1-full-span">Requested Service <textarea name="RequestedService" rows="3">@Model.RequestedService</textarea></label>
+                <label class="im1-full-span">Diagnosis / Inspection Findings <textarea name="DiagnosisFindings" rows="3">@Model.DiagnosisFindings</textarea></label>
+                <label class="im1-full-span">Service Notes / Work Scope <textarea name="ServiceNotes" rows="4">@Model.ServiceNotes</textarea></label>
+                <label class="im1-full-span">Parts & Supplies Notes <textarea name="PartsAndSuppliesNotes" rows="3">@Model.PartsAndSuppliesNotes</textarea></label>
+            </div>
+        </fieldset>
+
+        <fieldset class="im1-form-section">
+            <legend>Customer & Unit</legend>
+            <input type="hidden" name="CustomerId" value="@Model.CustomerId" data-workorder-customer-id />
+            <input type="hidden" name="CustomerVehicleId" value="@Model.CustomerVehicleId" data-workorder-unit-id />
+            <div class="im1-summary-grid">
+                <article class="im1-readonly-summary" data-customer-summary>
+                    <header>
+                        <strong data-customer-name>@(selectedCustomer?.DisplayName ?? "No customer selected")</strong>
+                        <button class="im1-button im1-button-secondary" type="button" data-open-customer-dialog>Edit</button>
+                    </header>
+                    <dl>
+                        <div><dt>Phone</dt><dd data-customer-phone>@(selectedCustomer?.Phone ?? "-")</dd></div>
+                        <div><dt>Email</dt><dd data-customer-email>@(selectedCustomer?.Email ?? "-")</dd></div>
+                        <div><dt>Preferred</dt><dd data-customer-contact>@(selectedCustomer?.PreferredContactMethod ?? "-")</dd></div>
+                        <div><dt>SMS Consent</dt><dd data-customer-sms>@(selectedCustomer?.AllowSmsMarketing == true ? "Yes" : "No")</dd></div>
+                        <div><dt>Tax</dt><dd data-customer-tax>@(selectedCustomer?.TaxExempt == true ? $"Exempt {selectedCustomer.TaxExemptNumber}" : "Standard")</dd></div>
+                        <div><dt>Address</dt><dd data-customer-address>@(string.Join(", ", new[] { selectedCustomer?.AddressLine1, selectedCustomer?.AddressLine2, selectedCustomer?.City, selectedCustomer?.Region, selectedCustomer?.PostalCode }.Where(x => !string.IsNullOrWhiteSpace(x))))</dd></div>
+                    </dl>
+                </article>
+                <article class="im1-readonly-summary" data-unit-summary>
+                    <header>
+                        <strong data-unit-label>@(selectedVehicle?.Label ?? "No unit selected")</strong>
+                        <button class="im1-button im1-button-secondary" type="button" data-open-unit-dialog>Edit</button>
+                    </header>
+                    <dl>
+                        <div><dt>Type</dt><dd data-unit-type>@(selectedVehicle?.Type ?? "-")</dd></div>
+                        <div><dt>YMM</dt><dd data-unit-ymm>@(string.Join(" ", new[] { selectedVehicle?.Year?.ToString(), selectedVehicle?.Make, selectedVehicle?.Model }.Where(x => !string.IsNullOrWhiteSpace(x))))</dd></div>
+                        <div><dt>VIN</dt><dd data-unit-vin>@(selectedVehicle?.Vin ?? "-")</dd></div>
+                        <div><dt>Color</dt><dd data-unit-color>@(selectedVehicle?.Color ?? "-")</dd></div>
+                        <div><dt>Tag / Plate</dt><dd data-unit-tag>@(selectedVehicle?.TagPlate ?? "-")</dd></div>
+                        <div><dt>Mileage In</dt><dd data-unit-mileage>@(selectedVehicle?.MileageIn?.ToString("N1") ?? "-")</dd></div>
+                    </dl>
+                </article>
+            </div>
+        </fieldset>
+
+        <dialog class="im1-popout-dialog" data-customer-dialog>
+            <div class="im1-popout-dialog-inner">
+                <header>
+                    <strong>Edit Customer</strong>
+                    <button class="im1-icon-button" type="button" data-close-dialog aria-label="Close">x</button>
+                </header>
+                <label>Customer
+                    <select data-workorder-customer>
+                        <option value="">Select customer</option>
+                        @foreach (var customer in Model.Customers)
+                        {
+                            <option value="@customer.Id"
+                                    selected="@(Model.CustomerId == customer.Id)"
+                                    data-display-name="@customer.DisplayName"
+                                    data-email="@customer.Email"
+                                    data-phone="@customer.Phone"
+                                    data-preferred-contact="@customer.PreferredContactMethod"
+                                    data-sms="@customer.AllowSmsMarketing.ToString().ToLowerInvariant()"
+                                    data-tax-exempt="@customer.TaxExempt.ToString().ToLowerInvariant()"
+                                    data-tax-number="@customer.TaxExemptNumber"
+                                    data-address-line1="@customer.AddressLine1"
+                                    data-address-line2="@customer.AddressLine2"
+                                    data-city="@customer.City"
+                                    data-region="@customer.Region"
+                                    data-postal-code="@customer.PostalCode">@customer.DisplayName</option>
+                        }
+                    </select>
+                </label>
+                <div class="im1-form-grid">
+                    <label class="im1-full-span">Display Name <input name="CustomerDisplayName" value="@selectedCustomer?.DisplayName" data-edit-customer-name /></label>
+                    <label>Phone <input name="CustomerPhone" value="@selectedCustomer?.Phone" data-edit-customer-phone /></label>
+                    <label>Email <input name="CustomerEmail" value="@selectedCustomer?.Email" type="email" data-edit-customer-email /></label>
+                    <label>Preferred Contact
+                        <select name="CustomerPreferredContactMethod" data-edit-customer-contact>
+                            @foreach (var contact in contactOptions)
+                            {
+                                <option value="@contact" selected="@(selectedCustomer?.PreferredContactMethod == contact)">@contact</option>
+                            }
+                        </select>
+                    </label>
+                    <label class="im1-checkbox im1-checkbox-field">
+                        <input name="CustomerSmsConsent" type="checkbox" value="true" checked="@(selectedCustomer?.AllowSmsMarketing == true)" data-edit-customer-sms />
+                        SMS Consent
+                        <input name="CustomerSmsConsent" type="hidden" value="false" />
+                    </label>
+                    <label class="im1-checkbox im1-checkbox-field">
+                        <input name="CustomerTaxExempt" type="checkbox" value="true" checked="@(selectedCustomer?.TaxExempt == true)" data-edit-customer-tax />
+                        Tax Exempt
+                        <input name="CustomerTaxExempt" type="hidden" value="false" />
+                    </label>
+                    <label>Tax Exempt Number <input name="CustomerTaxExemptNumber" value="@selectedCustomer?.TaxExemptNumber" data-edit-customer-tax-number /></label>
+                    <label>Address 1 <input name="CustomerAddressLine1" value="@selectedCustomer?.AddressLine1" data-edit-customer-address-line1 /></label>
+                    <label>Address 2 <input name="CustomerAddressLine2" value="@selectedCustomer?.AddressLine2" data-edit-customer-address-line2 /></label>
+                    <label>City <input name="CustomerCity" value="@selectedCustomer?.City" data-edit-customer-city /></label>
+                    <label>State <input name="CustomerRegion" value="@selectedCustomer?.Region" data-edit-customer-region /></label>
+                    <label>Postal Code <input name="CustomerPostalCode" value="@selectedCustomer?.PostalCode" data-edit-customer-postal-code /></label>
+                </div>
+                <div class="im1-form-actions">
+                    <button class="im1-button im1-button-primary" type="button" data-apply-customer>Apply Customer</button>
+                </div>
+            </div>
+        </dialog>
+
+        <dialog class="im1-popout-dialog" data-unit-dialog>
+            <div class="im1-popout-dialog-inner">
+                <header>
+                    <strong>Edit Unit</strong>
+                    <button class="im1-icon-button" type="button" data-close-dialog aria-label="Close">x</button>
+                </header>
+                <label>Unit
+                    <select data-workorder-unit>
+                        <option value="">No unit selected</option>
+                        @foreach (var unit in Model.Vehicles)
+                        {
+                            <option value="@unit.Id"
+                                    data-customer-id="@unit.CustomerId"
+                                    selected="@(Model.CustomerVehicleId == unit.Id)"
+                                    data-label="@unit.Label"
+                                    data-type="@unit.Type"
+                                    data-year="@unit.Year"
+                                    data-make="@unit.Make"
+                                    data-model="@unit.Model"
+                                    data-vin="@unit.Vin"
+                                    data-color="@unit.Color"
+                                    data-tag="@unit.TagPlate"
+                                    data-mileage="@unit.MileageIn"
+                                    data-notes="@unit.Notes">@unit.Label</option>
+                        }
+                    </select>
+                </label>
+                <div class="im1-form-grid">
+                    <label>Type
+                        <select name="UnitType" data-edit-unit-type>
+                            @foreach (var type in typeOptions)
+                            {
+                                <option value="@type" selected="@(selectedVehicle?.Type == type)">@type</option>
+                            }
+                        </select>
+                    </label>
+                    <label>Year <input name="UnitYear" value="@selectedVehicle?.Year" type="number" min="1900" max="2100" data-edit-unit-year /></label>
+                    <label>Make <input name="UnitMake" value="@selectedVehicle?.Make" data-edit-unit-make /></label>
+                    <label>Model <input name="UnitModel" value="@selectedVehicle?.Model" data-edit-unit-model /></label>
+                    <label>VIN <input name="UnitVin" value="@selectedVehicle?.Vin" data-edit-unit-vin /></label>
+                    <label>Color <input name="UnitColor" value="@selectedVehicle?.Color" data-edit-unit-color /></label>
+                    <label>Tag / Plate <input name="UnitTagPlate" value="@selectedVehicle?.TagPlate" data-edit-unit-tag /></label>
+                    <label>Mileage In <input name="UnitMileageIn" value="@selectedVehicle?.MileageIn" type="number" min="0" step="0.1" data-edit-unit-mileage /></label>
+                    <label class="im1-full-span">Notes <input name="UnitNotes" value="@selectedVehicle?.Notes" data-edit-unit-notes /></label>
+                </div>
+                <div class="im1-form-actions">
+                    <button class="im1-button im1-button-primary" type="button" data-apply-unit>Apply Unit</button>
+                </div>
+            </div>
+        </dialog>
+
+        <fieldset class="im1-form-section">
+            <legend>Estimate Line Items</legend>
+            <div class="im1-item-lookup-panel" data-workorder-item-lookup data-lookup-url="@Url.Action("ItemLookup", "WorkOrders")">
+                <div class="im1-form-grid">
+                    <label class="im1-full-span">Search Items
+                        <span class="im1-inline-field">
+                            <input data-item-query placeholder="SKU, MFG Part#, UPC, title, or supplier description" autocomplete="off" />
+                            <button class="im1-button im1-button-secondary" type="button" data-item-search>Search</button>
+                        </span>
+                    </label>
+                    <label class="im1-checkbox">
+                        <input type="checkbox" data-use-unit-fitment checked="@(selectedVehicle?.Year is not null && !string.IsNullOrWhiteSpace(selectedVehicle?.Make) && !string.IsNullOrWhiteSpace(selectedVehicle?.Model))" />
+                        Use selected unit fitment <span class="im1-fitment-item-count" data-fitment-item-count>@fitmentItemCountInitial</span>
+                    </label>
+                    <label class="im1-checkbox">
+                        <input type="checkbox" data-labor-only />
+                        Search Only Labor SKUs
+                    </label>
+                </div>
+                <div class="im1-workorder-item-results" data-item-results>Search supplier items to add parts to this estimate.</div>
+            </div>
+            <div class="table-wrap im1-table-compact im1-estimate-lines">
+                <table>
+                    <colgroup>
+                        <col class="im1-col-line-type" />
+                        <col class="im1-col-description" />
+                        <col class="im1-col-sku" />
+                        <col class="im1-col-qty" />
+                        <col class="im1-col-rate" />
+                        <col class="im1-col-discount-amount" />
+                        <col class="im1-col-discount-percent" />
+                        <col class="im1-col-check" />
+                        <col class="im1-col-check" />
+                        <col class="im1-col-check" />
+                        <col class="im1-col-action" />
+                    </colgroup>
+                    <thead>
+                        <tr>
+                            <th>Type</th>
+                            <th>Description</th>
+                            <th>SKU</th>
+                            <th>Qty / Hours</th>
+                            <th>Rate</th>
+                            <th>Discount $</th>
+                            <th>Discount %</th>
+                            <th>Tax</th>
+                            <th>Declined</th>
+                            <th>Done</th>
+                            <th></th>
+                        </tr>
+                    </thead>
+                    <tbody data-line-items>
+                        @for (var index = 0; index < lineItems.Count; index++)
+                        {
+                            var item = lineItems[index];
+                            var itemIsTaxable = item.LineType.Equals("Labor", StringComparison.OrdinalIgnoreCase) ? Model.LaborLineItemsTaxable : item.IsTaxable;
+                            <tr data-line-item-row>
+                                <td>
+                                    <select name="LineItems[@index].LineType" data-line-type>
+                                        @foreach (var lineType in lineTypeOptions)
+                                        {
+                                            <option value="@lineType" selected="@(item.LineType == lineType)">@lineType</option>
+                                        }
+                                    </select>
+                                </td>
+                                <td>
+                                    <input name="LineItems[@index].Description" value="@item.Description" placeholder="Description" data-line-description />
+                                </td>
+                                <td><input name="LineItems[@index].Sku" value="@item.Sku" data-line-sku /></td>
+                                <td><input name="LineItems[@index].Quantity" value="@item.Quantity" type="number" min="0" step="0.01" data-line-quantity /></td>
+                                <td><input name="LineItems[@index].Rate" value="@item.Rate" type="number" min="0" step="0.01" data-line-rate /></td>
+                                <td><input name="LineItems[@index].DiscountAmount" value="@item.DiscountAmount" type="number" min="0" step="0.01" data-line-discount-amount /></td>
+                                <td><input name="LineItems[@index].DiscountPercent" value="@item.DiscountPercent" type="number" min="0" max="100" step="0.01" data-line-discount-percent /></td>
+                                <td><label class="im1-checkbox"><input name="LineItems[@index].IsTaxable" type="checkbox" value="true" checked="@itemIsTaxable" data-line-taxable /> Tax</label><input name="LineItems[@index].IsTaxable" type="hidden" value="false" data-line-taxable-hidden /></td>
+                                <td><label class="im1-checkbox"><input name="LineItems[@index].IsDeclined" type="checkbox" value="true" checked="@item.IsDeclined" data-line-declined /> Declined</label><input name="LineItems[@index].IsDeclined" type="hidden" value="false" data-line-declined-hidden /></td>
+                                <td><label class="im1-checkbox"><input name="LineItems[@index].IsDone" type="checkbox" value="true" checked="@item.IsDone" data-line-done /> Done</label><input name="LineItems[@index].IsDone" type="hidden" value="false" data-line-done-hidden /></td>
+                                <td><button class="im1-icon-button im1-line-delete-button" type="button" data-line-delete aria-label="Delete line item">x</button></td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+            <div class="im1-grid-actions">
+                <button class="im1-button im1-button-secondary" type="button" data-add-line-item>Add Line Item</button>
+            </div>
+            <div class="im1-form-grid">
+                <label>Deposit Terms
+                    <select name="DepositTerms">
+                        @foreach (var term in depositTermOptions)
+                        {
+                            <option value="@term" selected="@(Model.DepositTerms == term)">@term</option>
+                        }
+                    </select>
+                </label>
+                <label class="im1-full-span">Payment Terms <textarea name="PaymentTerms" rows="3">@Model.PaymentTerms</textarea></label>
+            </div>
+        </fieldset>
+
+        <div class="im1-form-actions">
+            <button class="im1-button im1-button-primary" type="submit" data-save-workorder>Save Work Order</button>
+            <a class="im1-button im1-button-secondary" asp-controller="WorkOrders" asp-action="Index">Cancel</a>
+        </div>
+    </form>
+</section>
+
+@section Scripts {
+    <script>
+        (() => {
+            const customerId = document.querySelector("[data-workorder-customer-id]");
+            const unitId = document.querySelector("[data-workorder-unit-id]");
+            const customerSelect = document.querySelector("[data-workorder-customer]");
+            const unitSelect = document.querySelector("[data-workorder-unit]");
+            const customerDialog = document.querySelector("[data-customer-dialog]");
+            const unitDialog = document.querySelector("[data-unit-dialog]");
+            const lineItems = document.querySelector("[data-line-items]");
+            const addLineItemButton = document.querySelector("[data-add-line-item]");
+            const lookup = document.querySelector("[data-workorder-item-lookup]");
+            const workOrderForm = document.querySelector(".im1-record-form");
+            const technicianSelect = document.querySelector("[data-technician-select]");
+            const technicianPercent = document.querySelector("[data-technician-percent]");
+            const technicianAdd = document.querySelector("[data-technician-add]");
+            const technicianTotal = document.querySelector("[data-technician-total]");
+            const technicianWarning = document.querySelector("[data-technician-warning]");
+            const technicianList = document.querySelector("[data-technician-list]");
+            const technicianFields = document.querySelector("[data-technician-fields]");
+            const saveWorkOrderButton = document.querySelector("[data-save-workorder]");
+            const fitmentCountUrl = "@Url.Action("FitmentItemCount", "WorkOrders")";
+            const defaultLaborRate = @Model.DefaultLaborRate.ToString(System.Globalization.CultureInfo.InvariantCulture);
+            const laborLineItemsTaxable = @Model.LaborLineItemsTaxable.ToString().ToLowerInvariant();
+            const technicianSplitSeed = @Html.Raw(System.Text.Json.JsonSerializer.Serialize(technicianSplitSeed));
+            let technicianAssignments = technicianSplitSeed.map(assignment => ({
+                employeeId: assignment.employeeId,
+                displayName: assignment.displayName,
+                splitPercent: Number(assignment.splitPercent)
+            }));
+            let editingTechnicianIndex = null;
+            const textOrDash = value => value === null || value === undefined || value === "" ? "-" : value;
+            const money = value => {
+                const number = Number(value);
+                return Number.isFinite(number) ? number.toFixed(2) : "0.00";
+            };
+
+            const setText = (selector, value) => {
+                const element = document.querySelector(selector);
+                if (element) {
+                    element.textContent = textOrDash(value);
+                }
+            };
+            const field = selector => document.querySelector(selector);
+            const fieldValue = selector => field(selector)?.value || "";
+            const fieldChecked = selector => field(selector)?.checked === true;
+            const setFieldValue = (selector, value) => {
+                const element = field(selector);
+                if (element) {
+                    element.value = value || "";
+                }
+            };
+            const setFieldChecked = (selector, value) => {
+                const element = field(selector);
+                if (element) {
+                    element.checked = value === true || value === "true";
+                }
+            };
+
+            const splitPercentLabel = value => {
+                const number = Number(value);
+                if (!Number.isFinite(number)) {
+                    return "0%";
+                }
+
+                return `${number.toLocaleString(undefined, { maximumFractionDigits: 2 })}%`;
+            };
+
+            const selectedTechnicianName = () => technicianSelect?.selectedOptions[0]?.textContent?.trim() || "";
+
+            const resetTechnicianEditor = () => {
+                editingTechnicianIndex = null;
+                if (technicianSelect) {
+                    technicianSelect.value = "";
+                }
+                if (technicianPercent) {
+                    technicianPercent.value = "";
+                }
+                if (technicianAdd) {
+                    technicianAdd.textContent = "Add Split";
+                }
+            };
+
+            const renderTechnicianFields = () => {
+                if (!technicianFields) {
+                    return;
+                }
+
+                technicianFields.innerHTML = "";
+                technicianAssignments.forEach((assignment, index) => {
+                    const employeeInput = document.createElement("input");
+                    employeeInput.type = "hidden";
+                    employeeInput.name = `TechnicianAssignments[${index}].EmployeeId`;
+                    employeeInput.value = assignment.employeeId;
+                    const splitInput = document.createElement("input");
+                    splitInput.type = "hidden";
+                    splitInput.name = `TechnicianAssignments[${index}].SplitPercent`;
+                    splitInput.value = assignment.splitPercent.toString();
+                    technicianFields.append(employeeInput, splitInput);
+                });
+            };
+
+            const renderTechnicianSplits = () => {
+                if (!technicianList) {
+                    return;
+                }
+
+                technicianList.innerHTML = "";
+                const total = technicianAssignments.reduce((sum, assignment) => sum + Number(assignment.splitPercent || 0), 0);
+                const leadIndex = technicianAssignments
+                    .map((assignment, index) => ({ index, splitPercent: Number(assignment.splitPercent || 0) }))
+                    .sort((left, right) => right.splitPercent - left.splitPercent || left.index - right.index)[0]?.index ?? -1;
+
+                technicianAssignments.forEach((assignment, index) => {
+                    const item = document.createElement("article");
+                    item.className = "im1-technician-split-item";
+
+                    const name = document.createElement("button");
+                    name.type = "button";
+                    name.className = "im1-technician-split-name";
+                    name.textContent = assignment.displayName;
+                    name.addEventListener("click", () => {
+                        editingTechnicianIndex = index;
+                        if (technicianSelect) {
+                            technicianSelect.value = assignment.employeeId;
+                        }
+                        if (technicianPercent) {
+                            technicianPercent.value = assignment.splitPercent;
+                            technicianPercent.focus();
+                            technicianPercent.select();
+                        }
+                        if (technicianAdd) {
+                            technicianAdd.textContent = "Update Split";
+                        }
+                    });
+
+                    const percent = document.createElement("span");
+                    percent.className = "im1-technician-split-percent";
+                    percent.textContent = splitPercentLabel(assignment.splitPercent);
+
+                    item.append(name, percent);
+                    if (index === leadIndex) {
+                        const lead = document.createElement("span");
+                        lead.className = "im1-status-pill im1-technician-lead";
+                        lead.textContent = "Lead Tech";
+                        item.append(lead);
+                    }
+
+                    const remove = document.createElement("button");
+                    remove.type = "button";
+                    remove.className = "im1-icon-button";
+                    remove.setAttribute("aria-label", `Delete ${assignment.displayName}`);
+                    remove.textContent = "x";
+                    remove.addEventListener("click", () => {
+                        if (!window.confirm(`Delete ${assignment.displayName} from this split?`)) {
+                            return;
+                        }
+
+                        technicianAssignments.splice(index, 1);
+                        resetTechnicianEditor();
+                        renderTechnicianSplits();
+                    });
+                    item.append(remove);
+                    technicianList.append(item);
+                });
+
+                if (technicianTotal) {
+                    technicianTotal.textContent = `Split total: ${splitPercentLabel(total)}`;
+                }
+
+                const invalid = technicianAssignments.length > 0 && Math.round(total * 100) / 100 !== 100;
+                if (technicianWarning) {
+                    technicianWarning.hidden = !invalid;
+                    technicianWarning.textContent = invalid ? `Technician splits must total 100%. Current total: ${splitPercentLabel(total)}.` : "";
+                }
+                if (saveWorkOrderButton) {
+                    saveWorkOrderButton.disabled = invalid;
+                }
+
+                renderTechnicianFields();
+            };
+
+            const addOrUpdateTechnicianSplit = () => {
+                const employeeId = technicianSelect?.value || "";
+                const displayName = selectedTechnicianName();
+                const splitPercent = Number(technicianPercent?.value);
+                if (!employeeId) {
+                    technicianWarning.hidden = false;
+                    technicianWarning.textContent = "Select a technician before adding a split.";
+                    technicianSelect?.focus();
+                    return;
+                }
+                if (!Number.isFinite(splitPercent) || splitPercent < 1 || splitPercent > 100) {
+                    technicianWarning.hidden = false;
+                    technicianWarning.textContent = "Enter a split percent from 1 to 100.";
+                    technicianPercent?.focus();
+                    return;
+                }
+                const duplicateIndex = technicianAssignments.findIndex((assignment, index) => assignment.employeeId === employeeId && index !== editingTechnicianIndex);
+                if (duplicateIndex >= 0) {
+                    technicianWarning.hidden = false;
+                    technicianWarning.textContent = "That technician is already in this split.";
+                    technicianSelect?.focus();
+                    return;
+                }
+
+                const assignment = { employeeId, displayName, splitPercent };
+                if (editingTechnicianIndex === null) {
+                    technicianAssignments.push(assignment);
+                } else {
+                    technicianAssignments[editingTechnicianIndex] = assignment;
+                }
+
+                resetTechnicianEditor();
+                renderTechnicianSplits();
+            };
+
+            const addressFrom = option => [option.dataset.addressLine1, option.dataset.addressLine2, option.dataset.city, option.dataset.region, option.dataset.postalCode]
+                .filter(value => value)
+                .join(", ");
+
+            const ymmFrom = option => [option.dataset.year, option.dataset.make, option.dataset.model]
+                .filter(value => value)
+                .join(" ");
+
+            const updateCustomerSummary = option => {
+                if (!option || !option.value) {
+                    setText("[data-customer-name]", "No customer selected");
+                    setText("[data-customer-phone]", "-");
+                    setText("[data-customer-email]", "-");
+                    setText("[data-customer-contact]", "-");
+                    setText("[data-customer-sms]", "No");
+                    setText("[data-customer-tax]", "Standard");
+                    setText("[data-customer-address]", "-");
+                    return;
+                }
+
+                setText("[data-customer-name]", option.dataset.displayName);
+                setText("[data-customer-phone]", option.dataset.phone);
+                setText("[data-customer-email]", option.dataset.email);
+                setText("[data-customer-contact]", option.dataset.preferredContact);
+                setText("[data-customer-sms]", option.dataset.sms === "true" ? "Yes" : "No");
+                setText("[data-customer-tax]", option.dataset.taxExempt === "true" ? `Exempt ${option.dataset.taxNumber || ""}`.trim() : "Standard");
+                setText("[data-customer-address]", addressFrom(option));
+            };
+
+            const updateCustomerSummaryFromFields = () => {
+                setText("[data-customer-name]", fieldValue("[data-edit-customer-name]") || "No customer selected");
+                setText("[data-customer-phone]", fieldValue("[data-edit-customer-phone]"));
+                setText("[data-customer-email]", fieldValue("[data-edit-customer-email]"));
+                setText("[data-customer-contact]", fieldValue("[data-edit-customer-contact]"));
+                setText("[data-customer-sms]", fieldChecked("[data-edit-customer-sms]") ? "Yes" : "No");
+                setText("[data-customer-tax]", fieldChecked("[data-edit-customer-tax]") ? `Exempt ${fieldValue("[data-edit-customer-tax-number]")}`.trim() : "Standard");
+                setText("[data-customer-address]", [
+                    fieldValue("[data-edit-customer-address-line1]"),
+                    fieldValue("[data-edit-customer-address-line2]"),
+                    fieldValue("[data-edit-customer-city]"),
+                    fieldValue("[data-edit-customer-region]"),
+                    fieldValue("[data-edit-customer-postal-code]")
+                ].filter(Boolean).join(", "));
+            };
+
+            const fillCustomerFields = option => {
+                if (!option || !option.value) {
+                    return;
+                }
+
+                setFieldValue("[data-edit-customer-name]", option.dataset.displayName);
+                setFieldValue("[data-edit-customer-phone]", option.dataset.phone);
+                setFieldValue("[data-edit-customer-email]", option.dataset.email);
+                setFieldValue("[data-edit-customer-contact]", option.dataset.preferredContact || "Phone");
+                setFieldChecked("[data-edit-customer-sms]", option.dataset.sms);
+                setFieldChecked("[data-edit-customer-tax]", option.dataset.taxExempt);
+                setFieldValue("[data-edit-customer-tax-number]", option.dataset.taxNumber);
+                setFieldValue("[data-edit-customer-address-line1]", option.dataset.addressLine1);
+                setFieldValue("[data-edit-customer-address-line2]", option.dataset.addressLine2);
+                setFieldValue("[data-edit-customer-city]", option.dataset.city);
+                setFieldValue("[data-edit-customer-region]", option.dataset.region);
+                setFieldValue("[data-edit-customer-postal-code]", option.dataset.postalCode);
+            };
+
+            const updateUnitSummary = option => {
+                if (!option || !option.value) {
+                    setText("[data-unit-label]", "No unit selected");
+                    setText("[data-unit-type]", "-");
+                    setText("[data-unit-ymm]", "-");
+                    setText("[data-unit-vin]", "-");
+                    setText("[data-unit-color]", "-");
+                    setText("[data-unit-tag]", "-");
+                    setText("[data-unit-mileage]", "-");
+                    return;
+                }
+
+                setText("[data-unit-label]", option.dataset.label);
+                setText("[data-unit-type]", option.dataset.type);
+                setText("[data-unit-ymm]", ymmFrom(option));
+                setText("[data-unit-vin]", option.dataset.vin);
+                setText("[data-unit-color]", option.dataset.color);
+                setText("[data-unit-tag]", option.dataset.tag);
+                setText("[data-unit-mileage]", option.dataset.mileage);
+            };
+
+            const updateUnitSummaryFromFields = () => {
+                setText("[data-unit-label]", [fieldValue("[data-edit-unit-year]"), fieldValue("[data-edit-unit-make]"), fieldValue("[data-edit-unit-model]")].filter(Boolean).join(" ") || "No unit selected");
+                setText("[data-unit-type]", fieldValue("[data-edit-unit-type]"));
+                setText("[data-unit-ymm]", [fieldValue("[data-edit-unit-year]"), fieldValue("[data-edit-unit-make]"), fieldValue("[data-edit-unit-model]")].filter(Boolean).join(" "));
+                setText("[data-unit-vin]", fieldValue("[data-edit-unit-vin]"));
+                setText("[data-unit-color]", fieldValue("[data-edit-unit-color]"));
+                setText("[data-unit-tag]", fieldValue("[data-edit-unit-tag]"));
+                setText("[data-unit-mileage]", fieldValue("[data-edit-unit-mileage]"));
+                updateFitmentCount();
+            };
+
+            const fillUnitFields = option => {
+                if (!option || !option.value) {
+                    return;
+                }
+
+                setFieldValue("[data-edit-unit-type]", option.dataset.type);
+                setFieldValue("[data-edit-unit-year]", option.dataset.year);
+                setFieldValue("[data-edit-unit-make]", option.dataset.make);
+                setFieldValue("[data-edit-unit-model]", option.dataset.model);
+                setFieldValue("[data-edit-unit-vin]", option.dataset.vin);
+                setFieldValue("[data-edit-unit-color]", option.dataset.color);
+                setFieldValue("[data-edit-unit-tag]", option.dataset.tag);
+                setFieldValue("[data-edit-unit-mileage]", option.dataset.mileage);
+                setFieldValue("[data-edit-unit-notes]", option.dataset.notes);
+            };
+
+            const syncUnits = () => {
+                const selectedCustomer = customerId?.value || "";
+                for (const option of unitSelect?.options || []) {
+                    const optionCustomer = option.getAttribute("data-customer-id");
+                    option.hidden = !!optionCustomer && !!selectedCustomer && optionCustomer !== selectedCustomer;
+                }
+
+                const selectedOption = unitSelect?.selectedOptions[0];
+                if (selectedOption?.hidden) {
+                    unitSelect.value = "";
+                    if (unitId) {
+                        unitId.value = "";
+                    }
+                    updateUnitSummary(null);
+                }
+            };
+
+            document.querySelector("[data-open-customer-dialog]")?.addEventListener("click", () => customerDialog?.showModal());
+            document.querySelector("[data-open-unit-dialog]")?.addEventListener("click", () => unitDialog?.showModal());
+            document.querySelectorAll("[data-close-dialog]").forEach(button => button.addEventListener("click", () => button.closest("dialog")?.close()));
+            technicianAdd?.addEventListener("click", addOrUpdateTechnicianSplit);
+            [technicianSelect, technicianPercent].forEach(element => element?.addEventListener("keydown", event => {
+                if (event.key === "Enter") {
+                    event.preventDefault();
+                    addOrUpdateTechnicianSplit();
+                }
+            }));
+            workOrderForm?.addEventListener("submit", event => {
+                const total = technicianAssignments.reduce((sum, assignment) => sum + Number(assignment.splitPercent || 0), 0);
+                if (technicianAssignments.length > 0 && Math.round(total * 100) / 100 !== 100) {
+                    event.preventDefault();
+                    renderTechnicianSplits();
+                    technicianWarning?.scrollIntoView({ block: "center", behavior: "smooth" });
+                }
+            });
+            document.querySelector("[data-apply-customer]")?.addEventListener("click", () => {
+                const option = customerSelect?.selectedOptions[0];
+                if (!option) {
+                    return;
+                }
+
+                customerId.value = option.value;
+                updateCustomerSummaryFromFields();
+                syncUnits();
+                customerDialog?.close();
+            });
+            document.querySelector("[data-apply-unit]")?.addEventListener("click", () => {
+                const option = unitSelect?.selectedOptions[0];
+                if (!option) {
+                    return;
+                }
+
+                unitId.value = option.value;
+                updateUnitSummaryFromFields();
+                unitDialog?.close();
+            });
+            customerSelect?.addEventListener("change", () => fillCustomerFields(customerSelect.selectedOptions[0]));
+            unitSelect?.addEventListener("change", () => fillUnitFields(unitSelect.selectedOptions[0]));
+            syncUnits();
+
+            const updateFitmentCount = async () => {
+                const countLabel = lookup?.querySelector("[data-fitment-item-count]");
+                if (!countLabel) {
+                    return;
+                }
+
+                const fitmentYear = fieldValue("[data-edit-unit-year]");
+                const fitmentMake = fieldValue("[data-edit-unit-make]");
+                const fitmentModel = fieldValue("[data-edit-unit-model]");
+                const fitmentType = fieldValue("[data-edit-unit-type]");
+                if (!fitmentYear || !fitmentMake || !fitmentModel) {
+                    countLabel.textContent = "No unit fitment";
+                    return;
+                }
+
+                countLabel.textContent = "Loading...";
+                const url = new URL(fitmentCountUrl, window.location.origin);
+                if (fitmentType) {
+                    url.searchParams.set("vehicleType", fitmentType);
+                }
+                url.searchParams.set("year", fitmentYear);
+                url.searchParams.set("make", fitmentMake);
+                url.searchParams.set("model", fitmentModel);
+                try {
+                    const response = await fetch(url.toString(), { credentials: "same-origin", headers: { "Accept": "application/json" } });
+                    if (!response.ok) {
+                        countLabel.textContent = "Unavailable";
+                        return;
+                    }
+
+                    const result = await response.json();
+                    const count = Number(result.count || 0);
+                    countLabel.textContent = `${count.toLocaleString()} items`;
+                } catch {
+                    countLabel.textContent = "Unavailable";
+                }
+            };
+
+            const lineTypeOptions = @Html.Raw(System.Text.Json.JsonSerializer.Serialize(lineTypeOptions));
+            const rowHtml = index => `
+                <tr data-line-item-row>
+                    <td><select name="LineItems[${index}].LineType" data-line-type>${lineTypeOptions.map(option => `<option value="${option}">${option}</option>`).join("")}</select></td>
+                    <td><input name="LineItems[${index}].Description" placeholder="Description" data-line-description /></td>
+                    <td><input name="LineItems[${index}].Sku" data-line-sku /></td>
+                    <td><input name="LineItems[${index}].Quantity" value="1" type="number" min="0" step="0.01" data-line-quantity /></td>
+                    <td><input name="LineItems[${index}].Rate" value="0.00" type="number" min="0" step="0.01" data-line-rate /></td>
+                    <td><input name="LineItems[${index}].DiscountAmount" value="0.00" type="number" min="0" step="0.01" data-line-discount-amount /></td>
+                    <td><input name="LineItems[${index}].DiscountPercent" value="0.00" type="number" min="0" max="100" step="0.01" data-line-discount-percent /></td>
+                    <td><label class="im1-checkbox"><input name="LineItems[${index}].IsTaxable" type="checkbox" value="true" checked data-line-taxable /> Tax</label><input name="LineItems[${index}].IsTaxable" type="hidden" value="false" data-line-taxable-hidden /></td>
+                    <td><label class="im1-checkbox"><input name="LineItems[${index}].IsDeclined" type="checkbox" value="true" data-line-declined /> Declined</label><input name="LineItems[${index}].IsDeclined" type="hidden" value="false" data-line-declined-hidden /></td>
+                    <td><label class="im1-checkbox"><input name="LineItems[${index}].IsDone" type="checkbox" value="true" data-line-done /> Done</label><input name="LineItems[${index}].IsDone" type="hidden" value="false" data-line-done-hidden /></td>
+                    <td><button class="im1-icon-button im1-line-delete-button" type="button" data-line-delete aria-label="Delete line item">x</button></td>
+                </tr>`;
+
+            const reindexLineItems = () => {
+                [...lineItems.querySelectorAll("[data-line-item-row]")].forEach((row, index) => {
+                    row.querySelector("[data-line-type]").name = `LineItems[${index}].LineType`;
+                    row.querySelector("[data-line-description]").name = `LineItems[${index}].Description`;
+                    row.querySelector("[data-line-sku]").name = `LineItems[${index}].Sku`;
+                    row.querySelector("[data-line-quantity]").name = `LineItems[${index}].Quantity`;
+                    row.querySelector("[data-line-rate]").name = `LineItems[${index}].Rate`;
+                    row.querySelector("[data-line-discount-amount]").name = `LineItems[${index}].DiscountAmount`;
+                    row.querySelector("[data-line-discount-percent]").name = `LineItems[${index}].DiscountPercent`;
+                    row.querySelector("[data-line-taxable]").name = `LineItems[${index}].IsTaxable`;
+                    row.querySelector("[data-line-taxable-hidden]").name = `LineItems[${index}].IsTaxable`;
+                    row.querySelector("[data-line-declined]").name = `LineItems[${index}].IsDeclined`;
+                    row.querySelector("[data-line-declined-hidden]").name = `LineItems[${index}].IsDeclined`;
+                    row.querySelector("[data-line-done]").name = `LineItems[${index}].IsDone`;
+                    row.querySelector("[data-line-done-hidden]").name = `LineItems[${index}].IsDone`;
+                });
+            };
+
+            const appendLineRow = () => {
+                const rows = [...lineItems.querySelectorAll("[data-line-item-row]")];
+                lineItems.insertAdjacentHTML("beforeend", rowHtml(rows.length));
+                reindexLineItems();
+                return lineItems.querySelector("[data-line-item-row]:last-child");
+            };
+
+            const nextLineRow = () => {
+                const rows = [...lineItems.querySelectorAll("[data-line-item-row]")];
+                const blank = rows.find(row => !row.querySelector("[data-line-description]")?.value.trim());
+                if (blank) {
+                    return blank;
+                }
+
+                return appendLineRow();
+            };
+
+            const addItemToEstimate = item => {
+                const row = nextLineRow();
+                const lineType = item.lineType || "Parts";
+                const rate = item.rate ?? item.msrp ?? item.actualCost ?? item.dealerCost ?? (lineType === "Labor" ? defaultLaborRate : 0);
+                const quantity = item.quantity ?? 1;
+                const meta = [item.supplierCode, item.brand, item.manufacturerPartNumber ? `MFG ${item.manufacturerPartNumber}` : null, item.upc ? `UPC ${item.upc}` : null].filter(Boolean).join(" | ");
+                row.querySelector("[data-line-type]").value = lineType;
+                row.querySelector("[data-line-description]").value = [item.title || item.supplierSku || "Supplier item", meta].filter(Boolean).join(" - ");
+                row.querySelector("[data-line-sku]").value = item.supplierSku || "";
+                row.querySelector("[data-line-quantity]").value = money(quantity);
+                row.querySelector("[data-line-rate]").value = money(rate);
+                row.querySelector("[data-line-taxable]").checked = lineType === "Labor" ? laborLineItemsTaxable : item.isTaxable !== false;
+                row.scrollIntoView({ block: "center", behavior: "smooth" });
+            };
+
+            const renderItemResults = items => {
+                const results = lookup.querySelector("[data-item-results]");
+                results.innerHTML = "";
+                if (!items.length) {
+                    results.textContent = "No supplier items matched this search.";
+                    return;
+                }
+
+                for (const item of items) {
+                    const article = document.createElement("article");
+                    article.className = "im1-workorder-item-result";
+                    const body = document.createElement("div");
+                    const title = document.createElement("strong");
+                    title.textContent = item.title || item.supplierSku || "Supplier item";
+                    const meta = document.createElement("span");
+                    meta.textContent = [item.supplierCode, item.supplierSku, item.brand, item.manufacturerPartNumber].filter(Boolean).join(" | ");
+                    body.append(title, meta);
+                    const button = document.createElement("button");
+                    button.type = "button";
+                    button.className = "im1-button im1-button-secondary";
+                    button.textContent = "Add";
+                    button.addEventListener("click", () => addItemToEstimate(item));
+                    article.append(body, button);
+                    results.append(article);
+                }
+            };
+
+            const runItemSearch = async () => {
+                const url = new URL(lookup.dataset.lookupUrl, window.location.origin);
+                const query = lookup.querySelector("[data-item-query]").value.trim();
+                const useFitment = lookup.querySelector("[data-use-unit-fitment]")?.checked;
+                const laborOnly = lookup.querySelector("[data-labor-only]")?.checked;
+                const fitmentYear = fieldValue("[data-edit-unit-year]");
+                const fitmentMake = fieldValue("[data-edit-unit-make]");
+                const fitmentModel = fieldValue("[data-edit-unit-model]");
+                const fitmentType = fieldValue("[data-edit-unit-type]");
+                if (query) {
+                    url.searchParams.set("query", query);
+                }
+                if (laborOnly) {
+                    url.searchParams.set("laborOnly", "true");
+                }
+                if (!laborOnly && useFitment && fitmentYear && fitmentMake && fitmentModel) {
+                    if (fitmentType) {
+                        url.searchParams.set("vehicleType", fitmentType);
+                    }
+                    url.searchParams.set("year", fitmentYear);
+                    url.searchParams.set("make", fitmentMake);
+                    url.searchParams.set("model", fitmentModel);
+                }
+
+                lookup.querySelector("[data-item-results]").textContent = "Searching...";
+                const response = await fetch(url.toString(), { credentials: "same-origin", headers: { "Accept": "application/json" } });
+                if (!response.ok) {
+                    lookup.querySelector("[data-item-results]").textContent = `Item lookup failed (${response.status}).`;
+                    return;
+                }
+
+                const page = await response.json();
+                renderItemResults(page.results || []);
+            };
+
+            lookup?.querySelector("[data-item-search]")?.addEventListener("click", runItemSearch);
+            addLineItemButton?.addEventListener("click", () => {
+                const row = appendLineRow();
+                row.querySelector("[data-line-description]")?.focus();
+                row.scrollIntoView({ block: "center", behavior: "smooth" });
+            });
+            lineItems?.addEventListener("click", event => {
+                const deleteButton = event.target.closest("[data-line-delete]");
+                if (!deleteButton) {
+                    return;
+                }
+
+                const row = deleteButton.closest("[data-line-item-row]");
+                const description = row?.querySelector("[data-line-description]")?.value.trim();
+                const label = description ? `"${description}"` : "this line item";
+                if (!window.confirm(`Delete ${label}?`)) {
+                    return;
+                }
+
+                row.remove();
+                reindexLineItems();
+            });
+            reindexLineItems();
+            lookup?.querySelector("[data-item-query]")?.addEventListener("keydown", event => {
+                if (event.key === "Enter" || event.key === "Return") {
+                    event.preventDefault();
+                    runItemSearch();
+                }
+            });
+            lookup?.querySelector("[data-labor-only]")?.addEventListener("change", event => {
+                const fitment = lookup.querySelector("[data-use-unit-fitment]");
+                if (fitment) {
+                    fitment.disabled = event.target.checked;
+                }
+            });
+            renderTechnicianSplits();
+            updateFitmentCount();
+        })();
+    </script>
+}

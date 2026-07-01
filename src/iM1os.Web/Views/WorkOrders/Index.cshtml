@@ -1,0 +1,80 @@
+@model iM1os.Application.WorkOrders.WorkOrderWorkspace
+
+@{
+    ViewData["Title"] = "Work Orders";
+    var stageOptions = new[]
+    {
+        "Intake / Check-in",
+        "Diagnosis",
+        "Awaiting Approval",
+        "Awaiting Deposit / Payment",
+        "Declined / Not Approved",
+        "Parts Ordered",
+        "Scheduled",
+        "In Progress",
+        "Ready for Pickup",
+        "Completed",
+        "Lost / Abandoned",
+        "Closed / Archived"
+    };
+    var grid = new IM1DataGridModel(
+        Columns: new[]
+        {
+            new IM1DataGridColumnModel("workOrder", "Work Order"),
+            new IM1DataGridColumnModel("repairOrder", "RO #"),
+            new IM1DataGridColumnModel("customer", "Customer"),
+            new IM1DataGridColumnModel("unit", "Unit"),
+            new IM1DataGridColumnModel("stage", "Stage"),
+            new IM1DataGridColumnModel("priority", "Priority"),
+            new IM1DataGridColumnModel("advisor", "Advisor"),
+            new IM1DataGridColumnModel("promise", "Promise Date"),
+            new IM1DataGridColumnModel("total", "Estimate"),
+            new IM1DataGridColumnModel("opened", "Opened"),
+            new IM1DataGridColumnModel("actions", "Actions", false, false)
+        },
+        Rows: Model.WorkOrders.Select(workOrder => new Dictionary<string, object?>
+        {
+            ["__url"] = Url.Action("Edit", "WorkOrders", new { workOrderId = workOrder.Id }),
+            ["workOrder"] = workOrder.WorkOrderNumber,
+            ["repairOrder"] = workOrder.RepairOrderNumber ?? "",
+            ["customer"] = workOrder.CustomerName,
+            ["unit"] = workOrder.Unit ?? "",
+            ["stage"] = workOrder.Stage,
+            ["priority"] = workOrder.Priority,
+            ["advisor"] = workOrder.ServiceAdvisor ?? "",
+            ["promise"] = workOrder.PromiseDate?.ToString("yyyy-MM-dd") ?? "",
+            ["total"] = workOrder.EstimateTotal.ToString("C"),
+            ["opened"] = workOrder.OpenedAtUtc.ToString("yyyy-MM-dd"),
+            ["actions"] = new Microsoft.AspNetCore.Html.HtmlString($"<a class=\"im1-button im1-button-secondary\" href=\"{Url.Action("Edit", "WorkOrders", new { workOrderId = workOrder.Id })}\">Open</a>")
+        }).ToArray(),
+        Toolbar: null,
+        EmptyText: "No work orders found.",
+        PageSize: 20);
+    var page = new IM1PageModel(
+        "Work Orders",
+        "Service",
+        "Company-scoped repair orders, estimates, customers, units, advisors, and technician assignments.",
+        Breadcrumbs: new[]
+        {
+            new IM1BreadcrumbModel("Company", Url.Action("Dashboard", "Business")),
+            new IM1BreadcrumbModel("Service"),
+            new IM1BreadcrumbModel("Work Orders")
+        });
+}
+
+@await Html.PartialAsync("IM1Page", page)
+
+<form class="im1-toolbar" method="get" asp-controller="WorkOrders" asp-action="Index">
+    <input class="im1-toolbar-search" name="query" value="@Model.Query" placeholder="Search work orders" />
+    <select name="stage">
+        <option value="">All stages</option>
+        @foreach (var stage in stageOptions)
+        {
+            <option value="@stage" selected="@(Model.Stage == stage)">@stage</option>
+        }
+    </select>
+    <button class="im1-button im1-button-secondary" type="submit">Apply Filters</button>
+    <a class="im1-button im1-button-primary" asp-controller="WorkOrders" asp-action="New">New Work Order</a>
+</form>
+
+@await Html.PartialAsync("IM1DataGrid", grid)

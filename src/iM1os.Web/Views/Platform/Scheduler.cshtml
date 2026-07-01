@@ -1,0 +1,88 @@
+@model iM1os.Application.Platform.GlobalSchedulerPage
+
+@{
+    ViewData["Title"] = "Scheduler";
+    var enabledCount = Model.Events.Count(x => x.IsEnabled);
+    var hero = new IM1WorkspaceHeroModel(
+        "Scheduler",
+        "Platform Admin",
+        "Read-only view of configured platform schedules and their latest run state.",
+        new[]
+        {
+            new IM1WorkspaceStatModel("Events", Model.Events.Count.ToString(), "Registered schedules"),
+            new IM1WorkspaceStatModel("Enabled", enabledCount.ToString(), "Running on interval"),
+            new IM1WorkspaceStatModel("Disabled", (Model.Events.Count - enabledCount).ToString(), "Manual only"),
+            new IM1WorkspaceStatModel("Due Now", Model.Events.Count(x => x.IsEnabled && x.NextDueAtUtc <= DateTimeOffset.UtcNow).ToString(), "Awaiting worker")
+        },
+        Array.Empty<IM1ActionModel>(),
+        "Global schedule registry");
+}
+
+<nav class="im1-breadcrumbs" aria-label="Breadcrumb">
+    <span>Platform Admin</span>
+    <span>Scheduler</span>
+</nav>
+
+@await Html.PartialAsync("IM1WorkspaceHero", hero)
+
+<section class="im1-settings-panel">
+    <header class="im1-section-header">
+        <div>
+            <h2>Scheduled Events</h2>
+            <p>Configured schedules across platform connectors. Edit the schedule interval from the linked configurator.</p>
+        </div>
+    </header>
+
+    <div class="table-wrap im1-table-compact">
+        <table>
+            <thead>
+                <tr>
+                    <th>Schedule</th>
+                    <th>Owner</th>
+                    <th>Status</th>
+                    <th>Schedule Interval</th>
+                    <th>Last Queued</th>
+                    <th>Next Due</th>
+                    <th>Last Run</th>
+                    <th>Configurator</th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var item in Model.Events)
+                {
+                    <tr>
+                        <td>
+                            <strong>@item.Name</strong>
+                            <span class="im1-table-subtext">@item.EventType</span>
+                        </td>
+                        <td>@item.Owner</td>
+                        <td>
+                            <span class="@(item.IsEnabled ? "im1-status-pill im1-status-success" : "im1-status-pill")">
+                                @(item.IsEnabled ? "Enabled" : "Disabled")
+                            </span>
+                        </td>
+                        <td>@Math.Max(1, (int)Math.Ceiling(item.CadenceMinutes / 60m)) hr</td>
+                        <td>@(item.LastQueuedAtUtc?.ToString("yyyy-MM-dd HH:mm") ?? "-")</td>
+                        <td>@(item.NextDueAtUtc?.ToString("yyyy-MM-dd HH:mm") ?? "-")</td>
+                        <td>
+                            @(item.LastRunStatus ?? "-")
+                            @if (item.LastRunCompletedAtUtc is not null)
+                            {
+                                <span class="im1-table-subtext">@item.LastRunCompletedAtUtc.Value.ToString("yyyy-MM-dd HH:mm")</span>
+                            }
+                        </td>
+                        <td>
+                            <a class="im1-link" asp-controller="@item.ConfiguratorController" asp-action="@item.ConfiguratorAction">Open</a>
+                        </td>
+                    </tr>
+                }
+                @if (Model.Events.Count == 0)
+                {
+                    <tr>
+                        <td colspan="8">No scheduled events are configured.</td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </div>
+</section>

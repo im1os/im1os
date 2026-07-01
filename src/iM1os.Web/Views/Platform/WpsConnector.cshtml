@@ -1,0 +1,354 @@
+@model iM1os.Application.Platform.WpsConnectorPage
+
+@{
+    ViewData["Title"] = "WPS Connector";
+    var message = TempData["PlatformMessage"] as string;
+    var hero = new IM1WorkspaceHeroModel(
+        "WPS",
+        "Suppliers",
+        "Configure Western Power Sports catalog imports, live inventory, and fitment enrichment.",
+        new[]
+        {
+            new IM1WorkspaceStatModel("Connector", Model.Status.IsEnabled ? "Enabled" : "Disabled", Model.Status.ConnectorKey),
+            new IM1WorkspaceStatModel("Configured", Model.Status.IsConfigured ? "Ready" : "Incomplete", Model.Status.SupplierName),
+            new IM1WorkspaceStatModel("Items", Model.DatabaseMetrics.SupplierProductCount.ToString("N0"), "In database"),
+            new IM1WorkspaceStatModel("Fitment Records", Model.DatabaseMetrics.FitmentRecordCount.ToString("N0"), "In database"),
+            new IM1WorkspaceStatModel("Master", Model.Settings.ImportMasterFileOnSchedule ? "Scheduled" : "Manual", $"{Model.Settings.MasterFileScheduleIntervalHours} hr interval"),
+            new IM1WorkspaceStatModel("Fitment", Model.Settings.ImportFitmentOnSchedule ? "Scheduled" : "Manual", $"{Model.Settings.FitmentScheduleIntervalHours} hr interval")
+        },
+        new[] { new IM1ActionModel("Global Scheduler", Url.Action("Scheduler"), "secondary") },
+        Model.Status.LastConnectionStatus ?? "WPS supplier setup");
+}
+
+<nav class="im1-breadcrumbs" aria-label="Breadcrumb">
+    <span>Platform Suppliers</span>
+    <span>Connectors</span>
+    <span>WPS</span>
+</nav>
+
+@await Html.PartialAsync("IM1WorkspaceHero", hero)
+
+@if (!string.IsNullOrWhiteSpace(message))
+{
+    <section class="im1-status-strip">
+        <strong>Status</strong>
+        <span>@message</span>
+    </section>
+}
+
+<section class="im1-wps-dashboard-grid">
+    <article class="im1-settings-panel im1-wps-dashboard-card">
+        <header class="im1-section-header">
+            <div>
+                <h2>Master File Source</h2>
+                <p>Remote HEAD check for the WPS master item list.</p>
+            </div>
+            <strong class="@(Model.MasterFileRemoteStatus.IsRemoteNewerThanLastImport ? "im1-status-pill im1-status-warning" : "im1-status-pill")">
+                @(Model.MasterFileRemoteStatus.IsRemoteNewerThanLastImport ? "Update pending" : Model.MasterFileRemoteStatus.IsAvailable ? "Current" : "Unavailable")
+            </strong>
+        </header>
+        <dl class="im1-wps-status-grid">
+            <div>
+                <dt>Remote Updated</dt>
+                <dd>@(Model.MasterFileRemoteStatus.LastModifiedUtc?.ToString("yyyy-MM-dd HH:mm") ?? "-")</dd>
+            </div>
+            <div>
+                <dt>Last Import Applied</dt>
+                <dd>@(Model.MasterFileRemoteStatus.LastSuccessfulImportCompletedAtUtc?.ToString("yyyy-MM-dd HH:mm") ?? "-")</dd>
+            </div>
+            <div>
+                <dt>Checked</dt>
+                <dd>@Model.MasterFileRemoteStatus.CheckedAtUtc.ToString("yyyy-MM-dd HH:mm")</dd>
+            </div>
+            <div>
+                <dt>Size</dt>
+                <dd>@(Model.MasterFileRemoteStatus.ContentLength is null ? "-" : $"{Model.MasterFileRemoteStatus.ContentLength.Value / 1048576m:0.0} MB")</dd>
+            </div>
+        </dl>
+        @if (!string.IsNullOrWhiteSpace(Model.MasterFileRemoteStatus.ETag) || !string.IsNullOrWhiteSpace(Model.MasterFileRemoteStatus.Message))
+        {
+            <p class="im1-settings-note">@(Model.MasterFileRemoteStatus.Message ?? $"ETag {Model.MasterFileRemoteStatus.ETag}")</p>
+        }
+    </article>
+</section>
+
+<section class="im1-wps-connector-layout">
+    <article class="im1-settings-panel im1-wps-primary-panel">
+        <header class="im1-section-header">
+            <div>
+                <h2>Scheduler</h2>
+                <p>Automated imports run through the connector worker. Fitment is intentionally separate from the master file.</p>
+            </div>
+        </header>
+
+        <form class="im1-settings-form" asp-action="SaveWpsConnector" method="post" autocomplete="off">
+            @Html.AntiForgeryToken()
+            <input class="im1-autofill-decoy" type="text" name="platform-wps-decoy-username" autocomplete="username" tabindex="-1" aria-hidden="true" />
+            <input class="im1-autofill-decoy" type="password" name="platform-wps-decoy-password" autocomplete="current-password" tabindex="-1" aria-hidden="true" />
+            <section class="im1-scheduler-connector-bar im1-scheduler-connector-bar-single">
+                <label class="im1-setting-option">
+                    <input type="checkbox" name="IsEnabled" value="true" checked="@Model.Settings.IsEnabled" />
+                    <span>
+                        <strong>Enabled</strong>
+                        <small>Allow WPS connector operations.</small>
+                    </span>
+                </label>
+                <input type="hidden" name="IsEnabled" value="false" />
+            </section>
+
+            <section class="im1-scheduler-config-list" aria-label="WPS schedules">
+                <article class="im1-scheduler-config-row">
+                    <div class="im1-scheduler-config-summary">
+                        <label class="im1-setting-option">
+                            <input type="checkbox" name="ImportMasterFileOnSchedule" value="true" checked="@Model.Settings.ImportMasterFileOnSchedule" />
+                            <span>
+                                <strong>Master file schedule</strong>
+                                <small>Imports product catalog and supplier pricing from the WPS master item list.</small>
+                            </span>
+                        </label>
+                        <input type="hidden" name="ImportMasterFileOnSchedule" value="false" />
+                    </div>
+                    <div class="im1-scheduler-config-fields">
+                        <label class="im1-field">
+                            <span>Mode</span>
+                            <select name="MasterFileImportMode">
+                                <option value="Manual" selected="@(Model.Settings.MasterFileImportMode == "Manual")">Manual</option>
+                                <option value="Scheduled" selected="@(Model.Settings.MasterFileImportMode == "Scheduled")">Scheduled</option>
+                                <option value="ManualAndScheduled" selected="@(Model.Settings.MasterFileImportMode == "ManualAndScheduled")">Manual and Scheduled</option>
+                            </select>
+                        </label>
+                        <label class="im1-field">
+                            <span>Schedule Interval (hours)</span>
+                            <input name="MasterFileScheduleIntervalHours" type="number" min="1" max="168" step="1" value="@Model.Settings.MasterFileScheduleIntervalHours" />
+                        </label>
+                        <label class="im1-field">
+                            <span>Scheduled max items</span>
+                            <input name="MasterFileScheduleMaxItems" type="number" min="1" step="1" value="@Model.Settings.MasterFileScheduleMaxItems" placeholder="Blank for full import" />
+                        </label>
+                    </div>
+                </article>
+
+                <article class="im1-scheduler-config-row">
+                    <div class="im1-scheduler-config-summary">
+                        <label class="im1-setting-option">
+                            <input type="checkbox" name="ImportFitmentOnSchedule" value="true" checked="@Model.Settings.ImportFitmentOnSchedule" />
+                            <span>
+                                <strong>Fitment schedule</strong>
+                                <small>Calls the Indie Moto fitment source for active WPS SKUs.</small>
+                            </span>
+                        </label>
+                        <input type="hidden" name="ImportFitmentOnSchedule" value="false" />
+                    </div>
+                    <div class="im1-scheduler-config-fields im1-scheduler-config-fields-fitment">
+                        <label class="im1-field">
+                            <span>Schedule Interval (hours)</span>
+                            <input name="FitmentScheduleIntervalHours" type="number" min="1" max="168" step="1" value="@Model.Settings.FitmentScheduleIntervalHours" />
+                        </label>
+                        <label class="im1-field">
+                            <span>Max SKUs</span>
+                            <input name="FitmentScheduleMaxSkus" type="number" min="1" step="1" value="@Model.Settings.FitmentScheduleMaxSkus" placeholder="Blank for all active" />
+                        </label>
+                        <label class="im1-field">
+                            <span>Fitment limit</span>
+                            <input name="FitmentScheduleFitmentLimit" type="number" min="1" step="1" value="@Model.Settings.FitmentScheduleFitmentLimit" placeholder="Blank for all rows" />
+                        </label>
+                        <label class="im1-field">
+                            <span>Delay ms</span>
+                            <input name="FitmentScheduleDelayMilliseconds" type="number" min="0" max="5000" step="50" value="@Model.Settings.FitmentScheduleDelayMilliseconds" />
+                        </label>
+                        <label class="im1-field im1-scheduler-config-source">
+                            <span>Fitment source URL</span>
+                            <input name="FitmentSourceBaseUrl" value="@Model.Settings.FitmentSourceBaseUrl" placeholder="https://saas.indie-moto.com" autocomplete="off" />
+                        </label>
+                    </div>
+                </article>
+            </section>
+
+            <details class="im1-disclosure-panel">
+                <summary>
+                    <span>Connection details</span>
+                    <small>URLs and credentials</small>
+                </summary>
+                <div class="im1-settings-grid">
+                    <label class="im1-field im1-field-wide">
+                        <span>Base API URL</span>
+                        <input name="BaseApiUrl" value="@Model.Settings.BaseApiUrl" placeholder="https://api.wps-inc.com" autocomplete="off" />
+                    </label>
+                    <label class="im1-field im1-field-wide">
+                        <span>Master Item List URL</span>
+                        <input name="MasterFileUrl" value="@Model.Settings.MasterFileUrl" placeholder="https://data-depot.s3.us-west-2.amazonaws.com/v4/downloads/master-item-list/master-item-list.json" autocomplete="off" />
+                    </label>
+                    <label class="im1-field">
+                        <span>WPS Dealer ID</span>
+                        <input name="DealerAccountNumber" value="@Model.Settings.DealerAccountNumber" placeholder="D2240487" autocomplete="off" />
+                    </label>
+                    <label class="im1-field">
+                        <span>Data Depot Password</span>
+                        <input name="DataDepotPassword" value="@Model.Settings.DataDepotPassword" placeholder="Leave blank to keep existing password" type="password" autocomplete="section-platform-wps new-password" spellcheck="false" autocapitalize="none" />
+                    </label>
+                    <label class="im1-field im1-field-wide">
+                        <span>API Key</span>
+                        <input name="ApiKey" value="@Model.Settings.ApiKey" autocomplete="off" />
+                    </label>
+                </div>
+            </details>
+
+            <footer class="im1-settings-actions">
+                <button class="im1-button im1-button-primary" type="submit">Save Settings</button>
+            </footer>
+        </form>
+
+        <form asp-action="TestWpsConnector" method="post" class="im1-inline-action-bar">
+            @Html.AntiForgeryToken()
+            <button class="im1-button im1-button-secondary" type="submit">Test Configuration</button>
+            <p>@(Model.Status.LastConnectionMessage ?? "Connection has not been tested.")</p>
+        </form>
+    </article>
+
+    <aside class="im1-wps-action-stack">
+        <article class="im1-settings-panel">
+            <header class="im1-section-header">
+                <div>
+                    <h2>Master File Import</h2>
+                    <p>Queue products and supplier pricing from the WPS master item list.</p>
+                </div>
+            </header>
+
+            <form class="im1-settings-form" asp-action="ImportWpsMasterFile" method="post">
+                @Html.AntiForgeryToken()
+                <input type="hidden" name="ImportFitment" value="false" />
+                <div class="im1-settings-grid">
+                    <label class="im1-field">
+                        <span>Import Mode</span>
+                        <select name="ImportMode">
+                            <option value="LimitedTest">Limited test</option>
+                            <option value="Delta">Delta</option>
+                            <option value="Full">Full</option>
+                            <option value="ValidateOnly">Validate only</option>
+                        </select>
+                    </label>
+                    <label class="im1-field">
+                        <span>Max Items</span>
+                        <input name="MaxItems" type="number" min="1" step="1" value="500" />
+                    </label>
+                </div>
+                <div class="im1-option-grid">
+                    <label class="im1-setting-option">
+                        <input type="checkbox" name="ImportProducts" value="true" checked />
+                        <span><strong>Products</strong></span>
+                    </label>
+                    <input type="hidden" name="ImportProducts" value="false" />
+                    <label class="im1-setting-option">
+                        <input type="checkbox" name="ImportSupplierPricing" value="true" checked />
+                        <span><strong>Supplier pricing</strong></span>
+                    </label>
+                    <input type="hidden" name="ImportSupplierPricing" value="false" />
+                    <label class="im1-setting-option">
+                        <input type="checkbox" name="UpdateExistingProducts" value="true" checked />
+                        <span><strong>Update existing</strong></span>
+                    </label>
+                    <input type="hidden" name="UpdateExistingProducts" value="false" />
+                    <label class="im1-setting-option">
+                        <input type="checkbox" name="CreateMissingProducts" value="true" checked />
+                        <span><strong>Create missing</strong></span>
+                    </label>
+                    <input type="hidden" name="CreateMissingProducts" value="false" />
+                </div>
+                <footer class="im1-settings-actions">
+                    <button class="im1-button im1-button-primary" type="submit">Import Master File</button>
+                </footer>
+            </form>
+        </article>
+
+        <article class="im1-settings-panel">
+            <header class="im1-section-header">
+                <div>
+                    <h2>Fitment Import</h2>
+                    <p>Queue YMM fitment enrichment for active WPS SKUs.</p>
+                </div>
+            </header>
+
+            <form class="im1-settings-form" asp-action="ImportWpsFitment" method="post">
+                @Html.AntiForgeryToken()
+                <div class="im1-settings-grid">
+                    <label class="im1-field">
+                        <span>Import Mode</span>
+                        <select name="ImportMode">
+                            <option value="LimitedTest">Limited test</option>
+                            <option value="Delta">Delta</option>
+                            <option value="Full">Full</option>
+                        </select>
+                    </label>
+                    <label class="im1-field">
+                        <span>Max SKUs</span>
+                        <input name="MaxSkus" type="number" min="1" step="1" value="500" />
+                    </label>
+                    <label class="im1-field">
+                        <span>Fitment limit</span>
+                        <input name="FitmentLimit" type="number" min="1" step="1" placeholder="Blank for all rows" />
+                    </label>
+                    <label class="im1-field">
+                        <span>Delay ms</span>
+                        <input name="DelayMilliseconds" type="number" min="0" max="5000" step="50" value="@Model.Settings.FitmentScheduleDelayMilliseconds" />
+                    </label>
+                </div>
+                <footer class="im1-settings-actions">
+                    <button class="im1-button im1-button-primary" type="submit">Import Fitment</button>
+                </footer>
+            </form>
+        </article>
+    </aside>
+</section>
+
+<section class="im1-settings-panel">
+    <header class="im1-section-header">
+        <div>
+            <h2>Recent Imports</h2>
+            <p>Latest WPS master and fitment import requests.</p>
+        </div>
+    </header>
+    <div class="table-wrap im1-table-compact">
+        <table>
+            <thead>
+                <tr>
+                    <th>Requested</th>
+                    <th>Type</th>
+                    <th>Status</th>
+                    <th>Progress</th>
+                    <th>Source</th>
+                    <th>Started</th>
+                    <th>Completed</th>
+                    <th>Message</th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var run in Model.RecentImportRuns)
+                {
+                    <tr>
+                        <td>@run.RequestedAtUtc.ToString("yyyy-MM-dd HH:mm")</td>
+                        <td>@run.ImportType</td>
+                        <td>@run.Status</td>
+                        <td>
+                            <div class="im1-import-progress" aria-label="Import progress @run.ProgressPercent%">
+                                <span style="width: @run.ProgressPercent%"></span>
+                            </div>
+                            <span class="im1-import-progress-count">
+                                @(run.ProgressTotal is null ? run.ProgressProcessed.ToString("N0") : $"{run.ProgressProcessed:N0} / {run.ProgressTotal.Value:N0}")
+                            </span>
+                        </td>
+                        <td>@run.Source</td>
+                        <td>@(run.StartedAtUtc?.ToString("yyyy-MM-dd HH:mm") ?? "-")</td>
+                        <td>@(run.CompletedAtUtc?.ToString("yyyy-MM-dd HH:mm") ?? "-")</td>
+                        <td>@run.Message</td>
+                    </tr>
+                }
+                @if (Model.RecentImportRuns.Count == 0)
+                {
+                    <tr>
+                        <td colspan="8">No WPS imports have been requested.</td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </div>
+</section>

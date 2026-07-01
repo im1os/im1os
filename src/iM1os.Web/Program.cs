@@ -21,6 +21,12 @@ builder.Services.AddApplication();
 builder.Services.AddInfrastructure(builder.Configuration);
 builder.Services.AddHttpContextAccessor();
 builder.Services.AddScoped<ICurrentUser, HttpContextCurrentUser>();
+builder.Services.AddSession(options =>
+{
+    options.Cookie.HttpOnly = true;
+    options.Cookie.IsEssential = true;
+    options.IdleTimeout = TimeSpan.FromHours(8);
+});
 builder.Services
     .AddAuthentication(CookieAuthenticationDefaults.AuthenticationScheme)
     .AddCookie(options =>
@@ -99,6 +105,7 @@ app.Use(async (context, next) =>
     await next();
 });
 app.UseRouting();
+app.UseSession();
 app.UseAuthentication();
 app.UseAuthorization();
 
@@ -115,6 +122,46 @@ app.MapControllerRoute(
     name: "platform-dashboard",
     pattern: "platform",
     defaults: new { controller = "Platform", action = "Dashboard" });
+app.MapControllerRoute(
+    name: "platform-supplier-search",
+    pattern: "platform/suppliers/catalog/item-search",
+    defaults: new { controller = "Platform", action = "ItemSearch" });
+app.MapControllerRoute(
+    name: "platform-supplier-search-results",
+    pattern: "platform/suppliers/catalog/item-search/results",
+    defaults: new { controller = "Platform", action = "ItemSearchResults" });
+app.MapControllerRoute(
+    name: "platform-supplier-wps",
+    pattern: "platform/suppliers/wps",
+    defaults: new { controller = "Platform", action = "WpsConnector" });
+app.MapControllerRoute(
+    name: "platform-supplier-turn14",
+    pattern: "platform/suppliers/turn14",
+    defaults: new { controller = "Platform", action = "Turn14Connector" });
+app.MapControllerRoute(
+    name: "platform-supplier-parts-unlimited",
+    pattern: "platform/suppliers/parts-unlimited",
+    defaults: new { controller = "Platform", action = "PartsUnlimitedConnector" });
+app.MapControllerRoute(
+    name: "platform-supplier-scheduler",
+    pattern: "platform/suppliers/scheduler",
+    defaults: new { controller = "Platform", action = "Scheduler" });
+app.MapControllerRoute(
+    name: "platform-supplier-wps-inventory",
+    pattern: "platform/suppliers/wps/inventory",
+    defaults: new { controller = "Platform", action = "WpsInventory" });
+app.MapControllerRoute(
+    name: "platform-supplier-turn14-inventory",
+    pattern: "platform/suppliers/turn14/inventory",
+    defaults: new { controller = "Platform", action = "Turn14Inventory" });
+app.MapControllerRoute(
+    name: "platform-supplier-parts-unlimited-inventory",
+    pattern: "platform/suppliers/parts-unlimited/inventory",
+    defaults: new { controller = "Platform", action = "PartsUnlimitedInventory" });
+app.MapControllerRoute(
+    name: "platform-supplier-fitment",
+    pattern: "platform/suppliers/catalog/fitment",
+    defaults: new { controller = "Platform", action = "FetchItemFitment" });
 app.MapControllerRoute(
     name: "platform-marketing",
     pattern: "platform/marketing/{action=Index}/{id?}",
@@ -164,6 +211,42 @@ app.MapControllerRoute(
     pattern: "company",
     defaults: new { controller = "Business", action = "Dashboard" });
 app.MapControllerRoute(
+    name: "company-supplier-search",
+    pattern: "company/suppliers/catalog/item-search",
+    defaults: new { controller = "Business", action = "SupplierItemSearch" });
+app.MapControllerRoute(
+    name: "company-supplier-search-results",
+    pattern: "company/suppliers/catalog/item-search/results",
+    defaults: new { controller = "Business", action = "SupplierItemSearchResults" });
+app.MapControllerRoute(
+    name: "company-supplier-wps",
+    pattern: "company/suppliers/wps",
+    defaults: new { controller = "Business", action = "SupplierWpsConnector" });
+app.MapControllerRoute(
+    name: "company-supplier-turn14",
+    pattern: "company/suppliers/turn14",
+    defaults: new { controller = "Business", action = "SupplierTurn14Connector" });
+app.MapControllerRoute(
+    name: "company-supplier-parts-unlimited",
+    pattern: "company/suppliers/parts-unlimited",
+    defaults: new { controller = "Business", action = "SupplierPartsUnlimitedConnector" });
+app.MapControllerRoute(
+    name: "company-supplier-wps-inventory",
+    pattern: "company/suppliers/wps/inventory",
+    defaults: new { controller = "Business", action = "SupplierWpsInventory" });
+app.MapControllerRoute(
+    name: "company-supplier-turn14-inventory",
+    pattern: "company/suppliers/turn14/inventory",
+    defaults: new { controller = "Business", action = "SupplierTurn14Inventory" });
+app.MapControllerRoute(
+    name: "company-supplier-parts-unlimited-inventory",
+    pattern: "company/suppliers/parts-unlimited/inventory",
+    defaults: new { controller = "Business", action = "SupplierPartsUnlimitedInventory" });
+app.MapControllerRoute(
+    name: "company-supplier-fitment",
+    pattern: "company/suppliers/catalog/fitment",
+    defaults: new { controller = "Business", action = "SupplierFetchItemFitment" });
+app.MapControllerRoute(
     name: "company-admin",
     pattern: "company/admin/{action=Administration}",
     defaults: new { controller = "Business" });
@@ -183,6 +266,66 @@ app.MapControllerRoute(
     name: "company-customers",
     pattern: "company/customers/{action=Index}",
     defaults: new { controller = "Customers" });
+app.MapControllerRoute(
+    name: "company-work-orders",
+    pattern: "company/work-orders",
+    defaults: new { controller = "WorkOrders", action = "Index" });
+app.MapControllerRoute(
+    name: "company-service-intake",
+    pattern: "company/service/intake",
+    defaults: new { controller = "WorkOrders", action = "Intake" });
+app.MapControllerRoute(
+    name: "company-service-intake-pin",
+    pattern: "company/service/intake/pin",
+    defaults: new { controller = "WorkOrders", action = "VerifyIntakePin" });
+app.MapControllerRoute(
+    name: "company-service-intake-clear-pin",
+    pattern: "company/service/intake/clear-pin",
+    defaults: new { controller = "WorkOrders", action = "ClearIntakePin" });
+app.MapControllerRoute(
+    name: "company-service-intake-create",
+    pattern: "company/service/intake/create",
+    defaults: new { controller = "WorkOrders", action = "CreateIntake" });
+app.MapControllerRoute(
+    name: "company-service-intake-customer-lookup",
+    pattern: "company/service/intake/customer-lookup",
+    defaults: new { controller = "WorkOrders", action = "CustomerLookup" });
+app.MapControllerRoute(
+    name: "company-service-intake-ymm-types",
+    pattern: "company/service/intake/ymm/types",
+    defaults: new { controller = "WorkOrders", action = "YmmTypes" });
+app.MapControllerRoute(
+    name: "company-service-intake-ymm-years",
+    pattern: "company/service/intake/ymm/years",
+    defaults: new { controller = "WorkOrders", action = "YmmYears" });
+app.MapControllerRoute(
+    name: "company-service-intake-ymm-makes",
+    pattern: "company/service/intake/ymm/makes",
+    defaults: new { controller = "WorkOrders", action = "YmmMakes" });
+app.MapControllerRoute(
+    name: "company-service-intake-ymm-models",
+    pattern: "company/service/intake/ymm/models",
+    defaults: new { controller = "WorkOrders", action = "YmmModels" });
+app.MapControllerRoute(
+    name: "company-work-order-new",
+    pattern: "company/work-orders/new",
+    defaults: new { controller = "WorkOrders", action = "New" });
+app.MapControllerRoute(
+    name: "company-work-order-edit",
+    pattern: "company/work-orders/{workOrderId:guid}/edit",
+    defaults: new { controller = "WorkOrders", action = "Edit" });
+app.MapControllerRoute(
+    name: "company-work-order-item-lookup",
+    pattern: "company/work-orders/item-lookup",
+    defaults: new { controller = "WorkOrders", action = "ItemLookup" });
+app.MapControllerRoute(
+    name: "company-work-order-fitment-count",
+    pattern: "company/work-orders/fitment-count",
+    defaults: new { controller = "WorkOrders", action = "FitmentItemCount" });
+app.MapControllerRoute(
+    name: "company-work-order-save",
+    pattern: "company/work-orders/save",
+    defaults: new { controller = "WorkOrders", action = "Save" });
 app.MapControllerRoute(
     name: "company-profile",
     pattern: "company/profile/{action=Index}",

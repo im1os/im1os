@@ -10,5 +10,7 @@ public interface ITenantManagerService
 
     Task<TenantManagerDetail?> UpdateTenantAsync(UpdateTenantManagementRequest request, string? platformUserId, CancellationToken cancellationToken);
 
+    Task<TenantManagerDetail?> UpdateTenantModulesAsync(UpdateTenantModulesRequest request, string? platformUserId, CancellationToken cancellationToken);
+
     Task<bool> ResendOwnerInvitationAsync(Guid organizationId, string? platformUserId, CancellationToken cancellationToken);
 }

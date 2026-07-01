@@ -101,6 +101,15 @@ public sealed class TenantManagerService(
             .OrderBy(x => x.ModuleKey)
             .Select(x => x.ModuleKey)
             .ToListAsync(cancellationToken);
+        var enabledModuleKeys = modules.ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var moduleOptions = TenantModuleCatalog.All
+            .Select(x => new TenantModuleOption(
+                x.Key,
+                x.Label,
+                x.Category,
+                x.Description,
+                enabledModuleKeys.Contains(x.Key)))
+            .ToList();
 
         var flags = await dbContext.FeatureFlags
             .IgnoreQueryFilters()
@@ -141,6 +150,7 @@ public sealed class TenantManagerService(
             owner?.Email,
             owner?.EmailVerifiedAtUtc is not null,
             modules,
+            moduleOptions,
             flags,
             history,
             audit,
@@ -216,6 +226,88 @@ public sealed class TenantManagerService(
             EventType = "TenantUpdated",
             OccurredAtUtc = now,
             PayloadJson = JsonSerializer.Serialize(new { tenant.OrganizationName, tenant.Status, tenant.SubscriptionPlan }),
+            CorrelationId = Guid.NewGuid().ToString("N")
+        });
+
+        await dbContext.SaveChangesAsync(cancellationToken);
+        return await GetTenantDetailAsync(request.OrganizationId, cancellationToken);
+    }
+
+    public async Task<TenantManagerDetail?> UpdateTenantModulesAsync(UpdateTenantModulesRequest request, string? platformUserId, CancellationToken cancellationToken)
+    {
+        var tenantExists = await dbContext.PlatformTenants.AnyAsync(x => x.OrganizationId == request.OrganizationId, cancellationToken);
+        if (!tenantExists)
+        {
+            return null;
+        }
+
+        var now = dateTimeProvider.UtcNow;
+        var knownModuleKeys = TenantModuleCatalog.All
+            .Select(x => x.Key)
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var enabledModuleKeys = request.EnabledModules
+            .Where(x => !string.IsNullOrWhiteSpace(x))
+            .Select(x => x.Trim())
+            .Where(knownModuleKeys.Contains)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var entitlements = await dbContext.TenantModuleEntitlements
+            .Where(x => x.OrganizationId == request.OrganizationId)
+            .ToListAsync(cancellationToken);
+        var entitlementsByKey = entitlements.ToDictionary(x => x.ModuleKey, StringComparer.OrdinalIgnoreCase);
+        var before = entitlements
+            .Where(x => x.IsEnabled)
+            .Select(x => x.ModuleKey)
+            .OrderBy(x => x)
+            .ToArray();
+
+        foreach (var module in TenantModuleCatalog.All)
+        {
+            var shouldEnable = enabledModuleKeys.Contains(module.Key);
+            if (!entitlementsByKey.TryGetValue(module.Key, out var entitlement))
+            {
+                entitlement = new TenantModuleEntitlement
+                {
+                    OrganizationId = request.OrganizationId,
+                    ModuleKey = module.Key,
+                    IsEnabled = shouldEnable,
+                    EnabledAtUtc = now,
+                    EnabledByPlatformUserId = shouldEnable ? platformUserId : null
+                };
+                dbContext.TenantModuleEntitlements.Add(entitlement);
+                continue;
+            }
+
+            if (entitlement.IsEnabled == shouldEnable)
+            {
+                continue;
+            }
+
+            entitlement.IsEnabled = shouldEnable;
+            if (shouldEnable)
+            {
+                entitlement.EnabledAtUtc = now;
+                entitlement.EnabledByPlatformUserId = platformUserId;
+            }
+        }
+
+        var after = enabledModuleKeys.OrderBy(x => x).ToArray();
+        dbContext.PlatformAuditEvents.Add(new PlatformAuditEvent
+        {
+            TargetOrganizationId = request.OrganizationId,
+            ActorPlatformUserId = platformUserId,
+            Action = "TenantModulesUpdated",
+            OccurredAtUtc = now,
+            PreviousValuesJson = JsonSerializer.Serialize(new { ModulesEnabled = before }),
+            NewValuesJson = JsonSerializer.Serialize(new { ModulesEnabled = after })
+        });
+        dbContext.PlatformEvents.Add(new PlatformEvent
+        {
+            TargetOrganizationId = request.OrganizationId,
+            ActorPlatformUserId = platformUserId,
+            EventType = "TenantModulesUpdated",
+            OccurredAtUtc = now,
+            PayloadJson = JsonSerializer.Serialize(new { ModulesEnabled = after }),
             CorrelationId = Guid.NewGuid().ToString("N")
         });
 

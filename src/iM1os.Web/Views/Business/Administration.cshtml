@@ -11,7 +11,7 @@
     var page = new IM1PageModel(
         Title: Model.Profile.BusinessName,
         Eyebrow: "Company administration",
-        Description: Model.IsReadyForOperations ? "Your company is now ready to begin operations." : "Configure identity, locations, employees, permissions, labor, taxes, notifications, and integration placeholders.",
+        Description: Model.IsReadyForOperations ? "Your company is now ready to begin operations." : "Configure identity, locations, employees, permissions, labor, taxes, notifications, and suppliers.",
         Breadcrumbs: new[]
         {
             new IM1BreadcrumbModel("Company", Url.Action("Dashboard", "Business", new { organizationId = administrationRoute })),
@@ -27,7 +27,7 @@
             new IM1TabItemModel("locations", "Locations"),
             new IM1TabItemModel("roles", "Roles"),
             new IM1TabItemModel("operations", "Operations"),
-            new IM1TabItemModel("connectors", "Connectors"),
+            new IM1TabItemModel("connectors", "Suppliers"),
             new IM1TabItemModel("activity", "Activity")
         });
     var locationGrid = new IM1DataGridModel(
@@ -202,6 +202,7 @@
                     <label>Weekend Rate <input name="WeekendRate" type="number" step="0.01" value="@Model.Configuration.WeekendRate" /></label>
                     <label>Environmental Fee <input name="EnvironmentalFee" type="number" step="0.01" value="@Model.Configuration.EnvironmentalFee" /></label>
                     <label>Shop Supplies % <input name="ShopSuppliesPercent" type="number" step="0.01" value="@Model.Configuration.ShopSuppliesPercent" /></label>
+                    <label class="checkbox"><input name="LaborLineItemsTaxable" type="checkbox" value="true" checked="@Model.Configuration.LaborLineItemsTaxable" /> Labor Line Items Taxable</label><input name="LaborLineItemsTaxable" type="hidden" value="false" />
                     <button class="primary-action" type="submit">Save Labor</button>
                 </form>
             </article>
@@ -233,18 +234,77 @@
 
     <div class="tab-panel" id="connectors" role="tabpanel" hidden>
         <article class="page-band">
-            <h2>Supplier And Service Placeholders</h2>
+            <header class="im1-section-header">
+                <div>
+                    <h2>Suppliers</h2>
+                    <p>Read-only supplier access and credential status for this company.</p>
+                </div>
+            </header>
             <div class="connector-grid">
-                @foreach (var connector in Model.Connectors)
+                @if (Model.Connectors.Count == 0)
                 {
-                    <div>
-                        <strong>@connector.Name</strong>
-                        <span>@connector.Category</span>
-                        <em>@connector.Status</em>
-                    </div>
+                    <p class="im1-empty-state">No suppliers are enabled for this company.</p>
+                }
+                else
+                {
+                    @foreach (var connector in Model.Connectors)
+                    {
+                        <div class="connector-summary @(connector.IsEnabled ? "connector-summary-active" : null)">
+                            <strong>@connector.Name</strong>
+                            <span>@connector.Category</span>
+                            <em>@connector.Status</em>
+                            <p>@connector.Description</p>
+                        </div>
+                    }
                 }
             </div>
         </article>
+
+        <section class="connector-workspace">
+            @foreach (var connector in Model.Connectors)
+            {
+                <article class="page-band">
+                    <header class="im1-section-header">
+                        <div>
+                            <h2>@connector.Name</h2>
+                            <p>@connector.Description</p>
+                        </div>
+                        <span class="connector-status">@connector.Status</span>
+                    </header>
+
+                    <div class="connector-readiness">
+                        <div>
+                            <span>Platform Access</span>
+                            <strong>Enabled</strong>
+                        </div>
+                        <div>
+                            <span>Company Supplier</span>
+                            <strong>@(connector.IsEnabled ? "Enabled" : "Disabled")</strong>
+                        </div>
+                        <div>
+                            <span>Credentials</span>
+                            <strong>@(connector.WpsConfiguration?.CredentialStatus ?? (connector.Status == "Ready" ? "Ready" : "Missing"))</strong>
+                        </div>
+                        <div>
+                            <span>Sync</span>
+                            <strong>@connector.SyncCadence</strong>
+                        </div>
+                        <div>
+                            <span>Last Sync</span>
+                            <strong>@(connector.LastSyncAtUtc?.ToString("yyyy-MM-dd HH:mm") ?? "-")</strong>
+                        </div>
+                    </div>
+
+                    <h3>Capabilities</h3>
+                    <ul class="check-list">
+                        @foreach (var capability in connector.Capabilities)
+                        {
+                            <li>@capability</li>
+                        }
+                    </ul>
+                </article>
+            }
+        </section>
     </div>
 
     <div class="tab-panel" id="activity" role="tabpanel" hidden>

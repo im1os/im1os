@@ -1,4 +1,6 @@
 using iM1os.Application.BusinessAdministration;
+using iM1os.Application.Platform;
+using iM1os.Domain.GlobalCatalog;
 using iM1os.Domain.Identity;
 using iM1os.Domain.Platform;
 using iM1os.Domain.Tenancy;
@@ -55,7 +57,7 @@ public sealed class BusinessAdministrationFoundationTests
         await service.SaveLaborConfigurationAsync(
             seeded.OrganizationId,
             seeded.OwnerId,
-            new LaborConfigurationRequest(135m, 150m, 175m, 160m, 12m, 6m),
+            new LaborConfigurationRequest(135m, 150m, 175m, 160m, 12m, 6m, false),
             CancellationToken.None);
 
         var workspace = await service.GetWorkspaceAsync(seeded.OrganizationId, seeded.OwnerId, CancellationToken.None);
@@ -65,6 +67,7 @@ public sealed class BusinessAdministrationFoundationTests
         Assert.Contains(workspace.Employees, x => x.Email == "sam@abcmoto.test" && x.Role == "Technician" && x.Status == "Active");
         Assert.True(await dbContext.Employees.IgnoreQueryFilters().AnyAsync(x => x.OrganizationId == seeded.OrganizationId && x.Email == "sam@abcmoto.test"));
         Assert.Equal(135m, workspace.Configuration.DefaultLaborRate);
+        Assert.False(workspace.Configuration.LaborLineItemsTaxable);
         Assert.True(await dbContext.AuditLogs.AnyAsync(x => x.OrganizationId == seeded.OrganizationId && x.Action == "EmployeeInvited"));
         Assert.True(await dbContext.TimelineEvents.IgnoreQueryFilters().AnyAsync(x => x.OrganizationId == seeded.OrganizationId && x.EventType == "LaborConfigurationUpdated"));
     }
@@ -87,6 +90,51 @@ public sealed class BusinessAdministrationFoundationTests
         var service = CreateService(dbContext);
 
         await Assert.ThrowsAsync<UnauthorizedAccessException>(() => service.GetWorkspaceAsync(seeded.OrganizationId, user.Id, CancellationToken.None));
+    }
+
+    [Fact]
+    public async Task Administration_shows_enabled_supplier_status_read_only()
+    {
+        await using var dbContext = CreateContext();
+        var seeded = await SeedOwnerAsync(dbContext);
+        var service = CreateService(dbContext);
+        var supplier = new Supplier { Name = "Western Power Sports", Code = "WPS", ConnectorKey = "WPS" };
+        var configuration = new CompanySupplierConnectorConfiguration
+        {
+            OrganizationId = seeded.OrganizationId,
+            SupplierId = supplier.Id,
+            ConnectorKey = "WPS",
+            DisplayName = "WPS",
+            BaseApiUrl = "https://api.wps.test",
+            DealerAccountNumber = "D12345",
+            Username = "wps-api-user",
+            ApiKey = "api-key",
+            AuthMode = "API Key",
+            IsEnabled = true,
+            SyncDealerPricingOnSchedule = true,
+            DealerPricingScheduleIntervalMinutes = 120
+        };
+        dbContext.Suppliers.Add(supplier);
+        dbContext.CompanySupplierConnectorConfigurations.Add(configuration);
+        dbContext.TenantModuleEntitlements.Add(new TenantModuleEntitlement
+        {
+            OrganizationId = seeded.OrganizationId,
+            ModuleKey = TenantModuleCatalog.WpsSupplierConnector,
+            IsEnabled = true,
+            EnabledAtUtc = DateTimeOffset.UtcNow
+        });
+        await dbContext.SaveChangesAsync();
+
+        var workspace = await service.GetWorkspaceAsync(seeded.OrganizationId, seeded.OwnerId, CancellationToken.None);
+        var wps = Assert.Single(workspace.Connectors);
+
+        Assert.Equal("Ready", wps.Status);
+        Assert.True(wps.IsEnabled);
+        Assert.Equal("2 hr", wps.SyncCadence);
+        Assert.NotNull(wps.WpsConfiguration);
+        Assert.Equal("D12345", wps.WpsConfiguration.DealerNumber);
+        Assert.Equal("wps-api-user", wps.WpsConfiguration.Username);
+        Assert.Equal("Ready", wps.WpsConfiguration.CredentialStatus);
     }
 
     [Fact]

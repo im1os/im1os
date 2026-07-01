@@ -1,13 +1,16 @@
 using iM1os.Application.Authentication;
 using iM1os.Application.BusinessAdministration;
 using iM1os.Application.Common;
+using iM1os.Application.CompanySuppliers;
 using iM1os.Application.Configuration;
 using iM1os.Application.Customers;
 using iM1os.Application.Employees;
+using iM1os.Application.GlobalCatalog;
 using iM1os.Application.Marketing;
 using iM1os.Application.Platform;
 using iM1os.Application.Tenancy;
 using iM1os.Application.TenantIdentity;
+using iM1os.Application.WorkOrders;
 using iM1os.Domain.Identity;
 using iM1os.Domain.Platform;
 using iM1os.Infrastructure.Persistence;
@@ -49,17 +52,54 @@ public static class DependencyInjection
         services.AddScoped<IPlatformAuthenticationService, PlatformAuthenticationService>();
         services.AddScoped<ITenantProvisioningService, TenantProvisioningService>();
         services.AddScoped<ITenantManagerService, TenantManagerService>();
+        services.AddScoped<ITenantModuleEntitlementService, TenantModuleEntitlementService>();
+        services.AddScoped<IPlatformSupplierConnectorService, PlatformSupplierConnectorService>();
+        services.AddScoped<ICompanySupplierService, CompanySupplierService>();
+        services.AddScoped<IWpsDealerPricingImportService, WpsDealerPricingImportService>();
+        services.AddScoped<IPartsUnlimitedDealerPricingImportService, PartsUnlimitedDealerPricingImportService>();
+        services.AddScoped<ITurn14DealerPricingImportService, Turn14DealerPricingImportService>();
+        services.AddScoped<IWpsMasterItemListImportService, WpsMasterItemListImportService>();
+        services.AddScoped<ITurn14ProductLoadsheetImportService, Turn14ProductLoadsheetImportService>();
+        services.AddScoped<ITurn14MediaEnrichmentService, Turn14MediaEnrichmentService>();
+        services.AddScoped<IPartsUnlimitedBundleImportService, PartsUnlimitedBundleImportService>();
+        services.AddScoped<IPartsUnlimitedBrandImageImportService, PartsUnlimitedBundleImportService>();
+        services.AddScoped<ISupplierItemSearchService, SupplierItemSearchService>();
+        services.AddScoped<IWpsLiveInventoryService, WpsLiveInventoryService>();
+        services.AddScoped<ITurn14LiveInventoryService, Turn14LiveInventoryService>();
+        services.AddScoped<IPartsUnlimitedLiveInventoryService, PartsUnlimitedLiveInventoryService>();
+        services.AddScoped<IIndieMotoFitmentImportService, IndieMotoFitmentImportService>();
         services.AddScoped<ITenantIdentityService, TenantIdentityService>();
         services.AddScoped<IBusinessOnboardingService, BusinessOnboardingService>();
         services.AddScoped<IBusinessAdministrationService, BusinessAdministrationService>();
         services.AddScoped<ICustomerCrmService, CustomerCrmService>();
         services.AddScoped<IEmployeeService, EmployeeService>();
+        services.AddScoped<IWorkOrderService, WorkOrderService>();
         services.AddScoped<IMarketingCmsService, MarketingCmsService>();
         services.AddScoped<ITenantProfileService, TenantProfileService>();
         services.AddScoped<IWelcomeEmailSender, NoOpWelcomeEmailSender>();
         services.AddScoped<ITenantProvider, TenantProvider>();
         services.AddScoped<ICurrentUser, NoCurrentUser>();
         services.AddSingleton<IDateTimeProvider, SystemClock>();
+        services.AddHttpClient("WpsDataDepot", client =>
+        {
+            client.Timeout = TimeSpan.FromMinutes(10);
+            client.DefaultRequestHeaders.UserAgent.ParseAdd("iM1os-WPS-Importer/1.0");
+        });
+        services.AddHttpClient("IndieMotoFitment", client =>
+        {
+            client.Timeout = TimeSpan.FromSeconds(60);
+            client.DefaultRequestHeaders.UserAgent.ParseAdd("iM1os-Fitment-Importer/1.0");
+        });
+        services.AddHttpClient("Turn14Api", client =>
+        {
+            client.Timeout = TimeSpan.FromMinutes(10);
+            client.DefaultRequestHeaders.UserAgent.ParseAdd("iM1os-Turn14-Api/1.0");
+        });
+        services.AddHttpClient("PartsUnlimitedApi", client =>
+        {
+            client.Timeout = TimeSpan.FromMinutes(20);
+            client.DefaultRequestHeaders.UserAgent.ParseAdd("iM1os-PartsUnlimited-Importer/1.0");
+        });
         services.AddScoped<IPasswordHasher<ApplicationUser>, PasswordHasher<ApplicationUser>>();
         services.AddScoped<IPasswordHasher<PlatformUser>, PasswordHasher<PlatformUser>>();
 

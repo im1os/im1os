@@ -2,6 +2,7 @@ using iM1os.Domain.Audit;
 using iM1os.Domain.Configuration;
 using iM1os.Domain.Customers;
 using iM1os.Domain.Employees;
+using iM1os.Domain.GlobalCatalog;
 using iM1os.Domain.Identity;
 using iM1os.Domain.Marketing;
 using iM1os.Domain.Parts;
@@ -83,9 +84,41 @@ public interface IApplicationDbContext
 
     DbSet<WorkOrder> WorkOrders { get; }
 
+    DbSet<WorkOrderAttachment> WorkOrderAttachments { get; }
+
     DbSet<Estimate> Estimates { get; }
 
+    DbSet<EstimateLineItem> EstimateLineItems { get; }
+
     DbSet<LaborOperation> LaborOperations { get; }
+
+    DbSet<WorkOrderTechnicianAssignment> WorkOrderTechnicianAssignments { get; }
+
+    DbSet<GlobalProduct> GlobalProducts { get; }
+
+    DbSet<GlobalVehicle> GlobalVehicles { get; }
+
+    DbSet<Supplier> Suppliers { get; }
+
+    DbSet<SupplierProduct> SupplierProducts { get; }
+
+    DbSet<SupplierPrice> SupplierPrices { get; }
+
+    DbSet<VehicleFitment> VehicleFitments { get; }
+
+    DbSet<SupplierFitmentRecord> SupplierFitmentRecords { get; }
+
+    DbSet<ProductMatchReviewItem> ProductMatchReviewItems { get; }
+
+    DbSet<SupplierConnectorConfiguration> SupplierConnectorConfigurations { get; }
+
+    DbSet<SupplierConnectorImportRun> SupplierConnectorImportRuns { get; }
+
+    DbSet<CompanySupplierConnectorConfiguration> CompanySupplierConnectorConfigurations { get; }
+
+    DbSet<CompanySupplierConnectorImportRun> CompanySupplierConnectorImportRuns { get; }
+
+    DbSet<CompanySupplierPrice> CompanySupplierPrices { get; }
 
     DbSet<ManufacturerPart> ManufacturerParts { get; }
 

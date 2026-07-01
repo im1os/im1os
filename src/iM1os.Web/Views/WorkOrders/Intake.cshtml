@@ -1,0 +1,558 @@
+@model iM1os.Application.WorkOrders.WorkOrderIntakePage
+
+@{
+    ViewData["Title"] = "Service Intake";
+    var priorityOptions = new[] { "Low", "Normal", "High", "Urgent" };
+    var hasImportedVehicleTypes = Model.VehicleTypes.Count > 0;
+    var typeOptions = hasImportedVehicleTypes
+        ? Model.VehicleTypes
+        : new[] { "Street", "Off-Road", "ATV", "UTV", "PWC", "Snow", "Other" };
+    var contactOptions = new[] { "Phone", "Text", "Email" };
+    var page = new IM1PageModel(
+        "Service Intake",
+        "Service",
+        "Create the customer, unit, requested service, and first work order from a single intake flow.",
+        Breadcrumbs: new[]
+        {
+            new IM1BreadcrumbModel("Company", Url.Action("Dashboard", "Business")),
+            new IM1BreadcrumbModel("Service"),
+            new IM1BreadcrumbModel("Intake")
+        },
+        Toolbar: new IM1ToolbarModel(Actions: new[] { new IM1ActionModel("Work Orders", Url.Action("Index", "WorkOrders"), "secondary") }));
+}
+
+@await Html.PartialAsync("IM1Page", page)
+
+@if (TempData["WorkOrderError"] is string errorMessage)
+{
+    <div class="form-alert error">@errorMessage</div>
+}
+@if (TempData["WorkOrderStatus"] is string statusMessage)
+{
+    <div class="form-alert success">@statusMessage</div>
+}
+
+<section class="im1-page im1-intake-page">
+    @if (Model.VerifiedServiceAdvisor is null)
+    {
+        <form asp-action="VerifyIntakePin" method="post" class="im1-form im1-record-form im1-pin-gate">
+            <fieldset class="im1-form-section">
+                <legend>Employee PIN</legend>
+                <div class="im1-form-grid">
+                    <label>PIN
+                        <input name="pin" type="password" inputmode="numeric" minlength="4" maxlength="4" pattern="[0-9]{4}" autocomplete="off" required autofocus />
+                    </label>
+                    <div class="im1-form-actions">
+                        <button class="im1-button im1-button-primary" type="submit">Unlock Intake</button>
+                    </div>
+                </div>
+            </fieldset>
+        </form>
+    }
+    else
+    {
+    <form asp-action="CreateIntake" method="post" enctype="multipart/form-data" class="im1-form im1-record-form" data-intake-form data-type-filter-enabled="@hasImportedVehicleTypes.ToString().ToLowerInvariant()">
+        <input type="hidden" name="CustomerId" data-customer-id />
+        <input type="hidden" name="ServiceAdvisorEmployeeId" value="@Model.VerifiedServiceAdvisor.Id" />
+
+        <fieldset class="im1-form-section im1-intake-advisor-section">
+            <legend>Employee PIN</legend>
+            <div class="im1-intake-advisor-bar">
+                <span>Service Advisor</span>
+                <strong>@Model.VerifiedServiceAdvisor.DisplayName</strong>
+                <span class="im1-intake-countdown" data-intake-countdown>5:00</span>
+                <button class="im1-button im1-button-secondary" type="submit" formaction="@Url.Action("ClearIntakePin", "WorkOrders")" formmethod="post" formnovalidate>Switch Employee</button>
+            </div>
+        </fieldset>
+
+        <fieldset class="im1-form-section">
+            <legend>Customer Lookup</legend>
+            <div class="im1-form-grid">
+                <label class="im1-full-span">Search
+                    <span class="im1-inline-field">
+                        <input name="LookupQuery" data-customer-lookup-query autocomplete="off" placeholder="Phone, name, or email" />
+                        <button class="im1-button im1-button-secondary" type="button" data-customer-lookup-button>Search</button>
+                    </span>
+                </label>
+                <div class="im1-full-span im1-lookup-results" data-customer-lookup-results>No customer selected.</div>
+            </div>
+        </fieldset>
+
+        <fieldset class="im1-form-section">
+            <legend>Customer</legend>
+            <div class="im1-form-grid">
+                <label>First Name <input name="FirstName" data-first-name autocomplete="given-name" required /></label>
+                <label>Last Name <input name="LastName" data-last-name autocomplete="family-name" required /></label>
+                <label>Phone <input name="Phone" data-phone autocomplete="tel" required /></label>
+                <label>Email <input name="Email" data-email autocomplete="email" type="email" /></label>
+                <label>Preferred Contact
+                    <select name="PreferredContactMethod" data-preferred-contact>
+                        @foreach (var contact in contactOptions)
+                        {
+                            <option value="@contact">@contact</option>
+                        }
+                    </select>
+                </label>
+                <label class="im1-checkbox im1-checkbox-field">
+                    <input name="SmsConsent" type="checkbox" value="true" data-sms-consent required />
+                    SMS Consent
+                    <input name="SmsConsent" type="hidden" value="false" />
+                </label>
+                <label class="im1-checkbox im1-checkbox-field">
+                    <input name="TaxExempt" type="checkbox" value="true" data-tax-exempt />
+                    Tax Exempt
+                    <input name="TaxExempt" type="hidden" value="false" />
+                </label>
+                <label class="im1-full-span">Tax Exempt Number <input name="TaxExemptNumber" data-tax-exempt-number /></label>
+            </div>
+        </fieldset>
+
+        <fieldset class="im1-form-section">
+            <legend>Address</legend>
+            <div class="im1-form-grid">
+                <label>Address 1 <input name="AddressLine1" data-address-line1 autocomplete="address-line1" /></label>
+                <label>Address 2 <input name="AddressLine2" data-address-line2 autocomplete="address-line2" /></label>
+                <label>Postal Code
+                    <span class="im1-inline-field">
+                        <input name="PostalCode" data-postal-code autocomplete="postal-code" />
+                        <button class="im1-button im1-button-secondary" type="button" data-zip-lookup>Lookup ZIP</button>
+                    </span>
+                </label>
+                <label>City <input name="City" data-city autocomplete="address-level2" /></label>
+                <label>State <input name="Region" data-region autocomplete="address-level1" /></label>
+            </div>
+        </fieldset>
+
+        <fieldset class="im1-form-section">
+            <legend>Vehicle (Type, Year, Make, Model)</legend>
+            <div class="im1-form-grid">
+                <label class="im1-full-span">Saved Vehicles
+                    <select name="CustomerVehicleId" data-saved-vehicles>
+                        <option value="">No saved vehicles</option>
+                    </select>
+                </label>
+                <label>Type
+                    <select name="Type" data-vehicle-type required>
+                        @if (hasImportedVehicleTypes)
+                        {
+                            <option value="">Select Type</option>
+                        }
+                        @foreach (var type in typeOptions)
+                        {
+                            <option value="@type">@type</option>
+                        }
+                    </select>
+                </label>
+                <label>Year
+                    <select name="Year" data-year required disabled="@hasImportedVehicleTypes">
+                        <option value="">@(hasImportedVehicleTypes ? "Select Type" : "Select Year")</option>
+                        @if (!hasImportedVehicleTypes)
+                        {
+                            @foreach (var year in Model.Years)
+                            {
+                                <option value="@year">@year</option>
+                            }
+                        }
+                    </select>
+                </label>
+                <label>Make
+                    <select name="Make" data-make required disabled>
+                        <option value="">Select Year</option>
+                    </select>
+                </label>
+                <label>Model
+                    <select name="Model" data-model required disabled>
+                        <option value="">Select Make</option>
+                    </select>
+                </label>
+                <label>VIN <input name="Vin" data-vin /></label>
+                <label>Color <input name="Color" data-color /></label>
+                <label>Tag / Plate <input name="TagPlate" data-tag-plate /></label>
+                <label>Mileage In <input name="MileageIn" data-mileage-in type="number" min="0" step="0.1" /></label>
+                <label class="im1-full-span">Engine Serial / Notes <input name="EngineSerialNotes" data-engine-notes /></label>
+                <label class="im1-checkbox im1-full-span">
+                    <input name="BypassVehicleSelection" type="checkbox" value="true" data-bypass-vehicle />
+                    Bypass vehicle selection for now
+                    <input name="BypassVehicleSelection" type="hidden" value="false" />
+                </label>
+            </div>
+        </fieldset>
+
+        <fieldset class="im1-form-section">
+            <legend>Work Order</legend>
+            <div class="im1-form-grid">
+                <label>Priority
+                    <select name="Priority">
+                        @foreach (var priority in priorityOptions)
+                        {
+                            <option value="@priority" selected="@(priority == "Normal")">@priority</option>
+                        }
+                    </select>
+                </label>
+                <label>Promise Date <input name="PromiseDate" type="date" /></label>
+            </div>
+        </fieldset>
+
+        <fieldset class="im1-form-section">
+            <legend>Requested Service</legend>
+            <div class="im1-form-grid">
+                <label class="im1-full-span">Notes
+                    <textarea name="RequestedService" rows="5" required placeholder="What is the customer requesting?"></textarea>
+                </label>
+            </div>
+        </fieldset>
+
+        <fieldset class="im1-form-section">
+            <legend>Work Order Media</legend>
+            <div class="im1-form-grid">
+                <label>Add Photos or Videos <input name="mediaFiles" type="file" multiple accept="image/*,video/*" data-file-list="media" /></label>
+                <label>Add Photo <input name="photoFiles" type="file" multiple accept="image/*" data-file-list="photo" /></label>
+                <label>Add Video <input name="videoFiles" type="file" multiple accept="video/*" data-file-list="video" /></label>
+                <div class="im1-full-span im1-media-summary" data-media-summary>No files selected.</div>
+            </div>
+        </fieldset>
+
+        <div class="im1-form-actions">
+            <button class="im1-button im1-button-primary" type="submit">Create Work Order</button>
+        </div>
+    </form>
+    }
+</section>
+
+@section Scripts {
+    <script>
+        (() => {
+            const form = document.querySelector("[data-intake-form]");
+            if (!form) {
+                return;
+            }
+
+            const typeFilterEnabled = form.dataset.typeFilterEnabled === "true";
+            const lookupUrl = "@Url.Action("CustomerLookup", "WorkOrders")";
+            const clearPinUrl = "@Url.Action("ClearIntakePin", "WorkOrders")";
+            const yearsUrl = "@Url.Action("YmmYears", "WorkOrders")";
+            const makesUrl = "@Url.Action("YmmMakes", "WorkOrders")";
+            const modelsUrl = "@Url.Action("YmmModels", "WorkOrders")";
+            const fields = {
+                customerId: form.querySelector("[data-customer-id]"),
+                query: form.querySelector("[data-customer-lookup-query]"),
+                lookupButton: form.querySelector("[data-customer-lookup-button]"),
+                lookupResults: form.querySelector("[data-customer-lookup-results]"),
+                firstName: form.querySelector("[data-first-name]"),
+                lastName: form.querySelector("[data-last-name]"),
+                phone: form.querySelector("[data-phone]"),
+                email: form.querySelector("[data-email]"),
+                preferredContact: form.querySelector("[data-preferred-contact]"),
+                smsConsent: form.querySelector("[data-sms-consent]"),
+                taxExempt: form.querySelector("[data-tax-exempt]"),
+                taxExemptNumber: form.querySelector("[data-tax-exempt-number]"),
+                addressLine1: form.querySelector("[data-address-line1]"),
+                addressLine2: form.querySelector("[data-address-line2]"),
+                postalCode: form.querySelector("[data-postal-code]"),
+                city: form.querySelector("[data-city]"),
+                region: form.querySelector("[data-region]"),
+                savedVehicles: form.querySelector("[data-saved-vehicles]"),
+                type: form.querySelector("[data-vehicle-type]"),
+                year: form.querySelector("[data-year]"),
+                make: form.querySelector("[data-make]"),
+                model: form.querySelector("[data-model]"),
+                vin: form.querySelector("[data-vin]"),
+                color: form.querySelector("[data-color]"),
+                tagPlate: form.querySelector("[data-tag-plate]"),
+                mileageIn: form.querySelector("[data-mileage-in]"),
+                engineNotes: form.querySelector("[data-engine-notes]"),
+                bypassVehicle: form.querySelector("[data-bypass-vehicle]"),
+                mediaSummary: form.querySelector("[data-media-summary]")
+            };
+
+            const setValue = (field, value) => {
+                if (field) {
+                    field.value = value ?? "";
+                }
+            };
+
+            const clearOptions = (select, label) => {
+                select.innerHTML = "";
+                const option = document.createElement("option");
+                option.value = "";
+                option.textContent = label;
+                select.appendChild(option);
+            };
+
+            const populateOptions = (select, values, label) => {
+                clearOptions(select, label);
+                for (const value of values) {
+                    const option = document.createElement("option");
+                    option.value = value;
+                    option.textContent = value;
+                    select.appendChild(option);
+                }
+                select.disabled = values.length === 0;
+            };
+
+            const fillVehicle = vehicle => {
+                if (!vehicle) {
+                    return;
+                }
+
+                setValue(fields.type, vehicle.type);
+                setValue(fields.vin, vehicle.vin);
+                setValue(fields.color, vehicle.color);
+                setValue(fields.tagPlate, vehicle.tagPlate);
+                setValue(fields.mileageIn, vehicle.mileageIn);
+                setValue(fields.engineNotes, vehicle.notes);
+                if (vehicle.year) {
+                    loadYears(vehicle.year, vehicle.make, vehicle.model);
+                }
+            };
+
+            const populateSavedVehicles = vehicles => {
+                clearOptions(fields.savedVehicles, vehicles.length ? "Select saved vehicle" : "No saved vehicles");
+                for (const vehicle of vehicles) {
+                    const option = document.createElement("option");
+                    option.value = vehicle.id;
+                    option.textContent = vehicle.label;
+                    option._vehicle = vehicle;
+                    fields.savedVehicles.appendChild(option);
+                }
+            };
+
+            const applyCustomer = customer => {
+                fields.customerId.value = customer.id;
+                setValue(fields.firstName, customer.firstName);
+                setValue(fields.lastName, customer.lastName);
+                setValue(fields.phone, customer.phone);
+                setValue(fields.email, customer.email);
+                setValue(fields.preferredContact, customer.preferredContactMethod || "Phone");
+                fields.smsConsent.checked = !!customer.allowSmsMarketing;
+                fields.taxExempt.checked = !!customer.taxExempt;
+                setValue(fields.taxExemptNumber, customer.taxExemptNumber);
+                setValue(fields.addressLine1, customer.addressLine1);
+                setValue(fields.addressLine2, customer.addressLine2);
+                setValue(fields.postalCode, customer.postalCode);
+                setValue(fields.city, customer.city);
+                setValue(fields.region, customer.region);
+                populateSavedVehicles(customer.vehicles || []);
+                fields.lookupResults.textContent = `Selected ${customer.displayName}.`;
+            };
+
+            const prefillFromSearch = value => {
+                fields.customerId.value = "";
+                populateSavedVehicles([]);
+                const clean = value.trim();
+                if (clean.includes("@@")) {
+                    setValue(fields.email, clean);
+                } else if (clean.replace(/\D/g, "").length >= 7) {
+                    setValue(fields.phone, clean);
+                } else {
+                    const parts = clean.split(/\s+/);
+                    setValue(fields.firstName, parts[0] || "");
+                    setValue(fields.lastName, parts.slice(1).join(" "));
+                }
+                fields.lookupResults.textContent = "No match found. Fill in the customer fields below.";
+            };
+
+            const runCustomerLookup = async () => {
+                const query = fields.query.value.trim();
+                if (!query) {
+                    fields.lookupResults.textContent = "Enter a phone number, name, or email.";
+                    return;
+                }
+
+                const response = await fetch(`${lookupUrl}?query=${encodeURIComponent(query)}`);
+                const result = await response.json();
+                const matches = result.matches || [];
+                if (matches.length === 0) {
+                    prefillFromSearch(query);
+                    return;
+                }
+
+                if (matches.length === 1) {
+                    applyCustomer(matches[0]);
+                    return;
+                }
+
+                fields.lookupResults.innerHTML = "";
+                for (const match of matches) {
+                    const button = document.createElement("button");
+                    button.type = "button";
+                    button.className = "im1-button im1-button-secondary";
+                    button.textContent = `${match.displayName}${match.phone ? " - " + match.phone : ""}`;
+                    button.addEventListener("click", () => applyCustomer(match));
+                    fields.lookupResults.appendChild(button);
+                }
+            };
+
+            fields.lookupButton.addEventListener("click", runCustomerLookup);
+            fields.query.addEventListener("keydown", event => {
+                if (event.key === "Enter") {
+                    event.preventDefault();
+                    runCustomerLookup();
+                }
+            });
+            fields.phone.addEventListener("keydown", event => {
+                if (event.key === "Enter") {
+                    event.preventDefault();
+                    fields.query.value = fields.phone.value;
+                    runCustomerLookup();
+                }
+            });
+
+            fields.savedVehicles.addEventListener("change", () => {
+                const selected = fields.savedVehicles.selectedOptions[0];
+                fillVehicle(selected?._vehicle);
+            });
+
+            async function loadMakes(selectedMake, selectedModel) {
+                const vehicleType = fields.type.value;
+                const year = fields.year.value;
+                clearOptions(fields.model, "Select Make");
+                fields.model.disabled = true;
+                if (!year) {
+                    clearOptions(fields.make, "Select Year");
+                    fields.make.disabled = true;
+                    return;
+                }
+
+                const params = new URLSearchParams({ year });
+                if (typeFilterEnabled && vehicleType) {
+                    params.set("vehicleType", vehicleType);
+                }
+                const response = await fetch(`${makesUrl}?${params.toString()}`);
+                const makes = await response.json();
+                populateOptions(fields.make, makes, "Select Make");
+                if (selectedMake) {
+                    fields.make.value = selectedMake;
+                    await loadModels(selectedModel);
+                }
+            }
+
+            async function loadModels(selectedModel) {
+                const vehicleType = fields.type.value;
+                const year = fields.year.value;
+                const make = fields.make.value;
+                if (!year || !make) {
+                    clearOptions(fields.model, "Select Make");
+                    fields.model.disabled = true;
+                    return;
+                }
+
+                const params = new URLSearchParams({ year, make });
+                if (typeFilterEnabled && vehicleType) {
+                    params.set("vehicleType", vehicleType);
+                }
+                const response = await fetch(`${modelsUrl}?${params.toString()}`);
+                const models = await response.json();
+                populateOptions(fields.model, models, "Select Model");
+                if (selectedModel) {
+                    fields.model.value = selectedModel;
+                }
+            }
+
+            async function loadYears(selectedYear, selectedMake, selectedModel) {
+                const params = new URLSearchParams();
+                if (typeFilterEnabled && fields.type.value) {
+                    params.set("vehicleType", fields.type.value);
+                }
+                clearOptions(fields.make, "Select Year");
+                fields.make.disabled = true;
+                clearOptions(fields.model, "Select Make");
+                fields.model.disabled = true;
+                const response = await fetch(`${yearsUrl}?${params.toString()}`);
+                const years = await response.json();
+                populateOptions(fields.year, years, "Select Year");
+                if (selectedYear) {
+                    fields.year.value = selectedYear;
+                    await loadMakes(selectedMake, selectedModel);
+                }
+            }
+
+            fields.type.addEventListener("change", () => loadYears());
+            fields.year.addEventListener("change", () => loadMakes());
+            fields.make.addEventListener("change", () => loadModels());
+            fields.bypassVehicle.addEventListener("change", () => {
+                const bypassed = fields.bypassVehicle.checked;
+                for (const field of [fields.type, fields.year, fields.make, fields.model, fields.savedVehicles]) {
+                    field.disabled = bypassed;
+                    field.required = !bypassed && field !== fields.savedVehicles;
+                }
+            });
+
+            form.querySelector("[data-zip-lookup]").addEventListener("click", async () => {
+                const zip = fields.postalCode.value.trim();
+                if (!zip) {
+                    return;
+                }
+
+                const response = await fetch(`https://api.zippopotam.us/us/${encodeURIComponent(zip)}`);
+                if (!response.ok) {
+                    return;
+                }
+
+                const data = await response.json();
+                const place = data.places?.[0];
+                if (place) {
+                    fields.city.value = place["place name"] || "";
+                    fields.region.value = place["state abbreviation"] || "";
+                }
+            });
+
+            const updateMediaSummary = () => {
+                const files = Array.from(form.querySelectorAll("[data-file-list]"))
+                    .flatMap(input => Array.from(input.files || []).map(file => file.name));
+                fields.mediaSummary.textContent = files.length ? files.join(", ") : "No files selected.";
+            };
+            for (const input of form.querySelectorAll("[data-file-list]")) {
+                input.addEventListener("change", updateMediaSummary);
+            }
+
+            const countdown = document.querySelector("[data-intake-countdown]");
+            const antiForgeryToken = form.querySelector("input[name='__RequestVerificationToken']")?.value || "";
+            const idleLimitSeconds = 300;
+            let remainingSeconds = idleLimitSeconds;
+            let loggingOut = false;
+            const renderCountdown = () => {
+                if (!countdown) {
+                    return;
+                }
+
+                const minutes = Math.floor(remainingSeconds / 60);
+                const seconds = remainingSeconds % 60;
+                countdown.textContent = `${minutes}:${seconds.toString().padStart(2, "0")}`;
+            };
+            const clearIntakePin = async () => {
+                if (loggingOut) {
+                    return;
+                }
+
+                loggingOut = true;
+                try {
+                    await fetch(clearPinUrl, {
+                        method: "POST",
+                        credentials: "same-origin",
+                        headers: {
+                            "RequestVerificationToken": antiForgeryToken
+                        }
+                    });
+                } finally {
+                    window.location.href = "@Url.Action("Intake", "WorkOrders")";
+                }
+            };
+            const resetIdleTimer = () => {
+                remainingSeconds = idleLimitSeconds;
+                renderCountdown();
+            };
+            ["click", "input", "keydown", "pointermove", "touchstart"].forEach(eventName => {
+                document.addEventListener(eventName, resetIdleTimer, { passive: true });
+            });
+            window.setInterval(() => {
+                remainingSeconds -= 1;
+                renderCountdown();
+                if (remainingSeconds <= 0) {
+                    clearIntakePin();
+                }
+            }, 1000);
+            renderCountdown();
+        })();
+    </script>
+}

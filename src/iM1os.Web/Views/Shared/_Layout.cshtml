@@ -1,3 +1,4 @@
+@inject iM1os.Application.Platform.ITenantModuleEntitlementService TenantModuleEntitlements
 @{
     var currentController = ViewContext.RouteData.Values["controller"]?.ToString();
     var currentAction = ViewContext.RouteData.Values["action"]?.ToString();
@@ -13,9 +14,15 @@
         : "IM1 Platform";
     var brandController = isCustomerContext ? "Business" : isBusinessAuthPage ? "Account" : "Platform";
     var brandAction = isCustomerContext ? "Dashboard" : isBusinessAuthPage ? "Login" : "Dashboard";
-    var navigationItems = isCustomerContext
+    IReadOnlyCollection<IM1ShellNavigationItemModel> navigationItems = isCustomerContext
         ? IM1ShellNavigation.AppShell.CompanyItems
         : IM1ShellNavigation.AppShell.PlatformItems;
+    if (isCustomerContext &&
+        Guid.TryParse(User.FindFirst("organization_id")?.Value, out var navigationOrganizationId))
+    {
+        var enabledSupplierConnectorCodes = await TenantModuleEntitlements.GetEnabledSupplierConnectorCodesAsync(navigationOrganizationId, Context.RequestAborted);
+        navigationItems = IM1ShellNavigation.FilterCompanySupplierConnectors(navigationItems, enabledSupplierConnectorCodes);
+    }
 }
 <!DOCTYPE html>
 <html lang="en">

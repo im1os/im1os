@@ -38,7 +38,22 @@
     </article>
     <article class="im1-workspace-card span-4">
         <header class="im1-section-header"><div><h2>Modules Enabled</h2><p>Available company capabilities.</p></div></header>
-        <ul class="event-list">@foreach (var item in Model.ModulesEnabled) { <li>@item</li> }</ul>
+        <form asp-action="TenantModules" method="post" class="im1-settings-form">
+            @Html.AntiForgeryToken()
+            <input type="hidden" name="OrganizationId" value="@Model.Tenant.OrganizationId" />
+            <div class="module-grid">
+                @foreach (var option in Model.ModuleOptions)
+                {
+                    <label class="checkbox" title="@option.Description">
+                        <input type="checkbox" name="EnabledModules" value="@option.Key" checked="@option.IsEnabled" />
+                        @option.Label
+                    </label>
+                }
+            </div>
+            <footer class="im1-settings-actions">
+                <button class="secondary-action" type="submit">Save Modules</button>
+            </footer>
+        </form>
     </article>
     <article class="im1-workspace-card span-4">
         <header class="im1-section-header"><div><h2>Provisioning History</h2><p>Recent lifecycle movement.</p></div></header>

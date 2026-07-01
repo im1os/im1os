@@ -132,6 +132,13 @@ public sealed record IM1ShellNavigationConfiguration(
 
 public static class IM1ShellNavigation
 {
+    private static readonly IReadOnlyDictionary<string, string> CompanySupplierConnectorActions = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+    {
+        ["SupplierWpsConnector"] = "WPS",
+        ["SupplierPartsUnlimitedConnector"] = "PU",
+        ["SupplierTurn14Connector"] = "TURN14"
+    };
+
     public static IM1ShellNavigationConfiguration AppShell { get; } = new(
         PlatformItems:
         [
@@ -140,7 +147,8 @@ public static class IM1ShellNavigation
                 Icon: "AD",
                 Children:
                 [
-                    new("Dashboard", "Platform", "Dashboard", "DB")
+                    new("Dashboard", "Platform", "Dashboard", "DB"),
+                    new("Scheduler", "Platform", "Scheduler", "SC")
                 ]),
             new(
                 "Company Manager",
@@ -148,6 +156,16 @@ public static class IM1ShellNavigation
                 Children:
                 [
                     new("Companies", "Platform", "Tenants", "CO")
+                ]),
+            new(
+                "Suppliers",
+                Icon: "SU",
+                Children:
+                [
+                    new("Item Search", "Platform", "ItemSearch", "IS"),
+                    new("WPS", "Platform", "WpsConnector", "WP"),
+                    new("Turn14", "Platform", "Turn14Connector", "T14"),
+                    new("Parts Unlimited", "Platform", "PartsUnlimitedConnector", "PU")
                 ]),
             new(
                 "Marketing CMS",
@@ -168,11 +186,29 @@ public static class IM1ShellNavigation
                     new("Company Admin", "Business", "Administration", "CA")
                 ]),
             new(
+                "Suppliers",
+                Icon: "SU",
+                Children:
+                [
+                    new("Item Search", "Business", "SupplierItemSearch", "IS"),
+                    new("WPS", "Business", "SupplierWpsConnector", "WP"),
+                    new("Parts Unlimited", "Business", "SupplierPartsUnlimitedConnector", "PU"),
+                    new("Turn14", "Business", "SupplierTurn14Connector", "T14")
+                ]),
+            new(
                 "CRM",
                 Icon: "CR",
                 Children:
                 [
                     new("Customers", "Customers", "Index", "CU")
+                ]),
+            new(
+                "Service",
+                Icon: "SV",
+                Children:
+                [
+                    new("Intake", "WorkOrders", "Intake", "IN"),
+                    new("Work Orders", "WorkOrders", "Index", "WO")
                 ]),
             new(
                 "HR",
@@ -193,4 +229,40 @@ public static class IM1ShellNavigation
                     new("Performance Reviews", Icon: "PR")
                 ])
         ]);
+
+    public static IReadOnlyCollection<IM1ShellNavigationItemModel> FilterCompanySupplierConnectors(
+        IReadOnlyCollection<IM1ShellNavigationItemModel> items,
+        IReadOnlySet<string> enabledSupplierConnectorCodes)
+    {
+        var hasEnabledSupplierConnector = enabledSupplierConnectorCodes.Count > 0;
+        return items
+            .Select(item => FilterCompanySupplierGroup(item, enabledSupplierConnectorCodes, hasEnabledSupplierConnector))
+            .Where(item => item is not null)
+            .Select(item => item!)
+            .ToArray();
+    }
+
+    private static IM1ShellNavigationItemModel? FilterCompanySupplierGroup(
+        IM1ShellNavigationItemModel item,
+        IReadOnlySet<string> enabledSupplierConnectorCodes,
+        bool hasEnabledSupplierConnector)
+    {
+        if (!string.Equals(item.Label, "Suppliers", StringComparison.OrdinalIgnoreCase) || item.Children is null)
+        {
+            return item;
+        }
+
+        var children = item.Children
+            .Where(child =>
+                string.Equals(child.Action, "SupplierItemSearch", StringComparison.OrdinalIgnoreCase)
+                    ? hasEnabledSupplierConnector
+                    : child.Action is not null &&
+                        CompanySupplierConnectorActions.TryGetValue(child.Action, out var supplierCode) &&
+                        enabledSupplierConnectorCodes.Contains(supplierCode))
+            .ToArray();
+
+        return children.Length == 0
+            ? null
+            : item with { Children = children };
+    }
 }

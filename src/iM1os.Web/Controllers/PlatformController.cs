@@ -1,4 +1,5 @@
 using System.Security.Claims;
+using iM1os.Application.GlobalCatalog;
 using iM1os.Application.Platform;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.Cookies;
@@ -10,8 +11,15 @@ namespace iM1os.Web.Controllers;
 public sealed class PlatformController(
     IPlatformAuthenticationService platformAuthenticationService,
     ITenantManagerService tenantManagerService,
+    IPlatformSupplierConnectorService platformSupplierConnectorService,
+    ISupplierItemSearchService supplierItemSearchService,
+    IWpsLiveInventoryService wpsLiveInventoryService,
+    ITurn14LiveInventoryService turn14LiveInventoryService,
+    IPartsUnlimitedLiveInventoryService partsUnlimitedLiveInventoryService,
     ITenantProvisioningService tenantProvisioningService) : Controller
 {
+    private const int SupplierItemSearchPageSize = 25;
+
     [AllowAnonymous]
     [HttpGet]
     public IActionResult Login()
@@ -118,6 +126,301 @@ public sealed class PlatformController(
 
     [Authorize(Roles = "Platform Administrator")]
     [HttpGet]
+    public async Task<IActionResult> WpsConnector(CancellationToken cancellationToken)
+    {
+        return View(await platformSupplierConnectorService.GetWpsConnectorAsync(cancellationToken));
+    }
+
+    [Authorize(Roles = "Platform Administrator")]
+    [HttpGet]
+    public async Task<IActionResult> Turn14Connector(CancellationToken cancellationToken)
+    {
+        return View(await platformSupplierConnectorService.GetTurn14ConnectorAsync(cancellationToken));
+    }
+
+    [Authorize(Roles = "Platform Administrator")]
+    [HttpGet]
+    public async Task<IActionResult> PartsUnlimitedConnector(CancellationToken cancellationToken)
+    {
+        return View(await platformSupplierConnectorService.GetPartsUnlimitedConnectorAsync(cancellationToken));
+    }
+
+    [Authorize(Roles = "Platform Administrator")]
+    [HttpGet]
+    public async Task<IActionResult> Scheduler(CancellationToken cancellationToken)
+    {
+        return View(await platformSupplierConnectorService.GetGlobalSchedulerAsync(cancellationToken));
+    }
+
+    [Authorize(Roles = "Platform Administrator")]
+    [HttpGet]
+    public async Task<IActionResult> ItemSearch(string? query, string? supplierCode, string? vehicleType, int? year, string? make, string? model, bool searchExecuted, CancellationToken cancellationToken)
+    {
+        return View(await supplierItemSearchService.SearchAsync(new SupplierItemSearchRequest(query, supplierCode, vehicleType, year, make, model, SearchExecuted: searchExecuted), SupplierItemSearchPageSize, cancellationToken));
+    }
+
+    [Authorize(Roles = "Platform Administrator")]
+    [HttpGet]
+    public async Task<IActionResult> ItemSearchResults(string? query, string? supplierCode, string? vehicleType, int? year, string? make, string? model, bool searchExecuted, int offset, CancellationToken cancellationToken)
+    {
+        var page = await supplierItemSearchService.SearchAsync(new SupplierItemSearchRequest(query, supplierCode, vehicleType, year, make, model, offset, searchExecuted), SupplierItemSearchPageSize, cancellationToken);
+        return Json(new
+        {
+            page.TotalResults,
+            page.Offset,
+            page.PageSize,
+            page.HasMore,
+            NextOffset = page.Offset + page.Results.Count,
+            Results = page.Results.Select(x => new
+            {
+                x.SupplierProductId,
+                x.GlobalProductId,
+                x.SupplierCode,
+                x.SupplierName,
+                x.SupplierSku,
+                x.ManufacturerPartNumber,
+                x.Upc,
+                x.Brand,
+                x.Title,
+                x.Category,
+                x.Status,
+                x.FitmentRecordCount,
+                x.Msrp,
+                x.ActualCost,
+                x.ImageUrl,
+                FetchFitmentUrl = Url.Action(nameof(FetchItemFitment), new { x.SupplierProductId }),
+                InventoryUrl = x.SupplierCode switch
+                {
+                    "WPS" => Url.Action(nameof(WpsInventory), new { x.SupplierProductId }),
+                    "TURN14" => Url.Action(nameof(Turn14Inventory), new { x.SupplierProductId }),
+                    _ => null
+                },
+                InventoryBatchUrl = x.SupplierCode == "PU"
+                    ? Url.Action(nameof(PartsUnlimitedInventory))
+                    : null,
+                InventoryLabel = x.SupplierCode switch
+                {
+                    "WPS" => "WPS Warehouse Inventory",
+                    "TURN14" => "Turn14 Warehouse Inventory",
+                    "PU" => "Parts Unlimited Warehouse Inventory",
+                    _ => null
+                }
+            })
+        });
+    }
+
+    [Authorize(Roles = "Platform Administrator")]
+    [HttpGet]
+    public async Task<IActionResult> WpsInventory(Guid supplierProductId, CancellationToken cancellationToken)
+    {
+        return Json(await wpsLiveInventoryService.GetInventoryAsync(supplierProductId, cancellationToken));
+    }
+
+    [Authorize(Roles = "Platform Administrator")]
+    [HttpGet]
+    public async Task<IActionResult> Turn14Inventory(Guid supplierProductId, CancellationToken cancellationToken)
+    {
+        return Json(await turn14LiveInventoryService.GetInventoryAsync(supplierProductId, cancellationToken));
+    }
+
+    [Authorize(Roles = "Platform Administrator")]
+    [HttpGet]
+    public async Task<IActionResult> PartsUnlimitedInventory([FromQuery] Guid[] supplierProductIds, CancellationToken cancellationToken)
+    {
+        return Json(await partsUnlimitedLiveInventoryService.GetInventoryAsync(supplierProductIds.Take(SupplierItemSearchPageSize).ToArray(), cancellationToken));
+    }
+
+    [Authorize(Roles = "Platform Administrator")]
+    [HttpPost]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> FetchItemFitment(Guid supplierProductId, CancellationToken cancellationToken)
+    {
+        return Json(await platformSupplierConnectorService.QueueSupplierItemFitmentAsync(supplierProductId, PlatformUserId(), cancellationToken));
+    }
+
+    [Authorize(Roles = "Platform Administrator")]
+    [HttpPost]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> SaveWpsConnector(WpsConnectorSettingsRequest request, CancellationToken cancellationToken)
+    {
+        try
+        {
+            TempData["PlatformMessage"] = "WPS connector settings saved.";
+            await platformSupplierConnectorService.SaveWpsConnectorAsync(request, PlatformUserId(), cancellationToken);
+        }
+        catch (ArgumentException exception)
+        {
+            TempData["PlatformMessage"] = exception.Message;
+        }
+
+        return RedirectToAction(nameof(WpsConnector));
+    }
+
+    [Authorize(Roles = "Platform Administrator")]
+    [HttpPost]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> TestWpsConnector(CancellationToken cancellationToken)
+    {
+        var page = await platformSupplierConnectorService.TestWpsConnectionAsync(PlatformUserId(), cancellationToken);
+        TempData["PlatformMessage"] = page.Status.LastConnectionMessage;
+        return RedirectToAction(nameof(WpsConnector));
+    }
+
+    [Authorize(Roles = "Platform Administrator")]
+    [HttpPost]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> SaveTurn14Connector(Turn14ConnectorSettingsRequest request, CancellationToken cancellationToken)
+    {
+        try
+        {
+            TempData["PlatformMessage"] = "Turn14 connector settings saved.";
+            await platformSupplierConnectorService.SaveTurn14ConnectorAsync(request, PlatformUserId(), cancellationToken);
+        }
+        catch (ArgumentException exception)
+        {
+            TempData["PlatformMessage"] = exception.Message;
+        }
+
+        return RedirectToAction(nameof(Turn14Connector));
+    }
+
+    [Authorize(Roles = "Platform Administrator")]
+    [HttpPost]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> SavePartsUnlimitedConnector(PartsUnlimitedConnectorSettingsRequest request, CancellationToken cancellationToken)
+    {
+        try
+        {
+            TempData["PlatformMessage"] = "Parts Unlimited connector settings saved.";
+            await platformSupplierConnectorService.SavePartsUnlimitedConnectorAsync(request, PlatformUserId(), cancellationToken);
+        }
+        catch (ArgumentException exception)
+        {
+            TempData["PlatformMessage"] = exception.Message;
+        }
+
+        return RedirectToAction(nameof(PartsUnlimitedConnector));
+    }
+
+    [Authorize(Roles = "Platform Administrator")]
+    [HttpPost]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> TestTurn14Connector(CancellationToken cancellationToken)
+    {
+        var page = await platformSupplierConnectorService.TestTurn14ConnectionAsync(PlatformUserId(), cancellationToken);
+        TempData["PlatformMessage"] = page.Status.LastConnectionMessage;
+        return RedirectToAction(nameof(Turn14Connector));
+    }
+
+    [Authorize(Roles = "Platform Administrator")]
+    [HttpPost]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> TestPartsUnlimitedConnector(CancellationToken cancellationToken)
+    {
+        var page = await platformSupplierConnectorService.TestPartsUnlimitedConnectionAsync(PlatformUserId(), cancellationToken);
+        TempData["PlatformMessage"] = page.Status.LastConnectionMessage;
+        return RedirectToAction(nameof(PartsUnlimitedConnector));
+    }
+
+    [Authorize(Roles = "Platform Administrator")]
+    [HttpGet]
+    public IActionResult RefreshPartsUnlimitedBrandCache()
+    {
+        return RedirectToAction(nameof(PartsUnlimitedConnector));
+    }
+
+    [Authorize(Roles = "Platform Administrator")]
+    [HttpPost]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> RefreshPartsUnlimitedBrandCache(CancellationToken cancellationToken)
+    {
+        var page = await platformSupplierConnectorService.RefreshPartsUnlimitedBrandCacheAsync(PlatformUserId(), cancellationToken);
+        TempData["PlatformMessage"] = page.Status.LastConnectionMessage;
+        return RedirectToAction(nameof(PartsUnlimitedConnector));
+    }
+
+    [Authorize(Roles = "Platform Administrator")]
+    [HttpPost]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> ImportWpsMasterFile(WpsMasterFileImportRequest request, CancellationToken cancellationToken)
+    {
+        var page = await platformSupplierConnectorService.ImportWpsMasterFileAsync(request, PlatformUserId(), cancellationToken);
+        TempData["PlatformMessage"] = page.RecentImportRuns.FirstOrDefault()?.Message;
+        return RedirectToAction(nameof(WpsConnector));
+    }
+
+    [Authorize(Roles = "Platform Administrator")]
+    [HttpPost]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> ImportTurn14MasterFile(Turn14MasterFileImportRequest request, CancellationToken cancellationToken)
+    {
+        var page = await platformSupplierConnectorService.ImportTurn14MasterFileAsync(request, PlatformUserId(), cancellationToken);
+        TempData["PlatformMessage"] = page.RecentImportRuns.FirstOrDefault()?.Message;
+        return RedirectToAction(nameof(Turn14Connector));
+    }
+
+    [Authorize(Roles = "Platform Administrator")]
+    [HttpPost]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> ImportPartsUnlimitedMasterFile(PartsUnlimitedMasterFileImportRequest request, CancellationToken cancellationToken)
+    {
+        var page = await platformSupplierConnectorService.ImportPartsUnlimitedMasterFileAsync(request, PlatformUserId(), cancellationToken);
+        TempData["PlatformMessage"] = page.RecentImportRuns.FirstOrDefault()?.Message;
+        return RedirectToAction(nameof(PartsUnlimitedConnector));
+    }
+
+    [Authorize(Roles = "Platform Administrator")]
+    [HttpPost]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> ImportPartsUnlimitedBrandImages(PartsUnlimitedBrandImagesImportRequest request, CancellationToken cancellationToken)
+    {
+        var page = await platformSupplierConnectorService.ImportPartsUnlimitedBrandImagesAsync(request, PlatformUserId(), cancellationToken);
+        TempData["PlatformMessage"] = page.RecentImportRuns.FirstOrDefault()?.Message;
+        return RedirectToAction(nameof(PartsUnlimitedConnector));
+    }
+
+    [Authorize(Roles = "Platform Administrator")]
+    [HttpPost]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> ImportTurn14Fitment(Turn14FitmentImportRequest request, CancellationToken cancellationToken)
+    {
+        var page = await platformSupplierConnectorService.ImportTurn14FitmentAsync(request, PlatformUserId(), cancellationToken);
+        TempData["PlatformMessage"] = page.RecentImportRuns.FirstOrDefault()?.Message;
+        return RedirectToAction(nameof(Turn14Connector));
+    }
+
+    [Authorize(Roles = "Platform Administrator")]
+    [HttpPost]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> ImportTurn14MediaEnrichment(Turn14MediaEnrichmentImportRequest request, CancellationToken cancellationToken)
+    {
+        var page = await platformSupplierConnectorService.ImportTurn14MediaEnrichmentAsync(request, PlatformUserId(), cancellationToken);
+        TempData["PlatformMessage"] = page.RecentImportRuns.FirstOrDefault()?.Message;
+        return RedirectToAction(nameof(Turn14Connector));
+    }
+
+    [Authorize(Roles = "Platform Administrator")]
+    [HttpPost]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> ImportPartsUnlimitedFitment(PartsUnlimitedFitmentImportRequest request, CancellationToken cancellationToken)
+    {
+        var page = await platformSupplierConnectorService.ImportPartsUnlimitedFitmentAsync(request, PlatformUserId(), cancellationToken);
+        TempData["PlatformMessage"] = page.RecentImportRuns.FirstOrDefault()?.Message;
+        return RedirectToAction(nameof(PartsUnlimitedConnector));
+    }
+
+    [Authorize(Roles = "Platform Administrator")]
+    [HttpPost]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> ImportWpsFitment(WpsFitmentImportRequest request, CancellationToken cancellationToken)
+    {
+        var page = await platformSupplierConnectorService.ImportWpsFitmentAsync(request, PlatformUserId(), cancellationToken);
+        TempData["PlatformMessage"] = page.RecentImportRuns.FirstOrDefault()?.Message;
+        return RedirectToAction(nameof(WpsConnector));
+    }
+
+    [Authorize(Roles = "Platform Administrator")]
+    [HttpGet]
     public async Task<IActionResult> EditTenant(Guid organizationId, CancellationToken cancellationToken)
     {
         var detail = await tenantManagerService.GetTenantDetailAsync(organizationId, cancellationToken);
@@ -149,6 +452,17 @@ public sealed class PlatformController(
         }
 
         var detail = await tenantManagerService.UpdateTenantAsync(request, PlatformUserId(), cancellationToken);
+        return detail is null
+            ? NotFound()
+            : RedirectToAction(nameof(Tenant), new { organizationId = detail.Tenant.OrganizationId });
+    }
+
+    [Authorize(Roles = "Platform Administrator")]
+    [HttpPost]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> TenantModules(UpdateTenantModulesRequest request, CancellationToken cancellationToken)
+    {
+        var detail = await tenantManagerService.UpdateTenantModulesAsync(request, PlatformUserId(), cancellationToken);
         return detail is null
             ? NotFound()
             : RedirectToAction(nameof(Tenant), new { organizationId = detail.Tenant.OrganizationId });

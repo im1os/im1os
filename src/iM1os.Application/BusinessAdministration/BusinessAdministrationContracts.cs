@@ -7,7 +7,7 @@ public sealed record BusinessAdministrationWorkspace(
     IReadOnlyCollection<LocationDto> Locations,
     IReadOnlyCollection<EmployeeDto> Employees,
     IReadOnlyCollection<RoleDto> Roles,
-    IReadOnlyCollection<ConnectorPlaceholderDto> Connectors,
+    IReadOnlyCollection<ConnectorDto> Connectors,
     IReadOnlyCollection<string> RecentActivity,
     int SetupProgress,
     bool IsReadyForOperations);
@@ -106,7 +106,8 @@ public sealed record LaborConfigurationRequest(
     decimal EmergencyRate,
     decimal WeekendRate,
     decimal EnvironmentalFee,
-    decimal ShopSuppliesPercent);
+    decimal ShopSuppliesPercent,
+    bool LaborLineItemsTaxable);
 
 public sealed record TaxConfigurationRequest(decimal DefaultTaxRate, string RegionalOverridesJson);
 
@@ -124,10 +125,47 @@ public sealed record BusinessConfigurationDto(
     decimal WeekendRate,
     decimal EnvironmentalFee,
     decimal ShopSuppliesPercent,
+    bool LaborLineItemsTaxable,
     decimal DefaultTaxRate,
     string RegionalTaxOverridesJson,
     string NumberSequencesJson,
     string NotificationPreferencesJson,
     string DepartmentsJson);
 
-public sealed record ConnectorPlaceholderDto(string Name, string Category, string Status);
+public sealed record ConnectorDto(
+    string Key,
+    string Name,
+    string Category,
+    string Status,
+    string Description,
+    bool IsEnabled,
+    string SyncCadence,
+    DateTimeOffset? LastSyncAtUtc,
+    IReadOnlyCollection<string> Capabilities,
+    WpsConnectorConfigurationDto? WpsConfiguration);
+
+public sealed record WpsConnectorConfigurationDto(
+    string DealerNumber,
+    string Username,
+    string Endpoint,
+    string PriceCode,
+    string DefaultWarehouse,
+    bool ImportCatalog,
+    bool ImportInventory,
+    bool SubmitPurchaseOrders,
+    bool UseSandbox,
+    string CredentialStatus);
+
+public sealed record SaveWpsConnectorRequest(
+    string? DealerNumber,
+    string? Username,
+    string? ApiPassword,
+    string? Endpoint,
+    string? PriceCode,
+    string? DefaultWarehouse,
+    bool ImportCatalog,
+    bool ImportInventory,
+    bool SubmitPurchaseOrders,
+    bool UseSandbox,
+    string? SyncCadence,
+    string? Status);

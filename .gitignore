@@ -37,6 +37,8 @@ build/
 .env
 .env.*
 !.env.example
+.partsu.env
+.turn14-docs.env
 
 # OS files
 Thumbs.db

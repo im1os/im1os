@@ -1,0 +1,603 @@
+@model iM1os.Application.GlobalCatalog.SupplierItemSearchPage
+
+@{
+    ViewData["Title"] = "Company Item Search";
+    var organizationId = ViewBag.OrganizationId as Guid?;
+    var routeOrganizationId = User.FindFirst("platform_user_id") is null ? null : organizationId;
+    var enabledSupplierCodes = ViewBag.CompanySupplierConnectorCodes as IReadOnlySet<string> ?? new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+    var supplierActions = new List<IM1ActionModel>();
+    if (enabledSupplierCodes.Contains("WPS"))
+    {
+        supplierActions.Add(new IM1ActionModel("WPS", Url.Action("SupplierWpsConnector", "Business", new { organizationId = routeOrganizationId }), "secondary"));
+    }
+
+    if (enabledSupplierCodes.Contains("PU"))
+    {
+        supplierActions.Add(new IM1ActionModel("Parts Unlimited", Url.Action("SupplierPartsUnlimitedConnector", "Business", new { organizationId = routeOrganizationId }), "secondary"));
+    }
+
+    if (enabledSupplierCodes.Contains("TURN14"))
+    {
+        supplierActions.Add(new IM1ActionModel("Turn14", Url.Action("SupplierTurn14Connector", "Business", new { organizationId = routeOrganizationId }), "secondary"));
+    }
+
+    var hero = new IM1WorkspaceHeroModel(
+        "Item Search",
+        "Company Suppliers / Catalog",
+        "Search supplier items and compare platform dealer cost to company actual cost.",
+        new[]
+        {
+            new IM1WorkspaceStatModel("Results", Model.IsSearchExecuted ? Model.TotalResults.ToString() : "Ready", string.IsNullOrWhiteSpace(Model.Query) ? "Use text or YMM" : Model.Query),
+            new IM1WorkspaceStatModel("Pricing", "Actual Cost", "Company scoped")
+        },
+        supplierActions,
+        "Read-only supplier item lookup");
+
+    static string FormatCurrency(decimal? value)
+    {
+        if (value is null)
+        {
+            return "-";
+        }
+
+        var amount = value.Value;
+        var prefix = amount < 0 ? "-$" : "$";
+        return $"{prefix}{Math.Abs(amount).ToString("N2", System.Globalization.CultureInfo.InvariantCulture)}";
+    }
+}
+
+<nav class="im1-breadcrumbs" aria-label="Breadcrumb">
+    <span>Company Suppliers</span>
+    <span>Catalog</span>
+    <span>Item Search</span>
+</nav>
+
+@await Html.PartialAsync("IM1WorkspaceHero", hero)
+
+<section class="im1-settings-panel">
+    <header class="im1-section-header">
+        <div>
+            <h2>Search Items</h2>
+            <p>Find supplier catalog rows by supplier SKU, MFG part number, UPC, title, or year/make/model fitment.</p>
+        </div>
+    </header>
+    <div class="im1-inline-action-bar im1-configured-suppliers-bar">
+        <strong>Enabled suppliers</strong>
+        @if (Model.ConfiguredSuppliers.Count == 0)
+        {
+            <span>No company suppliers enabled.</span>
+        }
+        else
+        {
+            @foreach (var supplier in Model.ConfiguredSuppliers)
+            {
+                <span class="im1-connector-status @(supplier.IsConfigured && supplier.IsEnabled ? "im1-connector-status-configured" : "im1-connector-status-unconfigured")">
+                    <span aria-hidden="true">@(supplier.IsConfigured && supplier.IsEnabled ? "✓" : "✕")</span>
+                    <span>@supplier.Code</span>
+                </span>
+            }
+        }
+    </div>
+
+    <form class="im1-item-search-form im1-item-search-form-ymm" asp-action="SupplierItemSearch" asp-route-organizationId="@routeOrganizationId" method="get">
+        <input type="hidden" name="searchExecuted" value="true" />
+        @if (routeOrganizationId is not null)
+        {
+            <input type="hidden" name="organizationId" value="@routeOrganizationId" />
+        }
+        <label class="im1-field im1-field-wide">
+            <span>Search</span>
+            <input name="query" value="@Model.Query" placeholder="SKU, MFG Part#, title, or UPC" autocomplete="off" />
+        </label>
+        <label class="im1-field">
+            <span>Supplier</span>
+            <select name="supplierCode">
+                <option value="">All suppliers</option>
+                @foreach (var supplier in Model.AvailableSuppliers)
+                {
+                    <option value="@supplier.Code" selected="@(string.Equals(Model.SupplierCode, supplier.Code, StringComparison.OrdinalIgnoreCase))">@supplier.Name</option>
+                }
+            </select>
+        </label>
+        <label class="im1-field">
+            <span>Type</span>
+            <select name="vehicleType" data-ymm-parent>
+                <option value="">Any type</option>
+                @foreach (var vehicleType in Model.AvailableVehicleTypes)
+                {
+                    <option value="@vehicleType" selected="@(string.Equals(Model.VehicleType, vehicleType, StringComparison.OrdinalIgnoreCase))">@vehicleType</option>
+                }
+            </select>
+        </label>
+        <label class="im1-field">
+            <span>Year</span>
+            <select name="year" data-ymm-parent>
+                <option value="">Any year</option>
+                @foreach (var year in Model.AvailableYears)
+                {
+                    <option value="@year" selected="@(Model.Year == year)">@year</option>
+                }
+            </select>
+        </label>
+        <label class="im1-field">
+            <span>Make</span>
+            <select name="make" data-ymm-parent disabled="@(Model.Year is null)">
+                <option value="">Any make</option>
+                @foreach (var make in Model.AvailableMakes)
+                {
+                    <option value="@make" selected="@(string.Equals(Model.Make, make, StringComparison.OrdinalIgnoreCase))">@make</option>
+                }
+            </select>
+        </label>
+        <label class="im1-field">
+            <span>Model</span>
+            <select name="model" disabled="@(Model.Year is null || string.IsNullOrWhiteSpace(Model.Make))">
+                <option value="">Any model</option>
+                @foreach (var vehicleModel in Model.AvailableModels)
+                {
+                    <option value="@vehicleModel" selected="@(string.Equals(Model.Model, vehicleModel, StringComparison.OrdinalIgnoreCase))">@vehicleModel</option>
+                }
+            </select>
+        </label>
+        <button class="im1-button im1-button-primary" type="submit">Search</button>
+        <a class="im1-button im1-button-secondary" asp-action="SupplierItemSearch" asp-route-organizationId="@routeOrganizationId">Reset</a>
+    </form>
+</section>
+
+<section class="im1-settings-panel">
+    @Html.AntiForgeryToken()
+    <header class="im1-section-header">
+        <div>
+            <h2>Items</h2>
+            <p>Read-only supplier catalog matches with company actual cost.</p>
+        </div>
+    </header>
+
+    @if (!Model.IsSearchExecuted)
+    {
+        <p class="im1-empty-state">Enter a search, choose a supplier, or select a full year/make/model fitment, then run the search.</p>
+    }
+    else if (Model.Results.Count == 0)
+    {
+        <p class="im1-empty-state">No supplier items matched this search.</p>
+    }
+    else
+    {
+        <div class="im1-item-result-list"
+             data-item-results
+             data-results-url="@Url.Action("SupplierItemSearchResults", new { organizationId = routeOrganizationId })"
+             data-next-offset="@(Model.Offset + Model.Results.Count)"
+             data-has-more="@Model.HasMore.ToString().ToLowerInvariant()">
+            @foreach (var item in Model.Results)
+            {
+                <article class="im1-item-result">
+                    <div class="im1-item-result-image">
+                        @if (!string.IsNullOrWhiteSpace(item.ImageUrl))
+                        {
+                            <img src="@item.ImageUrl" alt="" loading="lazy" referrerpolicy="no-referrer" />
+                        }
+                        else
+                        {
+                            <span>No Image</span>
+                        }
+                    </div>
+                    <div class="im1-item-result-body">
+                        <div class="im1-item-result-title">
+                            <strong>@item.Title</strong>
+                            <span>@item.Brand</span>
+                        </div>
+                        <dl>
+                            <div>
+                                <dt>Supplier</dt>
+                                <dd>@item.SupplierCode</dd>
+                            </div>
+                            <div>
+                                <dt>SKU</dt>
+                                <dd>@item.SupplierSku</dd>
+                            </div>
+                            <div>
+                                <dt>MFG Part#</dt>
+                                <dd>@(item.ManufacturerPartNumber ?? "-")</dd>
+                            </div>
+                            <div>
+                                <dt>UPC</dt>
+                                <dd>@(item.Upc ?? "-")</dd>
+                            </div>
+                            <div>
+                                <dt>Status</dt>
+                                <dd>@item.Status</dd>
+                            </div>
+                            <div>
+                                <dt>Fitment</dt>
+                                <dd class="im1-fitment-cell">
+                                    <span>@item.FitmentRecordCount.ToString("N0") records</span>
+                                    <button class="im1-fitment-refresh-button" type="button" title="Fetch fitment" aria-label="Fetch fitment for @item.SupplierSku" data-fetch-fitment-url="@Url.Action("SupplierFetchItemFitment", new { supplierProductId = item.SupplierProductId, organizationId = routeOrganizationId })">
+                                        <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                                            <path d="M17 1v5h-5"></path>
+                                            <path d="M20 11a8 8 0 0 0-14.9-4"></path>
+                                            <path d="M7 23v-5h5"></path>
+                                            <path d="M4 13a8 8 0 0 0 14.9 4"></path>
+                                        </svg>
+                                    </button>
+                                    <span class="im1-fitment-fetch-status" data-fitment-fetch-status></span>
+                                </dd>
+                            </div>
+                            <div>
+                                <dt>MSRP</dt>
+                                <dd>@FormatCurrency(item.Msrp)</dd>
+                            </div>
+                            <div>
+                                <dt>Actual Cost</dt>
+                                <dd>@FormatCurrency(item.ActualCost)</dd>
+                            </div>
+                            <div>
+                                <dt>Category</dt>
+                                <dd>@(item.Category ?? "-")</dd>
+                            </div>
+                        </dl>
+                        @if (item.SupplierCode == "WPS")
+                        {
+                            <section class="im1-live-inventory" data-inventory-url="@Url.Action("SupplierWpsInventory", new { supplierProductId = item.SupplierProductId, organizationId = routeOrganizationId })">
+                                <header>
+                                    <strong>WPS Warehouse Inventory</strong>
+                                    <span>Loading live inventory...</span>
+                                </header>
+                                <div class="im1-live-inventory-grid"></div>
+                            </section>
+                        }
+                        @if (item.SupplierCode == "TURN14")
+                        {
+                            <section class="im1-live-inventory" data-inventory-url="@Url.Action("SupplierTurn14Inventory", new { supplierProductId = item.SupplierProductId, organizationId = routeOrganizationId })">
+                                <header>
+                                    <strong>Turn14 Warehouse Inventory</strong>
+                                    <span>Loading live inventory...</span>
+                                </header>
+                                <div class="im1-live-inventory-grid"></div>
+                            </section>
+                        }
+                        @if (item.SupplierCode == "PU")
+                        {
+                            <section class="im1-live-inventory" data-inventory-batch-url="@Url.Action("SupplierPartsUnlimitedInventory", new { organizationId = routeOrganizationId })" data-supplier-product-id="@item.SupplierProductId">
+                                <header>
+                                    <strong>Parts Unlimited Warehouse Inventory</strong>
+                                    <span>Loading live inventory...</span>
+                                </header>
+                                <div class="im1-live-inventory-grid"></div>
+                            </section>
+                        }
+                    </div>
+                </article>
+            }
+        </div>
+        <div class="im1-infinite-scroll-status" data-scroll-status>
+            @(Model.HasMore ? "Load more items" : "All loaded items are shown.")
+        </div>
+    }
+</section>
+
+@section Scripts {
+    <script>
+        (() => {
+            const searchForm = document.querySelector(".im1-item-search-form-ymm");
+            if (searchForm) {
+                const vehicleType = searchForm.querySelector("[name='vehicleType']");
+                const year = searchForm.querySelector("[name='year']");
+                const make = searchForm.querySelector("[name='make']");
+                const model = searchForm.querySelector("[name='model']");
+                vehicleType?.addEventListener("change", () => {
+                    if (year) year.value = "";
+                    if (make) make.value = "";
+                    if (model) model.value = "";
+                    searchForm.submit();
+                });
+                year?.addEventListener("change", () => {
+                    if (make) make.value = "";
+                    if (model) model.value = "";
+                    searchForm.submit();
+                });
+                make?.addEventListener("change", () => {
+                    if (model) model.value = "";
+                    searchForm.submit();
+                });
+            }
+
+            const formatCurrency = (value) => {
+                if (value === null || value === undefined) return "-";
+                const amount = Number(value);
+                if (!Number.isFinite(amount)) return "-";
+                return `${amount < 0 ? "-$" : "$"}${Math.abs(amount).toFixed(2)}`;
+            };
+            const valueOrDash = (value) => value === null || value === undefined || value === "" ? "-" : value;
+            const delay = (milliseconds) => new Promise((resolve) => window.setTimeout(resolve, milliseconds));
+            const antiForgeryToken = document.querySelector("input[name='__RequestVerificationToken']")?.value || "";
+            const wireFitmentButtons = (scope = document) => {
+                scope.querySelectorAll("[data-fetch-fitment-url]").forEach((button) => {
+                    if (button.dataset.fitmentButtonWired === "true") return;
+                    button.dataset.fitmentButtonWired = "true";
+                    button.addEventListener("click", async () => {
+                        const status = button.parentElement?.querySelector("[data-fitment-fetch-status]");
+                        button.disabled = true;
+                        if (status) status.textContent = "Queueing...";
+                        try {
+                            const response = await fetch(button.dataset.fetchFitmentUrl, {
+                                method: "POST",
+                                credentials: "same-origin",
+                                headers: {
+                                    "Accept": "application/json",
+                                    "RequestVerificationToken": antiForgeryToken
+                                }
+                            });
+                            if (!response.ok) {
+                                if (status) status.textContent = `Could not queue fitment (${response.status}).`;
+                                return;
+                            }
+
+                            const result = await response.json();
+                            if (status) status.textContent = result.message || (result.queued ? "Fitment queued." : "Could not queue fitment.");
+                        } catch {
+                            if (status) status.textContent = "Could not queue fitment.";
+                        } finally {
+                            button.disabled = false;
+                        }
+                    });
+                });
+            };
+            const renderInventoryResult = (panel, result, emptyMessage) => {
+                const status = panel.querySelector("header span");
+                const grid = panel.querySelector(".im1-live-inventory-grid");
+                if (!result?.isAvailable) {
+                    status.textContent = result?.message || "Inventory unavailable.";
+                    return;
+                }
+
+                const warehouses = result.warehouses || [];
+                if (warehouses.length === 0) {
+                    status.textContent = result.message || emptyMessage;
+                    return;
+                }
+
+                status.textContent = result.message || "Live";
+                grid.replaceChildren(...warehouses.map((warehouse) => {
+                    const row = document.createElement("div");
+                    row.className = "im1-live-inventory-row";
+
+                    const label = document.createElement("span");
+                    label.textContent = warehouse.warehouseName || warehouse.warehouseCode || "Warehouse";
+
+                    const quantity = document.createElement("strong");
+                    quantity.textContent = warehouse.quantityDisplay || "-";
+
+                    row.append(label, quantity);
+                    return row;
+                }));
+            };
+            const loadInventory = async (panel) => {
+                if (!panel || panel.dataset.inventoryLoaded === "true") return;
+                panel.dataset.inventoryLoaded = "true";
+                const status = panel.querySelector("header span");
+                try {
+                    const response = await fetch(panel.dataset.inventoryUrl, {
+                        credentials: "same-origin",
+                        headers: { "Accept": "application/json" }
+                    });
+                    if (!response.ok) {
+                        status.textContent = `Inventory unavailable (${response.status}).`;
+                        return;
+                    }
+
+                    const result = await response.json();
+                    renderInventoryResult(panel, result, "No warehouse inventory returned.");
+                } catch {
+                    status.textContent = "Inventory unavailable.";
+                }
+            };
+            const loadPartsUnlimitedInventoryPanels = async (scope = document) => {
+                const panels = [...scope.querySelectorAll("[data-inventory-batch-url]")]
+                    .filter((panel) => panel.dataset.inventoryLoaded !== "true");
+                const panelsByUrl = new Map();
+                panels.forEach((panel) => {
+                    const url = panel.dataset.inventoryBatchUrl;
+                    if (!url) return;
+                    if (!panelsByUrl.has(url)) panelsByUrl.set(url, []);
+                    panelsByUrl.get(url).push(panel);
+                });
+
+                for (const [batchUrl, batchPanels] of panelsByUrl) {
+                    for (let index = 0; index < batchPanels.length; index += 25) {
+                        const chunk = batchPanels.slice(index, index + 25);
+                        const url = new URL(batchUrl, window.location.origin);
+                        chunk.forEach((panel) => {
+                            panel.dataset.inventoryLoaded = "true";
+                            url.searchParams.append("supplierProductIds", panel.dataset.supplierProductId);
+                        });
+
+                        try {
+                            const response = await fetch(url.toString(), {
+                                credentials: "same-origin",
+                                headers: { "Accept": "application/json" }
+                            });
+                            if (!response.ok) {
+                                chunk.forEach((panel) => {
+                                    panel.querySelector("header span").textContent = `Inventory unavailable (${response.status}).`;
+                                });
+                                continue;
+                            }
+
+                            const result = await response.json();
+                            const items = new Map((result.items || []).map((item) => [item.supplierProductId, item]));
+                            chunk.forEach((panel) => {
+                                const item = items.get(panel.dataset.supplierProductId);
+                                if (item) {
+                                    renderInventoryResult(panel, item, "No Parts Unlimited warehouse inventory returned.");
+                                } else {
+                                    panel.querySelector("header span").textContent = result.message || "Inventory unavailable.";
+                                }
+                            });
+                        } catch {
+                            chunk.forEach((panel) => {
+                                panel.querySelector("header span").textContent = "Inventory unavailable.";
+                            });
+                        }
+
+                        await delay(250);
+                    }
+                }
+            };
+            const loadInventoryPanels = async (scope = document) => {
+                await loadPartsUnlimitedInventoryPanels(scope);
+                const inventoryPanels = scope.querySelectorAll("[data-inventory-url]");
+                for (const panel of inventoryPanels) {
+                    await loadInventory(panel);
+                    await delay(250);
+                }
+            };
+            const createMetric = (label, value) => {
+                const wrapper = document.createElement("div");
+                const term = document.createElement("dt");
+                const description = document.createElement("dd");
+                term.textContent = label;
+                if (value instanceof Node) {
+                    description.append(value);
+                } else {
+                    description.textContent = value;
+                }
+                wrapper.append(term, description);
+                return wrapper;
+            };
+            const createFitmentValue = (item) => {
+                const wrapper = document.createElement("span");
+                wrapper.className = "im1-fitment-cell";
+                const count = document.createElement("span");
+                const fitmentCount = item.fitmentRecordCount?.toLocaleString?.() ?? item.fitmentRecordCount ?? 0;
+                count.textContent = `${fitmentCount} records`;
+                wrapper.append(count);
+                if (item.fetchFitmentUrl) {
+                    const fitmentButton = document.createElement("button");
+                    fitmentButton.className = "im1-fitment-refresh-button";
+                    fitmentButton.type = "button";
+                    fitmentButton.title = "Fetch fitment";
+                    fitmentButton.setAttribute("aria-label", `Fetch fitment for ${item.supplierSku || "this item"}`);
+                    fitmentButton.dataset.fetchFitmentUrl = item.fetchFitmentUrl;
+                    fitmentButton.innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M17 1v5h-5"></path><path d="M20 11a8 8 0 0 0-14.9-4"></path><path d="M7 23v-5h5"></path><path d="M4 13a8 8 0 0 0 14.9 4"></path></svg>';
+                    const fitmentStatus = document.createElement("span");
+                    fitmentStatus.className = "im1-fitment-fetch-status";
+                    fitmentStatus.dataset.fitmentFetchStatus = "";
+                    wrapper.append(fitmentButton, fitmentStatus);
+                }
+                return wrapper;
+            };
+            const createInventoryPanel = (item) => {
+                if ((!item.inventoryUrl && !item.inventoryBatchUrl) || !item.inventoryLabel) return null;
+                const section = document.createElement("section");
+                section.className = "im1-live-inventory";
+                if (item.inventoryUrl) section.dataset.inventoryUrl = item.inventoryUrl;
+                if (item.inventoryBatchUrl) {
+                    section.dataset.inventoryBatchUrl = item.inventoryBatchUrl;
+                    section.dataset.supplierProductId = item.supplierProductId;
+                }
+                const header = document.createElement("header");
+                const title = document.createElement("strong");
+                const status = document.createElement("span");
+                title.textContent = item.inventoryLabel;
+                status.textContent = "Loading live inventory...";
+                header.append(title, status);
+                const grid = document.createElement("div");
+                grid.className = "im1-live-inventory-grid";
+                section.append(header, grid);
+                return section;
+            };
+            const createItemResult = (item) => {
+                const article = document.createElement("article");
+                article.className = "im1-item-result";
+
+                const image = document.createElement("div");
+                image.className = "im1-item-result-image";
+                if (item.imageUrl) {
+                    const img = document.createElement("img");
+                    img.src = item.imageUrl;
+                    img.alt = "";
+                    img.loading = "lazy";
+                    img.referrerPolicy = "no-referrer";
+                    image.append(img);
+                } else {
+                    const placeholder = document.createElement("span");
+                    placeholder.textContent = "No Image";
+                    image.append(placeholder);
+                }
+
+                const body = document.createElement("div");
+                body.className = "im1-item-result-body";
+                const heading = document.createElement("div");
+                heading.className = "im1-item-result-title";
+                const title = document.createElement("strong");
+                const brand = document.createElement("span");
+                title.textContent = item.title || "-";
+                brand.textContent = item.brand || "";
+                heading.append(title, brand);
+
+                const metrics = document.createElement("dl");
+                metrics.append(
+                    createMetric("Supplier", item.supplierCode),
+                    createMetric("SKU", item.supplierSku),
+                    createMetric("MFG Part#", valueOrDash(item.manufacturerPartNumber)),
+                    createMetric("UPC", valueOrDash(item.upc)),
+                    createMetric("Status", valueOrDash(item.status)),
+                    createMetric("Fitment", createFitmentValue(item)),
+                    createMetric("MSRP", formatCurrency(item.msrp)),
+                    createMetric("Actual Cost", formatCurrency(item.actualCost)),
+                    createMetric("Category", valueOrDash(item.category)));
+                body.append(heading, metrics);
+                const inventory = createInventoryPanel(item);
+                if (inventory) body.append(inventory);
+                article.append(image, body);
+                return article;
+            };
+            const resultList = document.querySelector("[data-item-results]");
+            const scrollStatus = document.querySelector("[data-scroll-status]");
+            let loadingResults = false;
+            const loadMoreResults = async () => {
+                if (!resultList || loadingResults || resultList.dataset.hasMore !== "true") return;
+                loadingResults = true;
+                if (scrollStatus) scrollStatus.textContent = "Loading more items...";
+                const params = new URLSearchParams(window.location.search);
+                params.set("offset", resultList.dataset.nextOffset || "0");
+                try {
+                    const response = await fetch(`${resultList.dataset.resultsUrl}?${params.toString()}`, {
+                        credentials: "same-origin",
+                        headers: { "Accept": "application/json" }
+                    });
+                    if (!response.ok) {
+                        if (scrollStatus) scrollStatus.textContent = `Could not load more items (${response.status}).`;
+                        return;
+                    }
+
+                    const page = await response.json();
+                    const items = page.results || [];
+                    const fragment = document.createDocumentFragment();
+                    items.forEach((item) => fragment.append(createItemResult(item)));
+                    resultList.append(fragment);
+                    wireFitmentButtons(resultList);
+                    resultList.dataset.nextOffset = page.nextOffset?.toString() || resultList.dataset.nextOffset;
+                    resultList.dataset.hasMore = page.hasMore ? "true" : "false";
+                    if (scrollStatus) scrollStatus.textContent = page.hasMore ? "Load more items" : "All loaded items are shown.";
+                    await loadInventoryPanels(resultList);
+                } catch {
+                    if (scrollStatus) scrollStatus.textContent = "Could not load more items.";
+                } finally {
+                    loadingResults = false;
+                }
+            };
+            if (scrollStatus && resultList?.dataset.hasMore === "true" && "IntersectionObserver" in window) {
+                const observer = new IntersectionObserver((entries) => {
+                    if (entries.some((entry) => entry.isIntersecting)) {
+                        loadMoreResults();
+                    }
+                }, { rootMargin: "600px" });
+                observer.observe(scrollStatus);
+            }
+            scrollStatus?.addEventListener("click", loadMoreResults);
+            wireFitmentButtons();
+            loadInventoryPanels();
+        })();
+    </script>
+}

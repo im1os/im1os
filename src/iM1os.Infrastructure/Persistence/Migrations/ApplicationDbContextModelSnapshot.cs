@@ -1127,6 +1127,1044 @@ namespace iM1os.Infrastructure.Persistence.Migrations
                     b.ToTable("employee_documents", "platform");
                 });
 
+            modelBuilder.Entity("iM1os.Domain.GlobalCatalog.CompanySupplierConnectorConfiguration", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("ApiKey")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)");
+
+                    b.Property<string>("ApiSecretProtected")
+                        .HasMaxLength(1000)
+                        .HasColumnType("character varying(1000)");
+
+                    b.Property<string>("AuthMode")
+                        .IsRequired()
+                        .HasMaxLength(80)
+                        .HasColumnType("character varying(80)");
+
+                    b.Property<string>("BaseApiUrl")
+                        .HasMaxLength(1000)
+                        .HasColumnType("character varying(1000)");
+
+                    b.Property<string>("ConnectorKey")
+                        .IsRequired()
+                        .HasMaxLength(80)
+                        .HasColumnType("character varying(80)");
+
+                    b.Property<DateTimeOffset>("CreatedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("CreatedByUserId")
+                        .HasColumnType("text");
+
+                    b.Property<string>("DealerAccountNumber")
+                        .HasMaxLength(120)
+                        .HasColumnType("character varying(120)");
+
+                    b.Property<int>("DealerPricingScheduleIntervalMinutes")
+                        .HasColumnType("integer");
+
+                    b.Property<int?>("DealerPricingScheduleMaxItems")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("DisplayName")
+                        .IsRequired()
+                        .HasMaxLength(160)
+                        .HasColumnType("character varying(160)");
+
+                    b.Property<bool>("IsEnabled")
+                        .HasColumnType("boolean");
+
+                    b.Property<string>("LastConnectionMessage")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)");
+
+                    b.Property<string>("LastConnectionStatus")
+                        .HasMaxLength(80)
+                        .HasColumnType("character varying(80)");
+
+                    b.Property<DateTimeOffset?>("LastConnectionTestAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTimeOffset?>("LastDealerPricingScheduledAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid>("OrganizationId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("SupplierId")
+                        .HasColumnType("uuid");
+
+                    b.Property<bool>("SyncDealerPricingOnSchedule")
+                        .HasColumnType("boolean");
+
+                    b.Property<DateTimeOffset?>("UpdatedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("UpdatedByUserId")
+                        .HasColumnType("text");
+
+                    b.Property<string>("Username")
+                        .HasMaxLength(160)
+                        .HasColumnType("character varying(160)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("SupplierId");
+
+                    b.HasIndex("OrganizationId", "SupplierId", "ConnectorKey")
+                        .IsUnique();
+
+                    b.ToTable("company_supplier_connector_configurations", "platform");
+                });
+
+            modelBuilder.Entity("iM1os.Domain.GlobalCatalog.CompanySupplierConnectorImportRun", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("CompanySupplierConnectorConfigurationId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTimeOffset?>("CompletedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTimeOffset>("CreatedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("CreatedByUserId")
+                        .HasColumnType("text");
+
+                    b.Property<string>("ImportType")
+                        .IsRequired()
+                        .HasMaxLength(120)
+                        .HasColumnType("character varying(120)");
+
+                    b.Property<string>("Message")
+                        .HasMaxLength(1000)
+                        .HasColumnType("character varying(1000)");
+
+                    b.Property<Guid>("OrganizationId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("ParametersJson")
+                        .HasColumnType("jsonb");
+
+                    b.Property<int>("ProgressProcessed")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer")
+                        .HasDefaultValue(0);
+
+                    b.Property<int?>("ProgressTotal")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTimeOffset>("RequestedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("RequestedByUserId")
+                        .HasMaxLength(80)
+                        .HasColumnType("character varying(80)");
+
+                    b.Property<string>("Source")
+                        .HasMaxLength(160)
+                        .HasColumnType("character varying(160)");
+
+                    b.Property<DateTimeOffset?>("StartedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(80)
+                        .HasColumnType("character varying(80)");
+
+                    b.Property<DateTimeOffset?>("UpdatedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("UpdatedByUserId")
+                        .HasColumnType("text");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("CompanySupplierConnectorConfigurationId");
+
+                    b.HasIndex("OrganizationId", "Status");
+
+                    b.HasIndex("OrganizationId", "CompanySupplierConnectorConfigurationId", "RequestedAtUtc");
+
+                    b.ToTable("company_supplier_connector_import_runs", "platform");
+                });
+
+            modelBuilder.Entity("iM1os.Domain.GlobalCatalog.CompanySupplierPrice", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<decimal>("ActualDealerCost")
+                        .HasPrecision(12, 2)
+                        .HasColumnType("numeric(12,2)");
+
+                    b.Property<DateTimeOffset>("CreatedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("CreatedByUserId")
+                        .HasColumnType("text");
+
+                    b.Property<string>("Currency")
+                        .IsRequired()
+                        .HasMaxLength(3)
+                        .HasColumnType("character varying(3)");
+
+                    b.Property<DateOnly?>("EffectiveDate")
+                        .HasColumnType("date");
+
+                    b.Property<DateTimeOffset>("LastSyncedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid>("OrganizationId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("SourceDataJson")
+                        .HasColumnType("jsonb");
+
+                    b.Property<string>("SourceSupplierProductId")
+                        .HasMaxLength(120)
+                        .HasColumnType("character varying(120)");
+
+                    b.Property<Guid>("SupplierId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("SupplierProductId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("SupplierSku")
+                        .IsRequired()
+                        .HasMaxLength(120)
+                        .HasColumnType("character varying(120)");
+
+                    b.Property<DateTimeOffset?>("UpdatedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("UpdatedByUserId")
+                        .HasColumnType("text");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("SupplierId");
+
+                    b.HasIndex("SupplierProductId");
+
+                    b.HasIndex("OrganizationId", "SupplierProductId")
+                        .IsUnique();
+
+                    b.HasIndex("OrganizationId", "SupplierId", "SupplierSku");
+
+                    b.ToTable("company_supplier_prices", "platform");
+                });
+
+            modelBuilder.Entity("iM1os.Domain.GlobalCatalog.GlobalProduct", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Brand")
+                        .IsRequired()
+                        .HasMaxLength(120)
+                        .HasColumnType("character varying(120)");
+
+                    b.Property<string>("Category")
+                        .HasMaxLength(160)
+                        .HasColumnType("character varying(160)");
+
+                    b.Property<DateTimeOffset>("CreatedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("CreatedByUserId")
+                        .HasColumnType("text");
+
+                    b.Property<string>("Description")
+                        .IsRequired()
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)");
+
+                    b.Property<decimal?>("Height")
+                        .HasPrecision(12, 3)
+                        .HasColumnType("numeric(12,3)");
+
+                    b.Property<string>("ImagesJson")
+                        .HasColumnType("jsonb");
+
+                    b.Property<bool>("IsActive")
+                        .HasColumnType("boolean");
+
+                    b.Property<decimal?>("Length")
+                        .HasPrecision(12, 3)
+                        .HasColumnType("numeric(12,3)");
+
+                    b.Property<string>("LongDescription")
+                        .HasMaxLength(4000)
+                        .HasColumnType("character varying(4000)");
+
+                    b.Property<string>("Manufacturer")
+                        .HasMaxLength(160)
+                        .HasColumnType("character varying(160)");
+
+                    b.Property<string>("ManufacturerPartNumber")
+                        .HasMaxLength(120)
+                        .HasColumnType("character varying(120)");
+
+                    b.Property<string>("NormalizedManufacturerPartNumber")
+                        .HasMaxLength(120)
+                        .HasColumnType("character varying(120)");
+
+                    b.Property<string>("SpecificationsJson")
+                        .HasColumnType("jsonb");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(80)
+                        .HasColumnType("character varying(80)");
+
+                    b.Property<string>("Upc")
+                        .HasMaxLength(80)
+                        .HasColumnType("character varying(80)");
+
+                    b.Property<DateTimeOffset?>("UpdatedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("UpdatedByUserId")
+                        .HasColumnType("text");
+
+                    b.Property<decimal?>("Weight")
+                        .HasPrecision(12, 3)
+                        .HasColumnType("numeric(12,3)");
+
+                    b.Property<decimal?>("Width")
+                        .HasPrecision(12, 3)
+                        .HasColumnType("numeric(12,3)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("Description");
+
+                    b.HasIndex("Upc");
+
+                    b.HasIndex("Brand", "ManufacturerPartNumber")
+                        .IsUnique();
+
+                    b.HasIndex("Brand", "NormalizedManufacturerPartNumber");
+
+                    b.ToTable("global_products", "platform");
+                });
+
+            modelBuilder.Entity("iM1os.Domain.GlobalCatalog.GlobalVehicle", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTimeOffset>("CreatedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("CreatedByUserId")
+                        .HasColumnType("text");
+
+                    b.Property<string>("Engine")
+                        .HasMaxLength(160)
+                        .HasColumnType("character varying(160)");
+
+                    b.Property<string>("Make")
+                        .IsRequired()
+                        .HasMaxLength(120)
+                        .HasColumnType("character varying(120)");
+
+                    b.Property<string>("Market")
+                        .HasMaxLength(80)
+                        .HasColumnType("character varying(80)");
+
+                    b.Property<string>("Model")
+                        .IsRequired()
+                        .HasMaxLength(160)
+                        .HasColumnType("character varying(160)");
+
+                    b.Property<string>("Notes")
+                        .HasMaxLength(1000)
+                        .HasColumnType("character varying(1000)");
+
+                    b.Property<string>("Submodel")
+                        .HasMaxLength(160)
+                        .HasColumnType("character varying(160)");
+
+                    b.Property<DateTimeOffset?>("UpdatedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("UpdatedByUserId")
+                        .HasColumnType("text");
+
+                    b.Property<string>("VehicleClass")
+                        .HasMaxLength(80)
+                        .HasColumnType("character varying(80)");
+
+                    b.Property<string>("VehicleType")
+                        .HasMaxLength(120)
+                        .HasColumnType("character varying(120)");
+
+                    b.Property<string>("VinRange")
+                        .HasMaxLength(160)
+                        .HasColumnType("character varying(160)");
+
+                    b.Property<int>("Year")
+                        .HasColumnType("integer");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("VehicleType");
+
+                    b.HasIndex("Year", "Make", "Model", "Submodel", "Engine", "Market")
+                        .IsUnique();
+
+                    b.ToTable("global_vehicles", "platform");
+                });
+
+            modelBuilder.Entity("iM1os.Domain.GlobalCatalog.ProductMatchReviewItem", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Brand")
+                        .HasMaxLength(120)
+                        .HasColumnType("character varying(120)");
+
+                    b.Property<Guid?>("CandidateGlobalProductId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTimeOffset>("CreatedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("CreatedByUserId")
+                        .HasColumnType("text");
+
+                    b.Property<string>("MatchReason")
+                        .IsRequired()
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(80)
+                        .HasColumnType("character varying(80)");
+
+                    b.Property<string>("SupplierDescription")
+                        .HasMaxLength(1000)
+                        .HasColumnType("character varying(1000)");
+
+                    b.Property<Guid>("SupplierId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("SupplierPartNumber")
+                        .HasMaxLength(120)
+                        .HasColumnType("character varying(120)");
+
+                    b.Property<string>("SupplierSku")
+                        .IsRequired()
+                        .HasMaxLength(120)
+                        .HasColumnType("character varying(120)");
+
+                    b.Property<string>("Upc")
+                        .HasMaxLength(80)
+                        .HasColumnType("character varying(80)");
+
+                    b.Property<DateTimeOffset?>("UpdatedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("UpdatedByUserId")
+                        .HasColumnType("text");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("CandidateGlobalProductId");
+
+                    b.HasIndex("SupplierId", "SupplierSku", "Status");
+
+                    b.ToTable("product_match_review_items", "platform");
+                });
+
+            modelBuilder.Entity("iM1os.Domain.GlobalCatalog.Supplier", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Code")
+                        .IsRequired()
+                        .HasMaxLength(80)
+                        .HasColumnType("character varying(80)");
+
+                    b.Property<string>("ConnectorKey")
+                        .HasMaxLength(120)
+                        .HasColumnType("character varying(120)");
+
+                    b.Property<DateTimeOffset>("CreatedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("CreatedByUserId")
+                        .HasColumnType("text");
+
+                    b.Property<bool>("IsActive")
+                        .HasColumnType("boolean");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(160)
+                        .HasColumnType("character varying(160)");
+
+                    b.Property<DateTimeOffset?>("UpdatedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("UpdatedByUserId")
+                        .HasColumnType("text");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("Code")
+                        .IsUnique();
+
+                    b.ToTable("suppliers", "platform");
+                });
+
+            modelBuilder.Entity("iM1os.Domain.GlobalCatalog.SupplierConnectorConfiguration", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("ApiKey")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)");
+
+                    b.Property<string>("ApiSecretProtected")
+                        .HasColumnType("text");
+
+                    b.Property<string>("AuthMode")
+                        .IsRequired()
+                        .HasMaxLength(80)
+                        .HasColumnType("character varying(80)");
+
+                    b.Property<string>("BaseApiUrl")
+                        .HasMaxLength(1000)
+                        .HasColumnType("character varying(1000)");
+
+                    b.Property<string>("ConnectorKey")
+                        .IsRequired()
+                        .HasMaxLength(80)
+                        .HasColumnType("character varying(80)");
+
+                    b.Property<DateTimeOffset>("CreatedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("CreatedByUserId")
+                        .HasColumnType("text");
+
+                    b.Property<string>("DealerAccountNumber")
+                        .HasMaxLength(120)
+                        .HasColumnType("character varying(120)");
+
+                    b.Property<string>("DisplayName")
+                        .IsRequired()
+                        .HasMaxLength(160)
+                        .HasColumnType("character varying(160)");
+
+                    b.Property<int>("FitmentScheduleCadenceMinutes")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("FitmentScheduleDelayMilliseconds")
+                        .HasColumnType("integer");
+
+                    b.Property<int?>("FitmentScheduleFitmentLimit")
+                        .HasColumnType("integer");
+
+                    b.Property<int?>("FitmentScheduleMaxSkus")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("FitmentSourceBaseUrl")
+                        .HasMaxLength(1000)
+                        .HasColumnType("character varying(1000)");
+
+                    b.Property<bool>("ImportFitmentOnSchedule")
+                        .HasColumnType("boolean");
+
+                    b.Property<bool>("ImportMasterFileOnSchedule")
+                        .HasColumnType("boolean");
+
+                    b.Property<bool>("ImportMediaOnSchedule")
+                        .HasColumnType("boolean");
+
+                    b.Property<bool>("IsEnabled")
+                        .HasColumnType("boolean");
+
+                    b.Property<string>("LastConnectionMessage")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)");
+
+                    b.Property<string>("LastConnectionStatus")
+                        .HasMaxLength(80)
+                        .HasColumnType("character varying(80)");
+
+                    b.Property<DateTimeOffset?>("LastConnectionTestAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTimeOffset?>("LastFitmentScheduledAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTimeOffset?>("LastMasterFileScheduledAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTimeOffset?>("LastMediaScheduledAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("MasterFileImportMode")
+                        .HasMaxLength(80)
+                        .HasColumnType("character varying(80)");
+
+                    b.Property<int>("MasterFileScheduleCadenceMinutes")
+                        .HasColumnType("integer");
+
+                    b.Property<int?>("MasterFileScheduleMaxItems")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("MasterFileUrl")
+                        .HasMaxLength(1000)
+                        .HasColumnType("character varying(1000)");
+
+                    b.Property<int>("MediaScheduleCadenceMinutes")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer")
+                        .HasDefaultValue(1440);
+
+                    b.Property<int>("MediaScheduleDelayMilliseconds")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer")
+                        .HasDefaultValue(750);
+
+                    b.Property<int?>("MediaScheduleMaxItems")
+                        .HasColumnType("integer");
+
+                    b.Property<Guid>("SupplierId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTimeOffset?>("UpdatedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("UpdatedByUserId")
+                        .HasColumnType("text");
+
+                    b.Property<string>("Username")
+                        .HasMaxLength(160)
+                        .HasColumnType("character varying(160)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("SupplierId", "ConnectorKey")
+                        .IsUnique();
+
+                    b.ToTable("supplier_connector_configurations", "platform");
+                });
+
+            modelBuilder.Entity("iM1os.Domain.GlobalCatalog.SupplierConnectorImportRun", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTimeOffset?>("CompletedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTimeOffset>("CreatedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("CreatedByUserId")
+                        .HasColumnType("text");
+
+                    b.Property<string>("ImportType")
+                        .IsRequired()
+                        .HasMaxLength(120)
+                        .HasColumnType("character varying(120)");
+
+                    b.Property<string>("Message")
+                        .HasMaxLength(1000)
+                        .HasColumnType("character varying(1000)");
+
+                    b.Property<string>("ParametersJson")
+                        .HasColumnType("jsonb");
+
+                    b.Property<int>("ProgressProcessed")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer")
+                        .HasDefaultValue(0);
+
+                    b.Property<int?>("ProgressTotal")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTimeOffset>("RequestedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("RequestedByPlatformUserId")
+                        .HasMaxLength(80)
+                        .HasColumnType("character varying(80)");
+
+                    b.Property<string>("Source")
+                        .HasMaxLength(160)
+                        .HasColumnType("character varying(160)");
+
+                    b.Property<DateTimeOffset?>("StartedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(80)
+                        .HasColumnType("character varying(80)");
+
+                    b.Property<Guid>("SupplierConnectorConfigurationId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTimeOffset?>("UpdatedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("UpdatedByUserId")
+                        .HasColumnType("text");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("Status");
+
+                    b.HasIndex("SupplierConnectorConfigurationId", "RequestedAtUtc");
+
+                    b.ToTable("supplier_connector_import_runs", "platform");
+                });
+
+            modelBuilder.Entity("iM1os.Domain.GlobalCatalog.SupplierFitmentRecord", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTimeOffset>("CreatedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("CreatedByUserId")
+                        .HasColumnType("text");
+
+                    b.Property<string>("Engine")
+                        .HasMaxLength(160)
+                        .HasColumnType("character varying(160)");
+
+                    b.Property<Guid?>("GlobalProductId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid?>("GlobalVehicleId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTimeOffset>("ImportedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("Make")
+                        .IsRequired()
+                        .HasMaxLength(120)
+                        .HasColumnType("character varying(120)");
+
+                    b.Property<string>("MfgPartNumber")
+                        .HasMaxLength(120)
+                        .HasColumnType("character varying(120)");
+
+                    b.Property<string>("Model")
+                        .IsRequired()
+                        .HasMaxLength(160)
+                        .HasColumnType("character varying(160)");
+
+                    b.Property<string>("Notes")
+                        .HasMaxLength(1000)
+                        .HasColumnType("character varying(1000)");
+
+                    b.Property<string>("ResolutionStatus")
+                        .IsRequired()
+                        .HasMaxLength(80)
+                        .HasColumnType("character varying(80)");
+
+                    b.Property<string>("SourceFitmentItemId")
+                        .HasMaxLength(120)
+                        .HasColumnType("character varying(120)");
+
+                    b.Property<string>("SourceFitmentPartNumber")
+                        .HasMaxLength(120)
+                        .HasColumnType("character varying(120)");
+
+                    b.Property<string>("SourceSupplierProductId")
+                        .HasMaxLength(120)
+                        .HasColumnType("character varying(120)");
+
+                    b.Property<string>("Submodel")
+                        .HasMaxLength(160)
+                        .HasColumnType("character varying(160)");
+
+                    b.Property<Guid>("SupplierId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("SupplierKey")
+                        .IsRequired()
+                        .HasMaxLength(80)
+                        .HasColumnType("character varying(80)");
+
+                    b.Property<string>("SupplierPartNumber")
+                        .HasMaxLength(120)
+                        .HasColumnType("character varying(120)");
+
+                    b.Property<Guid?>("SupplierProductId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("SupplierSku")
+                        .IsRequired()
+                        .HasMaxLength(120)
+                        .HasColumnType("character varying(120)");
+
+                    b.Property<DateTimeOffset?>("UpdatedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("UpdatedByUserId")
+                        .HasColumnType("text");
+
+                    b.Property<string>("VehicleClass")
+                        .HasMaxLength(80)
+                        .HasColumnType("character varying(80)");
+
+                    b.Property<Guid?>("VehicleFitmentId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("VehicleType")
+                        .HasMaxLength(120)
+                        .HasColumnType("character varying(120)");
+
+                    b.Property<int>("Year")
+                        .HasColumnType("integer");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("GlobalProductId");
+
+                    b.HasIndex("GlobalVehicleId");
+
+                    b.HasIndex("ResolutionStatus");
+
+                    b.HasIndex("SupplierProductId");
+
+                    b.HasIndex("VehicleFitmentId");
+
+                    b.HasIndex("VehicleType");
+
+                    b.HasIndex("SupplierId", "SourceSupplierProductId");
+
+                    b.HasIndex("SupplierId", "SupplierSku");
+
+                    b.HasIndex("SupplierId", "SourceFitmentItemId", "Year", "Make", "Model");
+
+                    b.ToTable("supplier_fitment_records", "platform");
+                });
+
+            modelBuilder.Entity("iM1os.Domain.GlobalCatalog.SupplierPrice", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTimeOffset>("CreatedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("CreatedByUserId")
+                        .HasColumnType("text");
+
+                    b.Property<decimal?>("DealerCost")
+                        .HasPrecision(12, 2)
+                        .HasColumnType("numeric(12,2)");
+
+                    b.Property<DateOnly>("EffectiveDate")
+                        .HasColumnType("date");
+
+                    b.Property<DateOnly?>("ExpirationDate")
+                        .HasColumnType("date");
+
+                    b.Property<DateTimeOffset>("LastUpdated")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<decimal?>("Map")
+                        .HasPrecision(12, 2)
+                        .HasColumnType("numeric(12,2)");
+
+                    b.Property<decimal?>("Msrp")
+                        .HasPrecision(12, 2)
+                        .HasColumnType("numeric(12,2)");
+
+                    b.Property<Guid>("SupplierProductId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTimeOffset?>("UpdatedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("UpdatedByUserId")
+                        .HasColumnType("text");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("SupplierProductId", "EffectiveDate");
+
+                    b.ToTable("supplier_prices", "platform");
+                });
+
+            modelBuilder.Entity("iM1os.Domain.GlobalCatalog.SupplierProduct", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<int?>("CaseQuantity")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTimeOffset>("CreatedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("CreatedByUserId")
+                        .HasColumnType("text");
+
+                    b.Property<Guid>("GlobalProductId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTimeOffset?>("LastSyncedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("ManufacturerPartNumber")
+                        .HasMaxLength(120)
+                        .HasColumnType("character varying(120)");
+
+                    b.Property<int?>("MinimumOrder")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("NormalizedManufacturerPartNumber")
+                        .HasMaxLength(120)
+                        .HasColumnType("character varying(120)");
+
+                    b.Property<string>("Packaging")
+                        .HasMaxLength(160)
+                        .HasColumnType("character varying(160)");
+
+                    b.Property<string>("SourceDataJson")
+                        .HasColumnType("jsonb");
+
+                    b.Property<string>("SourceSupplierProductId")
+                        .HasMaxLength(120)
+                        .HasColumnType("character varying(120)");
+
+                    b.Property<string>("SupplierDescription")
+                        .HasMaxLength(1000)
+                        .HasColumnType("character varying(1000)");
+
+                    b.Property<Guid>("SupplierId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("SupplierImagesJson")
+                        .HasColumnType("jsonb");
+
+                    b.Property<string>("SupplierPartNumber")
+                        .HasMaxLength(120)
+                        .HasColumnType("character varying(120)");
+
+                    b.Property<string>("SupplierSku")
+                        .IsRequired()
+                        .HasMaxLength(120)
+                        .HasColumnType("character varying(120)");
+
+                    b.Property<string>("SupplierStatus")
+                        .IsRequired()
+                        .HasMaxLength(80)
+                        .HasColumnType("character varying(80)");
+
+                    b.Property<DateTimeOffset?>("UpdatedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("UpdatedByUserId")
+                        .HasColumnType("text");
+
+                    b.Property<string>("WarehouseAvailability")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("GlobalProductId");
+
+                    b.HasIndex("NormalizedManufacturerPartNumber");
+
+                    b.HasIndex("SupplierPartNumber");
+
+                    b.HasIndex("SupplierId", "NormalizedManufacturerPartNumber");
+
+                    b.HasIndex("SupplierId", "SourceSupplierProductId");
+
+                    b.HasIndex("SupplierId", "SupplierSku")
+                        .IsUnique();
+
+                    b.ToTable("supplier_products", "platform");
+                });
+
+            modelBuilder.Entity("iM1os.Domain.GlobalCatalog.VehicleFitment", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTimeOffset>("CreatedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("CreatedByUserId")
+                        .HasColumnType("text");
+
+                    b.Property<Guid>("GlobalProductId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("GlobalVehicleId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Notes")
+                        .HasMaxLength(1000)
+                        .HasColumnType("character varying(1000)");
+
+                    b.Property<string>("Position")
+                        .HasMaxLength(120)
+                        .HasColumnType("character varying(120)");
+
+                    b.Property<int>("Quantity")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTimeOffset?>("UpdatedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("UpdatedByUserId")
+                        .HasColumnType("text");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("GlobalVehicleId");
+
+                    b.HasIndex("GlobalProductId", "GlobalVehicleId", "Position")
+                        .IsUnique();
+
+                    b.ToTable("vehicle_fitments", "platform");
+                });
+
             modelBuilder.Entity("iM1os.Domain.Identity.ApplicationUser", b =>
                 {
                     b.Property<Guid>("Id")
@@ -2484,10 +3522,23 @@ namespace iM1os.Infrastructure.Persistence.Migrations
                     b.Property<DateTimeOffset?>("DeclinedAtUtc")
                         .HasColumnType("timestamp with time zone");
 
+                    b.Property<string>("DepositTerms")
+                        .IsRequired()
+                        .HasMaxLength(120)
+                        .HasColumnType("character varying(120)");
+
+                    b.Property<decimal>("DiscountTotal")
+                        .HasPrecision(12, 2)
+                        .HasColumnType("numeric(12,2)");
+
                     b.Property<string>("EstimateNumber")
                         .IsRequired()
                         .HasMaxLength(80)
                         .HasColumnType("character varying(80)");
+
+                    b.Property<decimal>("FeesTotal")
+                        .HasPrecision(12, 2)
+                        .HasColumnType("numeric(12,2)");
 
                     b.Property<decimal>("GrandTotal")
                         .HasPrecision(12, 2)
@@ -2507,10 +3558,18 @@ namespace iM1os.Infrastructure.Persistence.Migrations
                         .HasPrecision(12, 2)
                         .HasColumnType("numeric(12,2)");
 
+                    b.Property<string>("PaymentTerms")
+                        .HasMaxLength(1000)
+                        .HasColumnType("character varying(1000)");
+
                     b.Property<string>("Status")
                         .IsRequired()
                         .HasMaxLength(80)
                         .HasColumnType("character varying(80)");
+
+                    b.Property<decimal>("Subtotal")
+                        .HasPrecision(12, 2)
+                        .HasColumnType("numeric(12,2)");
 
                     b.Property<decimal>("TaxTotal")
                         .HasPrecision(12, 2)
@@ -2535,6 +3594,125 @@ namespace iM1os.Infrastructure.Persistence.Migrations
                     b.HasIndex("OrganizationId", "WorkOrderId");
 
                     b.ToTable("estimates", "platform");
+                });
+
+            modelBuilder.Entity("iM1os.Domain.Service.EstimateLineItem", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTimeOffset>("CreatedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("CreatedByUserId")
+                        .HasColumnType("text");
+
+                    b.Property<string>("Description")
+                        .IsRequired()
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)");
+
+                    b.Property<decimal>("DiscountAmount")
+                        .HasPrecision(12, 2)
+                        .HasColumnType("numeric(12,2)");
+
+                    b.Property<decimal>("DiscountPercent")
+                        .HasPrecision(8, 4)
+                        .HasColumnType("numeric(8,4)");
+
+                    b.Property<Guid>("EstimateId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid?>("InventoryItemId")
+                        .HasColumnType("uuid");
+
+                    b.Property<bool>("IsDeclined")
+                        .HasColumnType("boolean");
+
+                    b.Property<bool>("IsDone")
+                        .HasColumnType("boolean");
+
+                    b.Property<bool>("IsTaxable")
+                        .HasColumnType("boolean");
+
+                    b.Property<Guid?>("LaborOperationId")
+                        .HasColumnType("uuid");
+
+                    b.Property<decimal>("LineTotal")
+                        .HasPrecision(12, 2)
+                        .HasColumnType("numeric(12,2)");
+
+                    b.Property<string>("LineType")
+                        .IsRequired()
+                        .HasMaxLength(40)
+                        .HasColumnType("character varying(40)");
+
+                    b.Property<Guid?>("ManufacturerPartId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Notes")
+                        .HasMaxLength(2000)
+                        .HasColumnType("character varying(2000)");
+
+                    b.Property<Guid>("OrganizationId")
+                        .HasColumnType("uuid");
+
+                    b.Property<decimal>("Quantity")
+                        .HasPrecision(12, 2)
+                        .HasColumnType("numeric(12,2)");
+
+                    b.Property<decimal>("Rate")
+                        .HasPrecision(12, 2)
+                        .HasColumnType("numeric(12,2)");
+
+                    b.Property<string>("Sku")
+                        .HasMaxLength(120)
+                        .HasColumnType("character varying(120)");
+
+                    b.Property<int>("SortOrder")
+                        .HasColumnType("integer");
+
+                    b.Property<Guid?>("SupplierId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid?>("SupplierProductId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTimeOffset?>("UpdatedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("UpdatedByUserId")
+                        .HasColumnType("text");
+
+                    b.Property<Guid>("WorkOrderId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("EstimateId");
+
+                    b.HasIndex("InventoryItemId");
+
+                    b.HasIndex("LaborOperationId");
+
+                    b.HasIndex("ManufacturerPartId");
+
+                    b.HasIndex("SupplierId");
+
+                    b.HasIndex("SupplierProductId");
+
+                    b.HasIndex("WorkOrderId");
+
+                    b.HasIndex("OrganizationId", "InventoryItemId");
+
+                    b.HasIndex("OrganizationId", "SupplierProductId");
+
+                    b.HasIndex("OrganizationId", "WorkOrderId");
+
+                    b.HasIndex("OrganizationId", "EstimateId", "SortOrder");
+
+                    b.ToTable("estimate_line_items", "platform");
                 });
 
             modelBuilder.Entity("iM1os.Domain.Service.LaborOperation", b =>
@@ -2616,6 +3794,13 @@ namespace iM1os.Infrastructure.Persistence.Migrations
                     b.Property<Guid?>("CustomerVehicleId")
                         .HasColumnType("uuid");
 
+                    b.Property<string>("DiagnosisFindings")
+                        .HasMaxLength(4000)
+                        .HasColumnType("character varying(4000)");
+
+                    b.Property<DateOnly?>("IntakeDate")
+                        .HasColumnType("date");
+
                     b.Property<Guid?>("LocationId")
                         .HasColumnType("uuid");
 
@@ -2625,14 +3810,32 @@ namespace iM1os.Infrastructure.Persistence.Migrations
                     b.Property<Guid>("OrganizationId")
                         .HasColumnType("uuid");
 
+                    b.Property<string>("PartsAndSuppliesNotes")
+                        .HasMaxLength(4000)
+                        .HasColumnType("character varying(4000)");
+
                     b.Property<string>("Priority")
                         .IsRequired()
+                        .HasMaxLength(80)
+                        .HasColumnType("character varying(80)");
+
+                    b.Property<DateOnly?>("PromiseDate")
+                        .HasColumnType("date");
+
+                    b.Property<string>("RepairOrderNumber")
                         .HasMaxLength(80)
                         .HasColumnType("character varying(80)");
 
                     b.Property<string>("RequestedService")
                         .HasMaxLength(2000)
                         .HasColumnType("character varying(2000)");
+
+                    b.Property<Guid?>("ServiceAdvisorEmployeeId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("ServiceNotes")
+                        .HasMaxLength(4000)
+                        .HasColumnType("character varying(4000)");
 
                     b.Property<string>("Stage")
                         .IsRequired()
@@ -2656,12 +3859,141 @@ namespace iM1os.Infrastructure.Persistence.Migrations
 
                     b.HasIndex("CustomerVehicleId");
 
+                    b.HasIndex("ServiceAdvisorEmployeeId");
+
+                    b.HasIndex("OrganizationId", "ServiceAdvisorEmployeeId");
+
                     b.HasIndex("OrganizationId", "WorkOrderNumber")
                         .IsUnique();
+
+                    b.HasIndex("OrganizationId", "CustomerId", "OpenedAtUtc");
 
                     b.HasIndex("OrganizationId", "LocationId", "Stage");
 
                     b.ToTable("work_orders", "platform");
+                });
+
+            modelBuilder.Entity("iM1os.Domain.Service.WorkOrderAttachment", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("AttachmentType")
+                        .IsRequired()
+                        .HasMaxLength(80)
+                        .HasColumnType("character varying(80)");
+
+                    b.Property<string>("ContentType")
+                        .HasMaxLength(120)
+                        .HasColumnType("character varying(120)");
+
+                    b.Property<DateTimeOffset>("CreatedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("CreatedByUserId")
+                        .HasColumnType("text");
+
+                    b.Property<Guid>("CustomerId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid?>("CustomerVehicleId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTimeOffset?>("DeletedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("FileName")
+                        .IsRequired()
+                        .HasMaxLength(260)
+                        .HasColumnType("character varying(260)");
+
+                    b.Property<Guid>("OrganizationId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTimeOffset?>("UpdatedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("UpdatedByUserId")
+                        .HasColumnType("text");
+
+                    b.Property<DateTimeOffset>("UploadedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("Url")
+                        .HasMaxLength(1000)
+                        .HasColumnType("character varying(1000)");
+
+                    b.Property<Guid>("WorkOrderId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("CustomerId");
+
+                    b.HasIndex("CustomerVehicleId");
+
+                    b.HasIndex("WorkOrderId");
+
+                    b.HasIndex("OrganizationId", "CustomerId");
+
+                    b.HasIndex("OrganizationId", "CustomerVehicleId");
+
+                    b.HasIndex("OrganizationId", "WorkOrderId");
+
+                    b.ToTable("work_order_attachments", "platform");
+                });
+
+            modelBuilder.Entity("iM1os.Domain.Service.WorkOrderTechnicianAssignment", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTimeOffset>("CreatedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("CreatedByUserId")
+                        .HasColumnType("text");
+
+                    b.Property<Guid>("EmployeeId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("OrganizationId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Role")
+                        .IsRequired()
+                        .HasMaxLength(80)
+                        .HasColumnType("character varying(80)");
+
+                    b.Property<int>("SortOrder")
+                        .HasColumnType("integer");
+
+                    b.Property<decimal>("SplitPercent")
+                        .HasPrecision(8, 4)
+                        .HasColumnType("numeric(8,4)");
+
+                    b.Property<DateTimeOffset?>("UpdatedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("UpdatedByUserId")
+                        .HasColumnType("text");
+
+                    b.Property<Guid>("WorkOrderId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("EmployeeId");
+
+                    b.HasIndex("WorkOrderId");
+
+                    b.HasIndex("OrganizationId", "EmployeeId");
+
+                    b.HasIndex("OrganizationId", "WorkOrderId", "SortOrder");
+
+                    b.ToTable("work_order_technician_assignments", "platform");
                 });
 
             modelBuilder.Entity("iM1os.Domain.Tenancy.BusinessConfiguration", b =>
@@ -2703,6 +4035,11 @@ namespace iM1os.Infrastructure.Persistence.Migrations
                     b.Property<decimal>("EnvironmentalFee")
                         .HasPrecision(12, 2)
                         .HasColumnType("numeric(12,2)");
+
+                    b.Property<bool>("LaborLineItemsTaxable")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("boolean")
+                        .HasDefaultValue(true);
 
                     b.Property<string>("NotificationPreferencesJson")
                         .IsRequired()
@@ -3268,6 +4605,134 @@ namespace iM1os.Infrastructure.Persistence.Migrations
                     b.Navigation("Employee");
                 });
 
+            modelBuilder.Entity("iM1os.Domain.GlobalCatalog.CompanySupplierConnectorConfiguration", b =>
+                {
+                    b.HasOne("iM1os.Domain.GlobalCatalog.Supplier", null)
+                        .WithMany()
+                        .HasForeignKey("SupplierId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("iM1os.Domain.GlobalCatalog.CompanySupplierConnectorImportRun", b =>
+                {
+                    b.HasOne("iM1os.Domain.GlobalCatalog.CompanySupplierConnectorConfiguration", null)
+                        .WithMany()
+                        .HasForeignKey("CompanySupplierConnectorConfigurationId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("iM1os.Domain.GlobalCatalog.CompanySupplierPrice", b =>
+                {
+                    b.HasOne("iM1os.Domain.GlobalCatalog.Supplier", null)
+                        .WithMany()
+                        .HasForeignKey("SupplierId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("iM1os.Domain.GlobalCatalog.SupplierProduct", null)
+                        .WithMany()
+                        .HasForeignKey("SupplierProductId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("iM1os.Domain.GlobalCatalog.ProductMatchReviewItem", b =>
+                {
+                    b.HasOne("iM1os.Domain.GlobalCatalog.GlobalProduct", null)
+                        .WithMany()
+                        .HasForeignKey("CandidateGlobalProductId");
+
+                    b.HasOne("iM1os.Domain.GlobalCatalog.Supplier", null)
+                        .WithMany()
+                        .HasForeignKey("SupplierId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("iM1os.Domain.GlobalCatalog.SupplierConnectorConfiguration", b =>
+                {
+                    b.HasOne("iM1os.Domain.GlobalCatalog.Supplier", null)
+                        .WithMany()
+                        .HasForeignKey("SupplierId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("iM1os.Domain.GlobalCatalog.SupplierConnectorImportRun", b =>
+                {
+                    b.HasOne("iM1os.Domain.GlobalCatalog.SupplierConnectorConfiguration", null)
+                        .WithMany()
+                        .HasForeignKey("SupplierConnectorConfigurationId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("iM1os.Domain.GlobalCatalog.SupplierFitmentRecord", b =>
+                {
+                    b.HasOne("iM1os.Domain.GlobalCatalog.GlobalProduct", null)
+                        .WithMany()
+                        .HasForeignKey("GlobalProductId");
+
+                    b.HasOne("iM1os.Domain.GlobalCatalog.GlobalVehicle", null)
+                        .WithMany()
+                        .HasForeignKey("GlobalVehicleId");
+
+                    b.HasOne("iM1os.Domain.GlobalCatalog.Supplier", null)
+                        .WithMany()
+                        .HasForeignKey("SupplierId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("iM1os.Domain.GlobalCatalog.SupplierProduct", null)
+                        .WithMany()
+                        .HasForeignKey("SupplierProductId");
+
+                    b.HasOne("iM1os.Domain.GlobalCatalog.VehicleFitment", null)
+                        .WithMany()
+                        .HasForeignKey("VehicleFitmentId");
+                });
+
+            modelBuilder.Entity("iM1os.Domain.GlobalCatalog.SupplierPrice", b =>
+                {
+                    b.HasOne("iM1os.Domain.GlobalCatalog.SupplierProduct", null)
+                        .WithMany()
+                        .HasForeignKey("SupplierProductId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("iM1os.Domain.GlobalCatalog.SupplierProduct", b =>
+                {
+                    b.HasOne("iM1os.Domain.GlobalCatalog.GlobalProduct", null)
+                        .WithMany()
+                        .HasForeignKey("GlobalProductId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("iM1os.Domain.GlobalCatalog.Supplier", null)
+                        .WithMany()
+                        .HasForeignKey("SupplierId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("iM1os.Domain.GlobalCatalog.VehicleFitment", b =>
+                {
+                    b.HasOne("iM1os.Domain.GlobalCatalog.GlobalProduct", null)
+                        .WithMany()
+                        .HasForeignKey("GlobalProductId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("iM1os.Domain.GlobalCatalog.GlobalVehicle", null)
+                        .WithMany()
+                        .HasForeignKey("GlobalVehicleId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
             modelBuilder.Entity("iM1os.Domain.Identity.ApplicationUser", b =>
                 {
                     b.HasOne("iM1os.Domain.Employees.Employee", "Employee")
@@ -3419,6 +4884,41 @@ namespace iM1os.Infrastructure.Persistence.Migrations
             modelBuilder.Entity("iM1os.Domain.Service.Estimate", b =>
                 {
                     b.HasOne("iM1os.Domain.Service.WorkOrder", null)
+                        .WithMany("Estimates")
+                        .HasForeignKey("WorkOrderId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("iM1os.Domain.Service.EstimateLineItem", b =>
+                {
+                    b.HasOne("iM1os.Domain.Service.Estimate", null)
+                        .WithMany("LineItems")
+                        .HasForeignKey("EstimateId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("iM1os.Domain.Parts.InventoryItem", null)
+                        .WithMany()
+                        .HasForeignKey("InventoryItemId");
+
+                    b.HasOne("iM1os.Domain.Service.LaborOperation", null)
+                        .WithMany()
+                        .HasForeignKey("LaborOperationId");
+
+                    b.HasOne("iM1os.Domain.Parts.ManufacturerPart", null)
+                        .WithMany()
+                        .HasForeignKey("ManufacturerPartId");
+
+                    b.HasOne("iM1os.Domain.GlobalCatalog.Supplier", null)
+                        .WithMany()
+                        .HasForeignKey("SupplierId");
+
+                    b.HasOne("iM1os.Domain.GlobalCatalog.SupplierProduct", null)
+                        .WithMany()
+                        .HasForeignKey("SupplierProductId");
+
+                    b.HasOne("iM1os.Domain.Service.WorkOrder", null)
                         .WithMany()
                         .HasForeignKey("WorkOrderId")
                         .OnDelete(DeleteBehavior.Cascade)
@@ -3436,6 +4936,46 @@ namespace iM1os.Infrastructure.Persistence.Migrations
                     b.HasOne("iM1os.Domain.Vehicles.CustomerVehicle", null)
                         .WithMany()
                         .HasForeignKey("CustomerVehicleId");
+
+                    b.HasOne("iM1os.Domain.Employees.Employee", null)
+                        .WithMany()
+                        .HasForeignKey("ServiceAdvisorEmployeeId");
+                });
+
+            modelBuilder.Entity("iM1os.Domain.Service.WorkOrderAttachment", b =>
+                {
+                    b.HasOne("iM1os.Domain.Customers.Customer", null)
+                        .WithMany()
+                        .HasForeignKey("CustomerId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("iM1os.Domain.Vehicles.CustomerVehicle", null)
+                        .WithMany()
+                        .HasForeignKey("CustomerVehicleId");
+
+                    b.HasOne("iM1os.Domain.Service.WorkOrder", "WorkOrder")
+                        .WithMany()
+                        .HasForeignKey("WorkOrderId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("WorkOrder");
+                });
+
+            modelBuilder.Entity("iM1os.Domain.Service.WorkOrderTechnicianAssignment", b =>
+                {
+                    b.HasOne("iM1os.Domain.Employees.Employee", null)
+                        .WithMany()
+                        .HasForeignKey("EmployeeId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("iM1os.Domain.Service.WorkOrder", null)
+                        .WithMany("TechnicianAssignments")
+                        .HasForeignKey("WorkOrderId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
                 });
 
             modelBuilder.Entity("iM1os.Domain.Vehicles.CustomerVehicle", b =>
@@ -3516,6 +5056,18 @@ namespace iM1os.Infrastructure.Persistence.Migrations
             modelBuilder.Entity("iM1os.Domain.Marketing.MarketingPage", b =>
                 {
                     b.Navigation("Blocks");
+                });
+
+            modelBuilder.Entity("iM1os.Domain.Service.Estimate", b =>
+                {
+                    b.Navigation("LineItems");
+                });
+
+            modelBuilder.Entity("iM1os.Domain.Service.WorkOrder", b =>
+                {
+                    b.Navigation("Estimates");
+
+                    b.Navigation("TechnicianAssignments");
                 });
 #pragma warning restore 612, 618
         }

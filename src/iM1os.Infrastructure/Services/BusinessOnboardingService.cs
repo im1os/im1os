@@ -92,7 +92,7 @@ public sealed class BusinessOnboardingService(
         configuration.EmergencyRate = request.LaborRate;
         configuration.WeekendRate = request.LaborRate;
         configuration.DepartmentsJson = JsonSerializer.Serialize(new[] { "Service", "Parts", "Accounting", "Administration" });
-        configuration.ConnectorPlaceholdersJson = JsonSerializer.Serialize(new[] { "WPS", "Parts Unlimited", "Turn14", "Authorize.net", "QuickBooks", "Twilio", "Future Connectors" });
+        configuration.ConnectorPlaceholdersJson = BusinessAdministrationService.DefaultConnectorConfigurationJson();
 
         var platformTenant = await dbContext.PlatformTenants.IgnoreQueryFilters().SingleOrDefaultAsync(x => x.OrganizationId == organizationId, cancellationToken);
         if (platformTenant is not null)

@@ -4,7 +4,7 @@ IM1OS is modeled around service and parts operations first, then grows into an o
 
 The legacy PHP/JavaScript implementation is the functional specification for workflow behavior. See `docs/LEGACY_FUNCTIONAL_SPEC.md` and `docs/FOUNDATION_ARCHITECTURE_PROPOSAL.md` before implementing domain entities.
 
-The Parts Engine is governed by `docs/specs/PARTS_ENGINE_PRODUCT_SPEC.md`. Parts domain implementation should also follow `docs/PARTS_DOMAIN_IMPLEMENTATION_PROPOSAL.md` until that proposal is accepted or superseded.
+The Parts Engine is governed by `docs/specs/PARTS_ENGINE_PRODUCT_SPEC.md`. Global product identity, supplier catalog mapping, fitment, and tenant-specific catalog overrides are governed by `docs/specs/GLOBAL_CATALOG_ARCHITECTURE_SPEC.md`. Parts domain implementation should also follow `docs/PARTS_DOMAIN_IMPLEMENTATION_PROPOSAL.md` until that proposal is accepted or superseded.
 
 Service Intelligence is governed by `docs/specs/SERVICE_INTELLIGENCE_ENGINE_SPEC.md`. Human Resources and the Employee master record are governed by `docs/specs/HUMAN_RESOURCES_SCOPE.md`. Data Intelligence and analytics readiness are governed by `docs/specs/DATA_INTELLIGENCE_SCOPE.md`.
 

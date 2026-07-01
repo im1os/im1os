@@ -1,8 +1,10 @@
 using System.Text.Json;
 using iM1os.Application.BusinessAdministration;
 using iM1os.Application.Common;
+using iM1os.Application.Platform;
 using iM1os.Domain.Audit;
 using iM1os.Domain.Employees;
+using iM1os.Domain.GlobalCatalog;
 using iM1os.Domain.Identity;
 using iM1os.Domain.Tenancy;
 using Microsoft.AspNetCore.Identity;
@@ -15,16 +17,20 @@ public sealed class BusinessAdministrationService(
     IDateTimeProvider dateTimeProvider,
     IPasswordHasher<ApplicationUser> passwordHasher) : IBusinessAdministrationService
 {
-    private static readonly ConnectorPlaceholderDto[] DefaultConnectors =
+    private static readonly JsonSerializerOptions ConnectorJsonOptions = new(JsonSerializerDefaults.Web);
+
+    private static readonly ConnectorDto[] DefaultConnectors =
     [
-        new("WPS", "Supplier", "Placeholder"),
-        new("Parts Unlimited", "Supplier", "Placeholder"),
-        new("Turn14", "Supplier", "Placeholder"),
-        new("Authorize.net", "Merchant Services", "Placeholder"),
-        new("QuickBooks", "Accounting", "Placeholder"),
-        new("Twilio", "Notifications", "Placeholder"),
-        new("Future Connectors", "Marketplace", "Placeholder")
+        DefaultWpsConnector(),
+        new("parts-unlimited", "Parts Unlimited", "Supplier", "Planned", "Supplier catalog, cost, and availability access.", false, "Manual", null, ["Catalog import", "Inventory sync", "Purchase orders"], null),
+        new("turn14", "Turn14", "Supplier", "Planned", "Performance parts catalog and availability access.", false, "Manual", null, ["Catalog import", "Inventory sync", "Purchase orders"], null),
+        new("authorize-net", "Authorize.net", "Merchant Services", "Planned", "Payment processing connector for card-present and card-not-present workflows.", false, "Manual", null, ["Payment authorization", "Capture", "Refunds"], null),
+        new("quickbooks", "QuickBooks", "Accounting", "Planned", "Accounting export connector for invoices, payments, taxes, and deposits.", false, "Manual", null, ["Invoice export", "Payment export", "Tax mapping"], null),
+        new("twilio", "Twilio", "Notifications", "Planned", "SMS and voice notification connector for customer and technician messaging.", false, "Manual", null, ["SMS", "Voice", "Delivery status"], null),
+        new("future-connectors", "Future Connectors", "Marketplace", "Planned", "Connector marketplace placeholder for additional suppliers and business systems.", false, "Manual", null, ["Marketplace"], null)
     ];
+
+    public static string DefaultConnectorConfigurationJson() => JsonSerializer.Serialize(DefaultConnectors, ConnectorJsonOptions);
 
     public async Task<BusinessAdministrationWorkspace> GetWorkspaceAsync(Guid organizationId, Guid userId, CancellationToken cancellationToken)
     {
@@ -73,7 +79,7 @@ public sealed class BusinessAdministrationService(
             locations,
             employees,
             roles,
-            DefaultConnectors,
+            await BuildCompanySupplierConnectorsAsync(organizationId, cancellationToken),
             recentActivity,
             ready ? 100 : CalculateProgress(organization, locations.Count, employees.Count, config),
             ready);
@@ -204,6 +210,7 @@ public sealed class BusinessAdministrationService(
         config.WeekendRate = request.WeekendRate;
         config.EnvironmentalFee = request.EnvironmentalFee;
         config.ShopSuppliesPercent = request.ShopSuppliesPercent;
+        config.LaborLineItemsTaxable = request.LaborLineItemsTaxable;
         await RecordAdminChangeAsync(organizationId, userId, "LaborConfigurationUpdated", "BusinessConfiguration", config.Id.ToString(), before, ToDto(config), cancellationToken);
         await dbContext.SaveChangesAsync(cancellationToken);
     }
@@ -226,6 +233,59 @@ public sealed class BusinessAdministrationService(
         var before = ToDto(config);
         config.NotificationPreferencesJson = JsonSerializer.Serialize(request);
         await RecordAdminChangeAsync(organizationId, userId, "NotificationPreferencesUpdated", "BusinessConfiguration", config.Id.ToString(), before, ToDto(config), cancellationToken);
+        await dbContext.SaveChangesAsync(cancellationToken);
+    }
+
+    public async Task SaveWpsConnectorAsync(Guid organizationId, Guid userId, SaveWpsConnectorRequest request, CancellationToken cancellationToken)
+    {
+        await EnsureCompanyAdministratorAsync(organizationId, userId, cancellationToken);
+        var config = await GetOrCreateConfigurationAsync(organizationId, cancellationToken);
+        var connectors = ReadConnectors(config).ToList();
+        var current = connectors.SingleOrDefault(x => x.Key == "wps") ?? DefaultWpsConnector();
+        var before = current;
+        var credentialStatus = !string.IsNullOrWhiteSpace(request.ApiPassword)
+            ? "Configured"
+            : current.WpsConfiguration?.CredentialStatus ?? "Missing";
+        var status = NormalizeConnectorStatus(request.Status);
+
+        if (status == "Ready" &&
+            (string.IsNullOrWhiteSpace(request.DealerNumber) ||
+             string.IsNullOrWhiteSpace(request.Username) ||
+             credentialStatus != "Configured"))
+        {
+            throw new InvalidOperationException("WPS requires a dealer number, username, and API password before it can be marked ready.");
+        }
+
+        var updated = current with
+        {
+            Status = status,
+            IsEnabled = status == "Ready",
+            SyncCadence = NormalizeSyncCadence(request.SyncCadence),
+            WpsConfiguration = new WpsConnectorConfigurationDto(
+                Clean(request.DealerNumber) ?? string.Empty,
+                Clean(request.Username) ?? string.Empty,
+                Clean(request.Endpoint) ?? string.Empty,
+                Clean(request.PriceCode) ?? string.Empty,
+                Clean(request.DefaultWarehouse) ?? string.Empty,
+                request.ImportCatalog,
+                request.ImportInventory,
+                request.SubmitPurchaseOrders,
+                request.UseSandbox,
+                credentialStatus)
+        };
+
+        var existingIndex = connectors.FindIndex(x => x.Key == "wps");
+        if (existingIndex >= 0)
+        {
+            connectors[existingIndex] = updated;
+        }
+        else
+        {
+            connectors.Insert(0, updated);
+        }
+
+        config.ConnectorPlaceholdersJson = JsonSerializer.Serialize(connectors, ConnectorJsonOptions);
+        await RecordAdminChangeAsync(organizationId, userId, "WpsConnectorUpdated", "BusinessConfiguration", config.Id.ToString(), before, updated, cancellationToken);
         await dbContext.SaveChangesAsync(cancellationToken);
     }
 
@@ -279,10 +339,248 @@ public sealed class BusinessAdministrationService(
         {
             OrganizationId = organizationId,
             DepartmentsJson = JsonSerializer.Serialize(new[] { "Service", "Parts", "Accounting", "Administration" }),
-            ConnectorPlaceholdersJson = JsonSerializer.Serialize(DefaultConnectors)
+            ConnectorPlaceholdersJson = DefaultConnectorConfigurationJson()
         };
         dbContext.BusinessConfigurations.Add(config);
         return config;
+    }
+
+    private static IReadOnlyCollection<ConnectorDto> ReadConnectors(BusinessConfiguration config)
+    {
+        if (string.IsNullOrWhiteSpace(config.ConnectorPlaceholdersJson))
+        {
+            return DefaultConnectors;
+        }
+
+        try
+        {
+            using var document = JsonDocument.Parse(config.ConnectorPlaceholdersJson);
+            if (document.RootElement.ValueKind != JsonValueKind.Array)
+            {
+                return DefaultConnectors;
+            }
+
+            if (document.RootElement.EnumerateArray().All(x => x.ValueKind == JsonValueKind.String))
+            {
+                return MergeWithDefaults(document.RootElement.EnumerateArray()
+                    .Select(x => DefaultConnectorFromLegacyName(x.GetString()))
+                    .Where(x => x is not null)
+                    .Cast<ConnectorDto>()
+                    .ToList());
+            }
+
+            var parsed = JsonSerializer.Deserialize<List<ConnectorDto>>(config.ConnectorPlaceholdersJson, ConnectorJsonOptions);
+            return MergeWithDefaults(parsed ?? []);
+        }
+        catch (JsonException)
+        {
+            return DefaultConnectors;
+        }
+    }
+
+    private async Task<IReadOnlyCollection<ConnectorDto>> BuildCompanySupplierConnectorsAsync(Guid organizationId, CancellationToken cancellationToken)
+    {
+        var enabledSupplierCodes = await dbContext.TenantModuleEntitlements
+            .AsNoTracking()
+            .Where(x => x.OrganizationId == organizationId && x.IsEnabled && x.ModuleKey.StartsWith("SupplierConnector:"))
+            .Select(x => x.ModuleKey)
+            .ToListAsync(cancellationToken);
+        var supplierCodes = enabledSupplierCodes
+            .Select(TenantModuleCatalog.SupplierCodeFromModuleKey)
+            .Where(x => x is not null)
+            .Select(x => x!)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+        if (supplierCodes.Count == 0)
+        {
+            return [];
+        }
+
+        var definitions = CompanySupplierConnectorDefinitions
+            .Where(x => supplierCodes.Contains(x.SupplierCode))
+            .ToArray();
+        var supplierRows = await dbContext.Suppliers
+            .AsNoTracking()
+            .Where(x => supplierCodes.Contains(x.Code))
+            .ToListAsync(cancellationToken);
+        var suppliersByCode = supplierRows.ToDictionary(x => x.Code, StringComparer.OrdinalIgnoreCase);
+        var supplierIds = supplierRows.Select(x => x.Id).ToArray();
+        var configurations = await dbContext.CompanySupplierConnectorConfigurations
+            .IgnoreQueryFilters()
+            .AsNoTracking()
+            .Where(x => x.OrganizationId == organizationId && supplierIds.Contains(x.SupplierId))
+            .ToListAsync(cancellationToken);
+        var configurationsByConnector = configurations.ToDictionary(x => x.ConnectorKey, StringComparer.OrdinalIgnoreCase);
+        var configurationIds = configurations.Select(x => x.Id).ToArray();
+        var latestRuns = await dbContext.CompanySupplierConnectorImportRuns
+            .IgnoreQueryFilters()
+            .AsNoTracking()
+            .Where(x => x.OrganizationId == organizationId && configurationIds.Contains(x.CompanySupplierConnectorConfigurationId) && x.Status == "Completed")
+            .GroupBy(x => x.CompanySupplierConnectorConfigurationId)
+            .Select(x => new
+            {
+                ConfigurationId = x.Key,
+                LastCompletedAtUtc = x.Max(run => run.CompletedAtUtc)
+            })
+            .ToDictionaryAsync(x => x.ConfigurationId, x => x.LastCompletedAtUtc, cancellationToken);
+
+        return definitions
+            .Select(definition =>
+            {
+                configurationsByConnector.TryGetValue(definition.SupplierCode, out var configuration);
+                suppliersByCode.TryGetValue(definition.SupplierCode, out var supplier);
+                var credentialStatus = ConnectorCredentialStatus(definition, configuration);
+                var status = configuration is null
+                    ? "Enabled by platform"
+                    : configuration.IsEnabled && credentialStatus == "Ready"
+                        ? "Ready"
+                        : configuration.IsEnabled
+                            ? "Needs credentials"
+                            : "Paused";
+                var syncCadence = configuration is not null && configuration.SyncDealerPricingOnSchedule
+                    ? $"{MinutesToHours(configuration.DealerPricingScheduleIntervalMinutes)} hr"
+                    : "Manual";
+                var lastSyncAt = configuration is not null && latestRuns.TryGetValue(configuration.Id, out var lastRun)
+                    ? lastRun
+                    : null;
+
+                return new ConnectorDto(
+                    definition.Key,
+                    supplier?.Name ?? definition.Name,
+                    "Supplier",
+                    status,
+                    definition.Description,
+                    configuration?.IsEnabled ?? false,
+                    syncCadence,
+                    lastSyncAt,
+                    definition.Capabilities,
+                    definition.SupplierCode == "WPS"
+                        ? new WpsConnectorConfigurationDto(
+                            configuration?.DealerAccountNumber ?? string.Empty,
+                            configuration?.Username ?? string.Empty,
+                            configuration?.BaseApiUrl ?? string.Empty,
+                            string.Empty,
+                            string.Empty,
+                            true,
+                            true,
+                            false,
+                            false,
+                            credentialStatus)
+                        : null);
+            })
+            .OrderBy(x => x.Name)
+            .ToArray();
+    }
+
+    private static IReadOnlyCollection<ConnectorDto> MergeWithDefaults(IReadOnlyCollection<ConnectorDto> storedConnectors)
+    {
+        var connectors = DefaultConnectors.ToDictionary(x => x.Key, x => x);
+        foreach (var storedConnector in storedConnectors)
+        {
+            if (string.IsNullOrWhiteSpace(storedConnector.Key))
+            {
+                continue;
+            }
+
+            connectors[storedConnector.Key] = storedConnector;
+        }
+
+        return DefaultConnectors.Select(x => connectors[x.Key]).ToList();
+    }
+
+    private static ConnectorDto? DefaultConnectorFromLegacyName(string? name)
+    {
+        if (string.IsNullOrWhiteSpace(name))
+        {
+            return null;
+        }
+
+        return DefaultConnectors.SingleOrDefault(x => x.Name.Equals(name.Trim(), StringComparison.OrdinalIgnoreCase));
+    }
+
+    private static ConnectorDto DefaultWpsConnector() => new(
+        "wps",
+        "WPS",
+        "Supplier",
+        "Not configured",
+        "WPS catalog, inventory availability, pricing, and purchase order workflows.",
+        false,
+        "Manual",
+        null,
+        ["Catalog import", "Inventory availability", "Dealer pricing", "Purchase orders"],
+        new WpsConnectorConfigurationDto(string.Empty, string.Empty, string.Empty, string.Empty, string.Empty, true, true, false, true, "Missing"));
+
+    private static readonly CompanySupplierConnectorAdminDefinition[] CompanySupplierConnectorDefinitions =
+    [
+        new(
+            "wps",
+            "WPS",
+            "Western Power Sports",
+            "WPS catalog lookup, live warehouse inventory, fitment, and company dealer actual cost.",
+            ["Catalog lookup", "Live inventory", "Fitment", "Company dealer actual cost"],
+            false),
+        new(
+            "parts-unlimited",
+            "PU",
+            "Parts Unlimited",
+            "Parts Unlimited catalog lookup, live warehouse inventory, fitment, and company dealer actual cost.",
+            ["Catalog lookup", "Live inventory", "Fitment", "Company dealer actual cost"],
+            false),
+        new(
+            "turn14",
+            "TURN14",
+            "Turn14",
+            "Turn14 catalog lookup, live warehouse inventory, media, fitment, and company dealer actual cost.",
+            ["Catalog lookup", "Live inventory", "Media", "Fitment", "Company dealer actual cost"],
+            true)
+    ];
+
+    private static string ConnectorCredentialStatus(CompanySupplierConnectorAdminDefinition definition, CompanySupplierConnectorConfiguration? configuration)
+    {
+        if (configuration is null)
+        {
+            return "Missing";
+        }
+
+        return definition.RequiresSecret
+            ? !string.IsNullOrWhiteSpace(configuration.ApiKey) && !string.IsNullOrWhiteSpace(configuration.ApiSecretProtected) ? "Ready" : "Missing"
+            : !string.IsNullOrWhiteSpace(configuration.ApiKey) ? "Ready" : "Missing";
+    }
+
+    private static int MinutesToHours(int value)
+    {
+        return Math.Max(1, (int)Math.Ceiling((value <= 0 ? 1440 : value) / 60m));
+    }
+
+    private static string NormalizeConnectorStatus(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            return "Not configured";
+        }
+
+        return value.Trim().ToUpperInvariant() switch
+        {
+            "READY" => "Ready",
+            "PAUSED" => "Paused",
+            _ => "Not configured"
+        };
+    }
+
+    private static string NormalizeSyncCadence(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            return "Manual";
+        }
+
+        return value.Trim().ToUpperInvariant() switch
+        {
+            "HOURLY" => "Hourly",
+            "DAILY" => "Daily",
+            "MANUAL" => "Manual",
+            _ => "Manual"
+        };
     }
 
     private async Task RecordAdminChangeAsync(Guid organizationId, Guid userId, string action, string entityName, string entityId, object? before, object? after, CancellationToken cancellationToken)
@@ -341,6 +639,7 @@ public sealed class BusinessAdministrationService(
         config.WeekendRate,
         config.EnvironmentalFee,
         config.ShopSuppliesPercent,
+        config.LaborLineItemsTaxable,
         config.DefaultTaxRate,
         config.RegionalTaxOverridesJson,
         config.NumberSequencesJson,
@@ -389,4 +688,12 @@ public sealed class BusinessAdministrationService(
     }
 
     private static string ToTitleCase(string normalized) => string.Join(' ', normalized.Split('_').Select(word => word[..1] + word[1..].ToLowerInvariant()));
+
+    private sealed record CompanySupplierConnectorAdminDefinition(
+        string Key,
+        string SupplierCode,
+        string Name,
+        string Description,
+        IReadOnlyCollection<string> Capabilities,
+        bool RequiresSecret);
 }

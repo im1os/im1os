@@ -5,6 +5,7 @@ using iM1os.Domain.Common;
 using iM1os.Domain.Configuration;
 using iM1os.Domain.Customers;
 using iM1os.Domain.Employees;
+using iM1os.Domain.GlobalCatalog;
 using iM1os.Domain.Identity;
 using iM1os.Domain.Marketing;
 using iM1os.Domain.Parts;
@@ -90,9 +91,41 @@ public sealed class ApplicationDbContext(
 
     public DbSet<WorkOrder> WorkOrders => Set<WorkOrder>();
 
+    public DbSet<WorkOrderAttachment> WorkOrderAttachments => Set<WorkOrderAttachment>();
+
     public DbSet<Estimate> Estimates => Set<Estimate>();
 
+    public DbSet<EstimateLineItem> EstimateLineItems => Set<EstimateLineItem>();
+
     public DbSet<LaborOperation> LaborOperations => Set<LaborOperation>();
+
+    public DbSet<WorkOrderTechnicianAssignment> WorkOrderTechnicianAssignments => Set<WorkOrderTechnicianAssignment>();
+
+    public DbSet<GlobalProduct> GlobalProducts => Set<GlobalProduct>();
+
+    public DbSet<GlobalVehicle> GlobalVehicles => Set<GlobalVehicle>();
+
+    public DbSet<Supplier> Suppliers => Set<Supplier>();
+
+    public DbSet<SupplierProduct> SupplierProducts => Set<SupplierProduct>();
+
+    public DbSet<SupplierPrice> SupplierPrices => Set<SupplierPrice>();
+
+    public DbSet<VehicleFitment> VehicleFitments => Set<VehicleFitment>();
+
+    public DbSet<SupplierFitmentRecord> SupplierFitmentRecords => Set<SupplierFitmentRecord>();
+
+    public DbSet<ProductMatchReviewItem> ProductMatchReviewItems => Set<ProductMatchReviewItem>();
+
+    public DbSet<SupplierConnectorConfiguration> SupplierConnectorConfigurations => Set<SupplierConnectorConfiguration>();
+
+    public DbSet<SupplierConnectorImportRun> SupplierConnectorImportRuns => Set<SupplierConnectorImportRun>();
+
+    public DbSet<CompanySupplierConnectorConfiguration> CompanySupplierConnectorConfigurations => Set<CompanySupplierConnectorConfiguration>();
+
+    public DbSet<CompanySupplierConnectorImportRun> CompanySupplierConnectorImportRuns => Set<CompanySupplierConnectorImportRun>();
+
+    public DbSet<CompanySupplierPrice> CompanySupplierPrices => Set<CompanySupplierPrice>();
 
     public DbSet<ManufacturerPart> ManufacturerParts => Set<ManufacturerPart>();
 
@@ -411,6 +444,7 @@ public sealed class ApplicationDbContext(
             entity.Property(x => x.WeekendRate).HasPrecision(12, 2);
             entity.Property(x => x.EnvironmentalFee).HasPrecision(12, 2);
             entity.Property(x => x.ShopSuppliesPercent).HasPrecision(8, 4);
+            entity.Property(x => x.LaborLineItemsTaxable).HasDefaultValue(true);
             entity.Property(x => x.DefaultTaxRate).HasPrecision(8, 4);
             entity.Property(x => x.RegionalTaxOverridesJson).HasColumnType("jsonb").IsRequired();
             entity.Property(x => x.NumberSequencesJson).HasColumnType("jsonb").IsRequired();
@@ -598,15 +632,38 @@ public sealed class ApplicationDbContext(
         {
             entity.ToTable("work_orders");
             entity.HasIndex(x => new { x.OrganizationId, x.WorkOrderNumber }).IsUnique();
+            entity.HasIndex(x => new { x.OrganizationId, x.CustomerId, x.OpenedAtUtc });
+            entity.HasIndex(x => new { x.OrganizationId, x.ServiceAdvisorEmployeeId });
             entity.HasIndex(x => new { x.OrganizationId, x.LocationId, x.Stage });
             entity.Property(x => x.WorkOrderNumber).HasMaxLength(80).IsRequired();
+            entity.Property(x => x.RepairOrderNumber).HasMaxLength(80);
             entity.Property(x => x.Stage).HasMaxLength(80).IsRequired();
             entity.Property(x => x.Priority).HasMaxLength(80).IsRequired();
             entity.Property(x => x.RequestedService).HasMaxLength(2000);
             entity.Property(x => x.CustomerConcern).HasMaxLength(2000);
+            entity.Property(x => x.DiagnosisFindings).HasMaxLength(4000);
+            entity.Property(x => x.ServiceNotes).HasMaxLength(4000);
+            entity.Property(x => x.PartsAndSuppliesNotes).HasMaxLength(4000);
             entity.HasOne<Customer>().WithMany().HasForeignKey(x => x.CustomerId);
             entity.HasOne<CustomerVehicle>().WithMany().HasForeignKey(x => x.CustomerVehicleId);
+            entity.HasOne<Employee>().WithMany().HasForeignKey(x => x.ServiceAdvisorEmployeeId);
             entity.HasQueryFilter(x => tenantProvider.CurrentOrganizationId == null || x.OrganizationId == tenantProvider.CurrentOrganizationId);
+        });
+
+        modelBuilder.Entity<WorkOrderAttachment>(entity =>
+        {
+            entity.ToTable("work_order_attachments");
+            entity.HasIndex(x => new { x.OrganizationId, x.WorkOrderId });
+            entity.HasIndex(x => new { x.OrganizationId, x.CustomerId });
+            entity.HasIndex(x => new { x.OrganizationId, x.CustomerVehicleId });
+            entity.Property(x => x.AttachmentType).HasMaxLength(80).IsRequired();
+            entity.Property(x => x.FileName).HasMaxLength(260).IsRequired();
+            entity.Property(x => x.Url).HasMaxLength(1000);
+            entity.Property(x => x.ContentType).HasMaxLength(120);
+            entity.HasOne(x => x.WorkOrder).WithMany().HasForeignKey(x => x.WorkOrderId);
+            entity.HasOne<Customer>().WithMany().HasForeignKey(x => x.CustomerId);
+            entity.HasOne<CustomerVehicle>().WithMany().HasForeignKey(x => x.CustomerVehicleId);
+            entity.HasQueryFilter(x => x.DeletedAtUtc == null && (tenantProvider.CurrentOrganizationId == null || x.OrganizationId == tenantProvider.CurrentOrganizationId));
         });
 
         modelBuilder.Entity<Estimate>(entity =>
@@ -616,11 +673,42 @@ public sealed class ApplicationDbContext(
             entity.HasIndex(x => new { x.OrganizationId, x.WorkOrderId });
             entity.Property(x => x.EstimateNumber).HasMaxLength(80).IsRequired();
             entity.Property(x => x.Status).HasMaxLength(80).IsRequired();
+            entity.Property(x => x.DepositTerms).HasMaxLength(120).IsRequired();
+            entity.Property(x => x.PaymentTerms).HasMaxLength(1000);
+            entity.Property(x => x.FeesTotal).HasPrecision(12, 2);
+            entity.Property(x => x.DiscountTotal).HasPrecision(12, 2);
+            entity.Property(x => x.Subtotal).HasPrecision(12, 2);
             entity.Property(x => x.LaborTotal).HasPrecision(12, 2);
             entity.Property(x => x.PartsTotal).HasPrecision(12, 2);
             entity.Property(x => x.TaxTotal).HasPrecision(12, 2);
             entity.Property(x => x.GrandTotal).HasPrecision(12, 2);
+            entity.HasOne<WorkOrder>().WithMany(x => x.Estimates).HasForeignKey(x => x.WorkOrderId);
+            entity.HasQueryFilter(x => tenantProvider.CurrentOrganizationId == null || x.OrganizationId == tenantProvider.CurrentOrganizationId);
+        });
+
+        modelBuilder.Entity<EstimateLineItem>(entity =>
+        {
+            entity.ToTable("estimate_line_items");
+            entity.HasIndex(x => new { x.OrganizationId, x.EstimateId, x.SortOrder });
+            entity.HasIndex(x => new { x.OrganizationId, x.WorkOrderId });
+            entity.HasIndex(x => new { x.OrganizationId, x.SupplierProductId });
+            entity.HasIndex(x => new { x.OrganizationId, x.InventoryItemId });
+            entity.Property(x => x.LineType).HasMaxLength(40).IsRequired();
+            entity.Property(x => x.Description).HasMaxLength(500).IsRequired();
+            entity.Property(x => x.Notes).HasMaxLength(2000);
+            entity.Property(x => x.Sku).HasMaxLength(120);
+            entity.Property(x => x.Quantity).HasPrecision(12, 2);
+            entity.Property(x => x.Rate).HasPrecision(12, 2);
+            entity.Property(x => x.DiscountAmount).HasPrecision(12, 2);
+            entity.Property(x => x.DiscountPercent).HasPrecision(8, 4);
+            entity.Property(x => x.LineTotal).HasPrecision(12, 2);
+            entity.HasOne<Estimate>().WithMany(x => x.LineItems).HasForeignKey(x => x.EstimateId);
             entity.HasOne<WorkOrder>().WithMany().HasForeignKey(x => x.WorkOrderId);
+            entity.HasOne<LaborOperation>().WithMany().HasForeignKey(x => x.LaborOperationId);
+            entity.HasOne<Supplier>().WithMany().HasForeignKey(x => x.SupplierId);
+            entity.HasOne<SupplierProduct>().WithMany().HasForeignKey(x => x.SupplierProductId);
+            entity.HasOne<ManufacturerPart>().WithMany().HasForeignKey(x => x.ManufacturerPartId);
+            entity.HasOne<InventoryItem>().WithMany().HasForeignKey(x => x.InventoryItemId);
             entity.HasQueryFilter(x => tenantProvider.CurrentOrganizationId == null || x.OrganizationId == tenantProvider.CurrentOrganizationId);
         });
 
@@ -633,6 +721,246 @@ public sealed class ApplicationDbContext(
             entity.Property(x => x.Description).HasMaxLength(2000);
             entity.Property(x => x.ServiceCategory).HasMaxLength(120);
             entity.Property(x => x.BaseHours).HasPrecision(8, 2);
+            entity.HasQueryFilter(x => tenantProvider.CurrentOrganizationId == null || x.OrganizationId == tenantProvider.CurrentOrganizationId);
+        });
+
+        modelBuilder.Entity<WorkOrderTechnicianAssignment>(entity =>
+        {
+            entity.ToTable("work_order_technician_assignments");
+            entity.HasIndex(x => new { x.OrganizationId, x.WorkOrderId, x.SortOrder });
+            entity.HasIndex(x => new { x.OrganizationId, x.EmployeeId });
+            entity.Property(x => x.Role).HasMaxLength(80).IsRequired();
+            entity.Property(x => x.SplitPercent).HasPrecision(8, 4);
+            entity.HasOne<WorkOrder>().WithMany(x => x.TechnicianAssignments).HasForeignKey(x => x.WorkOrderId);
+            entity.HasOne<Employee>().WithMany().HasForeignKey(x => x.EmployeeId);
+            entity.HasQueryFilter(x => tenantProvider.CurrentOrganizationId == null || x.OrganizationId == tenantProvider.CurrentOrganizationId);
+        });
+
+        modelBuilder.Entity<GlobalProduct>(entity =>
+        {
+            entity.ToTable("global_products");
+            entity.HasIndex(x => new { x.Brand, x.ManufacturerPartNumber }).IsUnique();
+            entity.HasIndex(x => new { x.Brand, x.NormalizedManufacturerPartNumber });
+            entity.HasIndex(x => x.Upc);
+            entity.HasIndex(x => x.Description);
+            entity.Property(x => x.Brand).HasMaxLength(120).IsRequired();
+            entity.Property(x => x.Manufacturer).HasMaxLength(160);
+            entity.Property(x => x.ManufacturerPartNumber).HasMaxLength(120);
+            entity.Property(x => x.NormalizedManufacturerPartNumber).HasMaxLength(120);
+            entity.Property(x => x.Description).HasMaxLength(500).IsRequired();
+            entity.Property(x => x.LongDescription).HasMaxLength(4000);
+            entity.Property(x => x.Category).HasMaxLength(160);
+            entity.Property(x => x.Upc).HasMaxLength(80);
+            entity.Property(x => x.Length).HasPrecision(12, 3);
+            entity.Property(x => x.Width).HasPrecision(12, 3);
+            entity.Property(x => x.Height).HasPrecision(12, 3);
+            entity.Property(x => x.Weight).HasPrecision(12, 3);
+            entity.Property(x => x.ImagesJson).HasColumnType("jsonb");
+            entity.Property(x => x.SpecificationsJson).HasColumnType("jsonb");
+            entity.Property(x => x.Status).HasMaxLength(80).IsRequired();
+        });
+
+        modelBuilder.Entity<GlobalVehicle>(entity =>
+        {
+            entity.ToTable("global_vehicles");
+            entity.HasIndex(x => new { x.Year, x.Make, x.Model, x.Submodel, x.Engine, x.Market }).IsUnique();
+            entity.HasIndex(x => x.VehicleType);
+            entity.Property(x => x.VehicleClass).HasMaxLength(80);
+            entity.Property(x => x.VehicleType).HasMaxLength(120);
+            entity.Property(x => x.Make).HasMaxLength(120).IsRequired();
+            entity.Property(x => x.Model).HasMaxLength(160).IsRequired();
+            entity.Property(x => x.Submodel).HasMaxLength(160);
+            entity.Property(x => x.Engine).HasMaxLength(160);
+            entity.Property(x => x.VinRange).HasMaxLength(160);
+            entity.Property(x => x.Market).HasMaxLength(80);
+            entity.Property(x => x.Notes).HasMaxLength(1000);
+        });
+
+        modelBuilder.Entity<Supplier>(entity =>
+        {
+            entity.ToTable("suppliers");
+            entity.HasIndex(x => x.Code).IsUnique();
+            entity.Property(x => x.Name).HasMaxLength(160).IsRequired();
+            entity.Property(x => x.Code).HasMaxLength(80).IsRequired();
+            entity.Property(x => x.ConnectorKey).HasMaxLength(120);
+        });
+
+        modelBuilder.Entity<SupplierProduct>(entity =>
+        {
+            entity.ToTable("supplier_products");
+            entity.HasIndex(x => new { x.SupplierId, x.SupplierSku }).IsUnique();
+            entity.HasIndex(x => new { x.SupplierId, x.SourceSupplierProductId });
+            entity.HasIndex(x => x.GlobalProductId);
+            entity.HasIndex(x => x.SupplierPartNumber);
+            entity.HasIndex(x => new { x.SupplierId, x.NormalizedManufacturerPartNumber });
+            entity.HasIndex(x => x.NormalizedManufacturerPartNumber);
+            entity.Property(x => x.SupplierSku).HasMaxLength(120).IsRequired();
+            entity.Property(x => x.SourceSupplierProductId).HasMaxLength(120);
+            entity.Property(x => x.SupplierDescription).HasMaxLength(1000);
+            entity.Property(x => x.SupplierPartNumber).HasMaxLength(120);
+            entity.Property(x => x.ManufacturerPartNumber).HasMaxLength(120);
+            entity.Property(x => x.NormalizedManufacturerPartNumber).HasMaxLength(120);
+            entity.Property(x => x.SupplierStatus).HasMaxLength(80).IsRequired();
+            entity.Property(x => x.Packaging).HasMaxLength(160);
+            entity.Property(x => x.WarehouseAvailability).HasMaxLength(500);
+            entity.Property(x => x.SupplierImagesJson).HasColumnType("jsonb");
+            entity.Property(x => x.SourceDataJson).HasColumnType("jsonb");
+            entity.HasOne<Supplier>().WithMany().HasForeignKey(x => x.SupplierId);
+            entity.HasOne<GlobalProduct>().WithMany().HasForeignKey(x => x.GlobalProductId);
+        });
+
+        modelBuilder.Entity<SupplierPrice>(entity =>
+        {
+            entity.ToTable("supplier_prices");
+            entity.HasIndex(x => new { x.SupplierProductId, x.EffectiveDate });
+            entity.Property(x => x.Msrp).HasPrecision(12, 2);
+            entity.Property(x => x.Map).HasPrecision(12, 2);
+            entity.Property(x => x.DealerCost).HasPrecision(12, 2);
+            entity.HasOne<SupplierProduct>().WithMany().HasForeignKey(x => x.SupplierProductId);
+        });
+
+        modelBuilder.Entity<VehicleFitment>(entity =>
+        {
+            entity.ToTable("vehicle_fitments");
+            entity.HasIndex(x => new { x.GlobalProductId, x.GlobalVehicleId, x.Position }).IsUnique();
+            entity.Property(x => x.Position).HasMaxLength(120);
+            entity.Property(x => x.Notes).HasMaxLength(1000);
+            entity.HasOne<GlobalProduct>().WithMany().HasForeignKey(x => x.GlobalProductId);
+            entity.HasOne<GlobalVehicle>().WithMany().HasForeignKey(x => x.GlobalVehicleId);
+        });
+
+        modelBuilder.Entity<SupplierFitmentRecord>(entity =>
+        {
+            entity.ToTable("supplier_fitment_records");
+            entity.HasIndex(x => new { x.SupplierId, x.SupplierSku });
+            entity.HasIndex(x => new { x.SupplierId, x.SourceSupplierProductId });
+            entity.HasIndex(x => new { x.SupplierId, x.SourceFitmentItemId, x.Year, x.Make, x.Model });
+            entity.HasIndex(x => x.SupplierProductId);
+            entity.HasIndex(x => x.GlobalProductId);
+            entity.HasIndex(x => x.GlobalVehicleId);
+            entity.HasIndex(x => x.VehicleFitmentId);
+            entity.HasIndex(x => x.VehicleType);
+            entity.HasIndex(x => x.ResolutionStatus);
+            entity.Property(x => x.SupplierKey).HasMaxLength(80).IsRequired();
+            entity.Property(x => x.SourceSupplierProductId).HasMaxLength(120);
+            entity.Property(x => x.SupplierPartNumber).HasMaxLength(120);
+            entity.Property(x => x.SupplierSku).HasMaxLength(120).IsRequired();
+            entity.Property(x => x.SourceFitmentItemId).HasMaxLength(120);
+            entity.Property(x => x.SourceFitmentPartNumber).HasMaxLength(120);
+            entity.Property(x => x.MfgPartNumber).HasMaxLength(120);
+            entity.Property(x => x.VehicleClass).HasMaxLength(80);
+            entity.Property(x => x.VehicleType).HasMaxLength(120);
+            entity.Property(x => x.Make).HasMaxLength(120).IsRequired();
+            entity.Property(x => x.Model).HasMaxLength(160).IsRequired();
+            entity.Property(x => x.Submodel).HasMaxLength(160);
+            entity.Property(x => x.Engine).HasMaxLength(160);
+            entity.Property(x => x.Notes).HasMaxLength(1000);
+            entity.Property(x => x.ResolutionStatus).HasMaxLength(80).IsRequired();
+            entity.HasOne<Supplier>().WithMany().HasForeignKey(x => x.SupplierId);
+            entity.HasOne<SupplierProduct>().WithMany().HasForeignKey(x => x.SupplierProductId);
+            entity.HasOne<GlobalProduct>().WithMany().HasForeignKey(x => x.GlobalProductId);
+            entity.HasOne<GlobalVehicle>().WithMany().HasForeignKey(x => x.GlobalVehicleId);
+            entity.HasOne<VehicleFitment>().WithMany().HasForeignKey(x => x.VehicleFitmentId);
+        });
+
+        modelBuilder.Entity<ProductMatchReviewItem>(entity =>
+        {
+            entity.ToTable("product_match_review_items");
+            entity.HasIndex(x => new { x.SupplierId, x.SupplierSku, x.Status });
+            entity.Property(x => x.SupplierSku).HasMaxLength(120).IsRequired();
+            entity.Property(x => x.SupplierPartNumber).HasMaxLength(120);
+            entity.Property(x => x.Upc).HasMaxLength(80);
+            entity.Property(x => x.Brand).HasMaxLength(120);
+            entity.Property(x => x.SupplierDescription).HasMaxLength(1000);
+            entity.Property(x => x.MatchReason).HasMaxLength(500).IsRequired();
+            entity.Property(x => x.Status).HasMaxLength(80).IsRequired();
+            entity.HasOne<Supplier>().WithMany().HasForeignKey(x => x.SupplierId);
+            entity.HasOne<GlobalProduct>().WithMany().HasForeignKey(x => x.CandidateGlobalProductId);
+        });
+
+        modelBuilder.Entity<SupplierConnectorConfiguration>(entity =>
+        {
+            entity.ToTable("supplier_connector_configurations");
+            entity.HasIndex(x => new { x.SupplierId, x.ConnectorKey }).IsUnique();
+            entity.Property(x => x.ConnectorKey).HasMaxLength(80).IsRequired();
+            entity.Property(x => x.DisplayName).HasMaxLength(160).IsRequired();
+            entity.Property(x => x.BaseApiUrl).HasMaxLength(1000);
+            entity.Property(x => x.MasterFileUrl).HasMaxLength(1000);
+            entity.Property(x => x.DealerAccountNumber).HasMaxLength(120);
+            entity.Property(x => x.Username).HasMaxLength(160);
+            entity.Property(x => x.ApiKey).HasMaxLength(500);
+            entity.Property(x => x.ApiSecretProtected);
+            entity.Property(x => x.AuthMode).HasMaxLength(80).IsRequired();
+            entity.Property(x => x.MasterFileImportMode).HasMaxLength(80);
+            entity.Property(x => x.FitmentSourceBaseUrl).HasMaxLength(1000);
+            entity.Property(x => x.MediaScheduleCadenceMinutes).HasDefaultValue(1440);
+            entity.Property(x => x.MediaScheduleDelayMilliseconds).HasDefaultValue(750);
+            entity.Property(x => x.LastConnectionStatus).HasMaxLength(80);
+            entity.Property(x => x.LastConnectionMessage).HasMaxLength(500);
+            entity.HasOne<Supplier>().WithMany().HasForeignKey(x => x.SupplierId);
+        });
+
+        modelBuilder.Entity<SupplierConnectorImportRun>(entity =>
+        {
+            entity.ToTable("supplier_connector_import_runs");
+            entity.HasIndex(x => new { x.SupplierConnectorConfigurationId, x.RequestedAtUtc });
+            entity.HasIndex(x => x.Status);
+            entity.Property(x => x.ImportType).HasMaxLength(120).IsRequired();
+            entity.Property(x => x.Status).HasMaxLength(80).IsRequired();
+            entity.Property(x => x.RequestedByPlatformUserId).HasMaxLength(80);
+            entity.Property(x => x.Source).HasMaxLength(160);
+            entity.Property(x => x.ParametersJson).HasColumnType("jsonb");
+            entity.Property(x => x.Message).HasMaxLength(1000);
+            entity.Property(x => x.ProgressProcessed).HasDefaultValue(0);
+            entity.HasOne<SupplierConnectorConfiguration>().WithMany().HasForeignKey(x => x.SupplierConnectorConfigurationId);
+        });
+
+        modelBuilder.Entity<CompanySupplierConnectorConfiguration>(entity =>
+        {
+            entity.ToTable("company_supplier_connector_configurations");
+            entity.HasIndex(x => new { x.OrganizationId, x.SupplierId, x.ConnectorKey }).IsUnique();
+            entity.Property(x => x.ConnectorKey).HasMaxLength(80).IsRequired();
+            entity.Property(x => x.DisplayName).HasMaxLength(160).IsRequired();
+            entity.Property(x => x.BaseApiUrl).HasMaxLength(1000);
+            entity.Property(x => x.DealerAccountNumber).HasMaxLength(120);
+            entity.Property(x => x.Username).HasMaxLength(160);
+            entity.Property(x => x.ApiKey).HasMaxLength(500);
+            entity.Property(x => x.ApiSecretProtected).HasMaxLength(1000);
+            entity.Property(x => x.AuthMode).HasMaxLength(80).IsRequired();
+            entity.Property(x => x.LastConnectionStatus).HasMaxLength(80);
+            entity.Property(x => x.LastConnectionMessage).HasMaxLength(500);
+            entity.HasOne<Supplier>().WithMany().HasForeignKey(x => x.SupplierId);
+            entity.HasQueryFilter(x => tenantProvider.CurrentOrganizationId == null || x.OrganizationId == tenantProvider.CurrentOrganizationId);
+        });
+
+        modelBuilder.Entity<CompanySupplierConnectorImportRun>(entity =>
+        {
+            entity.ToTable("company_supplier_connector_import_runs");
+            entity.HasIndex(x => new { x.OrganizationId, x.CompanySupplierConnectorConfigurationId, x.RequestedAtUtc });
+            entity.HasIndex(x => new { x.OrganizationId, x.Status });
+            entity.Property(x => x.ImportType).HasMaxLength(120).IsRequired();
+            entity.Property(x => x.Status).HasMaxLength(80).IsRequired();
+            entity.Property(x => x.RequestedByUserId).HasMaxLength(80);
+            entity.Property(x => x.Source).HasMaxLength(160);
+            entity.Property(x => x.ParametersJson).HasColumnType("jsonb");
+            entity.Property(x => x.Message).HasMaxLength(1000);
+            entity.Property(x => x.ProgressProcessed).HasDefaultValue(0);
+            entity.HasOne<CompanySupplierConnectorConfiguration>().WithMany().HasForeignKey(x => x.CompanySupplierConnectorConfigurationId);
+            entity.HasQueryFilter(x => tenantProvider.CurrentOrganizationId == null || x.OrganizationId == tenantProvider.CurrentOrganizationId);
+        });
+
+        modelBuilder.Entity<CompanySupplierPrice>(entity =>
+        {
+            entity.ToTable("company_supplier_prices");
+            entity.HasIndex(x => new { x.OrganizationId, x.SupplierProductId }).IsUnique();
+            entity.HasIndex(x => new { x.OrganizationId, x.SupplierId, x.SupplierSku });
+            entity.Property(x => x.SupplierSku).HasMaxLength(120).IsRequired();
+            entity.Property(x => x.SourceSupplierProductId).HasMaxLength(120);
+            entity.Property(x => x.ActualDealerCost).HasPrecision(12, 2);
+            entity.Property(x => x.Currency).HasMaxLength(3).IsRequired();
+            entity.Property(x => x.SourceDataJson).HasColumnType("jsonb");
+            entity.HasOne<Supplier>().WithMany().HasForeignKey(x => x.SupplierId);
+            entity.HasOne<SupplierProduct>().WithMany().HasForeignKey(x => x.SupplierProductId);
             entity.HasQueryFilter(x => tenantProvider.CurrentOrganizationId == null || x.OrganizationId == tenantProvider.CurrentOrganizationId);
         });
 

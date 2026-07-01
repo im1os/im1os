@@ -18,6 +18,8 @@ public sealed class BusinessConfiguration : AuditableEntity, IOrganizationOwned
 
     public decimal ShopSuppliesPercent { get; set; }
 
+    public bool LaborLineItemsTaxable { get; set; } = true;
+
     public decimal DefaultTaxRate { get; set; }
 
     public string RegionalTaxOverridesJson { get; set; } = "[]";

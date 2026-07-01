@@ -45,10 +45,22 @@ public sealed record TenantManagerDetail(
     string? OwnerEmail,
     bool OwnerActivated,
     IReadOnlyCollection<string> ModulesEnabled,
+    IReadOnlyCollection<TenantModuleOption> ModuleOptions,
     IReadOnlyCollection<string> FeatureFlags,
     IReadOnlyCollection<string> ProvisioningHistory,
     IReadOnlyCollection<string> AuditHistory,
     IReadOnlyCollection<string> WelcomeEmails);
+
+public sealed record TenantModuleOption(
+    string Key,
+    string Label,
+    string Category,
+    string Description,
+    bool IsEnabled);
+
+public sealed record UpdateTenantModulesRequest(
+    Guid OrganizationId,
+    IReadOnlyCollection<string> EnabledModules);
 
 public sealed record UpdateTenantManagementRequest(
     Guid OrganizationId,

@@ -1,0 +1,393 @@
+@model iM1os.Application.Platform.Turn14ConnectorPage
+
+@{
+    ViewData["Title"] = "Turn14 Connector";
+    var message = TempData["PlatformMessage"] as string;
+    var credentialsStatus = Model.Status.HasEnvironmentCredentials
+        ? "Environment"
+        : Model.Status.HasStoredCredentials ? "Stored" : "Missing";
+    var hero = new IM1WorkspaceHeroModel(
+        "Turn14",
+        "Suppliers",
+        "Configure Turn 14 Distribution product loadsheet imports from the web export workflow.",
+        new[]
+        {
+            new IM1WorkspaceStatModel("Connector", Model.Status.IsEnabled ? "Enabled" : "Disabled", Model.Status.ConnectorKey),
+            new IM1WorkspaceStatModel("Configured", Model.Status.IsConfigured ? "Ready" : "Incomplete", Model.Status.SupplierName),
+            new IM1WorkspaceStatModel("Credentials", credentialsStatus, Model.Status.HasEnvironmentCredentials ? "TURN14 env vars" : "Connector settings"),
+            new IM1WorkspaceStatModel("API", Model.Status.HasApiCredentials ? "Ready" : "Missing", "Images and inventory"),
+            new IM1WorkspaceStatModel("Items", Model.DatabaseMetrics.SupplierProductCount.ToString("N0"), "In database"),
+            new IM1WorkspaceStatModel("Fitment Records", Model.DatabaseMetrics.FitmentRecordCount.ToString("N0"), "In database"),
+            new IM1WorkspaceStatModel("Loadsheet", Model.ProductLoadsheetStatus.FileLastModifiedUtc?.ToString("yyyy-MM-dd HH:mm") ?? (Model.Settings.ImportMasterFileOnSchedule ? "Scheduled" : "Manual"), Model.ProductLoadsheetStatus.FileName ?? $"{Model.Settings.MasterFileScheduleIntervalHours} hr interval"),
+            new IM1WorkspaceStatModel("Fitment", Model.Settings.ImportFitmentOnSchedule ? "Scheduled" : "Manual", $"{Model.Settings.FitmentScheduleIntervalHours} hr interval"),
+            new IM1WorkspaceStatModel("Media", Model.Settings.ImportMediaOnSchedule ? "Scheduled" : "Manual", $"{Model.Settings.MediaScheduleIntervalHours} hr interval")
+        },
+        new[] { new IM1ActionModel("Global Scheduler", Url.Action("Scheduler"), "secondary") },
+        Model.Status.LastConnectionStatus ?? "Turn14 supplier setup");
+}
+
+<nav class="im1-breadcrumbs" aria-label="Breadcrumb">
+    <span>Platform Suppliers</span>
+    <span>Connectors</span>
+    <span>Turn14</span>
+</nav>
+
+@await Html.PartialAsync("IM1WorkspaceHero", hero)
+
+@if (!string.IsNullOrWhiteSpace(message))
+{
+    <section class="im1-status-strip">
+        <strong>Status</strong>
+        <span>@message</span>
+    </section>
+}
+
+<section class="im1-status-strip">
+    <strong>Product Loadsheet</strong>
+    <span>
+        File @(Model.ProductLoadsheetStatus.FileName ?? "-");
+        file date @(Model.ProductLoadsheetStatus.FileLastModifiedUtc?.ToString("yyyy-MM-dd HH:mm") ?? "-");
+        downloaded @(Model.ProductLoadsheetStatus.LastDownloadedAtUtc?.ToString("yyyy-MM-dd HH:mm") ?? "-");
+        applied @(Model.ProductLoadsheetStatus.LastAppliedAtUtc?.ToString("yyyy-MM-dd HH:mm") ?? "-").
+    </span>
+</section>
+
+<section class="im1-wps-connector-layout">
+    <article class="im1-settings-panel im1-wps-primary-panel">
+        <header class="im1-section-header">
+            <div>
+                <h2>Scheduler</h2>
+                <p>Automated product loadsheet imports run through the connector worker.</p>
+            </div>
+        </header>
+
+        <form class="im1-settings-form" asp-action="SaveTurn14Connector" method="post" autocomplete="off">
+            @Html.AntiForgeryToken()
+            <input class="im1-autofill-decoy" type="text" name="turn14-decoy-username" autocomplete="username" tabindex="-1" aria-hidden="true" />
+            <input class="im1-autofill-decoy" type="password" name="turn14-decoy-password" autocomplete="current-password" tabindex="-1" aria-hidden="true" />
+            <section class="im1-scheduler-connector-bar im1-scheduler-connector-bar-single">
+                <label class="im1-setting-option">
+                    <input type="checkbox" name="IsEnabled" value="true" checked="@Model.Settings.IsEnabled" />
+                    <span>
+                        <strong>Enabled</strong>
+                        <small>Allow Turn14 connector operations.</small>
+                    </span>
+                </label>
+                <input type="hidden" name="IsEnabled" value="false" />
+            </section>
+
+            <section class="im1-scheduler-config-list" aria-label="Turn14 schedules">
+                <article class="im1-scheduler-config-row">
+                    <div class="im1-scheduler-config-summary">
+                        <label class="im1-setting-option">
+                            <input type="checkbox" name="ImportMasterFileOnSchedule" value="true" checked="@Model.Settings.ImportMasterFileOnSchedule" />
+                            <span>
+                                <strong>Product loadsheet schedule</strong>
+                                <small>Downloads the Turn14 product data ZIP and imports catalog rows.</small>
+                            </span>
+                        </label>
+                        <input type="hidden" name="ImportMasterFileOnSchedule" value="false" />
+                    </div>
+                    <div class="im1-scheduler-config-fields">
+                        <label class="im1-field">
+                            <span>Mode</span>
+                            <select name="MasterFileImportMode">
+                                <option value="Manual" selected="@(Model.Settings.MasterFileImportMode == "Manual")">Manual</option>
+                                <option value="Scheduled" selected="@(Model.Settings.MasterFileImportMode == "Scheduled")">Scheduled</option>
+                                <option value="ManualAndScheduled" selected="@(Model.Settings.MasterFileImportMode == "ManualAndScheduled")">Manual and Scheduled</option>
+                            </select>
+                        </label>
+                        <label class="im1-field">
+                            <span>Schedule Interval (hours)</span>
+                            <input name="MasterFileScheduleIntervalHours" type="number" min="1" max="168" step="1" value="@Model.Settings.MasterFileScheduleIntervalHours" />
+                        </label>
+                        <label class="im1-field">
+                            <span>Scheduled max rows</span>
+                            <input name="MasterFileScheduleMaxItems" type="number" min="1" step="1" value="@Model.Settings.MasterFileScheduleMaxItems" placeholder="Blank for full import" />
+                        </label>
+                    </div>
+                </article>
+                <article class="im1-scheduler-config-row">
+                    <div class="im1-scheduler-config-summary">
+                        <label class="im1-setting-option">
+                            <input type="checkbox" name="ImportFitmentOnSchedule" value="true" checked="@Model.Settings.ImportFitmentOnSchedule" />
+                            <span>
+                                <strong>Fitment schedule</strong>
+                                <small>Calls the Indie Moto fitment source for active Turn14 SKUs.</small>
+                            </span>
+                        </label>
+                        <input type="hidden" name="ImportFitmentOnSchedule" value="false" />
+                    </div>
+                    <div class="im1-scheduler-config-fields im1-scheduler-config-fields-fitment">
+                        <label class="im1-field">
+                            <span>Schedule Interval (hours)</span>
+                            <input name="FitmentScheduleIntervalHours" type="number" min="1" max="168" step="1" value="@Model.Settings.FitmentScheduleIntervalHours" />
+                        </label>
+                        <label class="im1-field">
+                            <span>Max SKUs</span>
+                            <input name="FitmentScheduleMaxSkus" type="number" min="1" step="1" value="@Model.Settings.FitmentScheduleMaxSkus" placeholder="Blank for all active" />
+                        </label>
+                        <label class="im1-field">
+                            <span>Fitment limit</span>
+                            <input name="FitmentScheduleFitmentLimit" type="number" min="1" step="1" value="@Model.Settings.FitmentScheduleFitmentLimit" placeholder="Blank for all rows" />
+                        </label>
+                        <label class="im1-field">
+                            <span>Delay ms</span>
+                            <input name="FitmentScheduleDelayMilliseconds" type="number" min="0" max="5000" step="50" value="@Model.Settings.FitmentScheduleDelayMilliseconds" />
+                        </label>
+                        <label class="im1-field im1-scheduler-config-source">
+                            <span>Fitment source URL</span>
+                            <input name="FitmentSourceBaseUrl" value="@Model.Settings.FitmentSourceBaseUrl" placeholder="https://saas.indie-moto.com" autocomplete="off" />
+                        </label>
+                    </div>
+                </article>
+                <article class="im1-scheduler-config-row">
+                    <div class="im1-scheduler-config-summary">
+                        <label class="im1-setting-option">
+                            <input type="checkbox" name="ImportMediaOnSchedule" value="true" checked="@Model.Settings.ImportMediaOnSchedule" />
+                            <span>
+                                <strong>Media enrichment schedule</strong>
+                                <small>Calls the Turn14 item-data API for products missing images.</small>
+                            </span>
+                        </label>
+                        <input type="hidden" name="ImportMediaOnSchedule" value="false" />
+                    </div>
+                    <div class="im1-scheduler-config-fields">
+                        <label class="im1-field">
+                            <span>Schedule Interval (hours)</span>
+                            <input name="MediaScheduleIntervalHours" type="number" min="1" max="168" step="1" value="@Model.Settings.MediaScheduleIntervalHours" />
+                        </label>
+                        <label class="im1-field">
+                            <span>Max Products</span>
+                            <input name="MediaScheduleMaxItems" type="number" min="1" step="1" value="@Model.Settings.MediaScheduleMaxItems" placeholder="Blank for all missing media" />
+                        </label>
+                        <label class="im1-field">
+                            <span>Delay ms</span>
+                            <input name="MediaScheduleDelayMilliseconds" type="number" min="0" max="5000" step="50" value="@Model.Settings.MediaScheduleDelayMilliseconds" />
+                        </label>
+                    </div>
+                </article>
+            </section>
+
+            <details class="im1-disclosure-panel">
+                <summary>
+                    <span>Connection details</span>
+                    <small>Base URL and optional credential override</small>
+                </summary>
+                <div class="im1-settings-grid">
+                    <label class="im1-field im1-field-wide">
+                        <span>Base URL</span>
+                        <input name="BaseUrl" value="@Model.Settings.BaseUrl" placeholder="https://turn14.com" autocomplete="off" />
+                    </label>
+                    <label class="im1-field">
+                        <span>Username override</span>
+                        <input name="Username" value="@Model.Settings.Username" placeholder="Prefer TURN14_USERNAME" autocomplete="section-turn14-connector off" spellcheck="false" autocapitalize="none" />
+                    </label>
+                    <label class="im1-field">
+                        <span>Password override</span>
+                        <input name="Password" value="@Model.Settings.Password" placeholder="Prefer TURN14_PASSWORD" type="password" autocomplete="section-turn14-connector new-password" spellcheck="false" autocapitalize="none" />
+                    </label>
+                    <label class="im1-field">
+                        <span>API Client ID</span>
+                        <input name="ApiClientId" value="@Model.Settings.ApiClientId" placeholder="Prefer TURN14_CLIENT_ID" autocomplete="off" />
+                    </label>
+                    <label class="im1-field">
+                        <span>API Client Secret</span>
+                        <input name="ApiClientSecret" value="@Model.Settings.ApiClientSecret" placeholder="Prefer TURN14_CLIENT_SECRET" type="password" autocomplete="section-turn14-api new-password" spellcheck="false" autocapitalize="none" />
+                    </label>
+                </div>
+                <p class="im1-settings-note">Environment variables are preferred. API credentials enrich images, descriptions, item ids, and live inventory.</p>
+            </details>
+
+            <footer class="im1-settings-actions">
+                <button class="im1-button im1-button-primary" type="submit">Save Settings</button>
+            </footer>
+        </form>
+
+        <form asp-action="TestTurn14Connector" method="post" class="im1-inline-action-bar">
+            @Html.AntiForgeryToken()
+            <button class="im1-button im1-button-secondary" type="submit">Test Configuration</button>
+            <p>@(Model.Status.LastConnectionMessage ?? "Connection has not been tested.")</p>
+        </form>
+    </article>
+
+    <aside class="im1-wps-action-stack">
+        <article class="im1-settings-panel">
+            <header class="im1-section-header">
+                <div>
+                    <h2>Product Loadsheet Import</h2>
+                    <p>Queue the Turn14 ZIP export. SKU maps from InternalPartNumber.</p>
+                </div>
+            </header>
+
+            <form class="im1-settings-form" asp-action="ImportTurn14MasterFile" method="post">
+                @Html.AntiForgeryToken()
+                <div class="im1-settings-grid">
+                    <label class="im1-field">
+                        <span>Import Mode</span>
+                        <select name="ImportMode">
+                            <option value="LimitedTest">Limited test</option>
+                            <option value="Delta">Delta</option>
+                            <option value="Full">Full</option>
+                            <option value="ValidateOnly">Validate only</option>
+                        </select>
+                    </label>
+                    <label class="im1-field">
+                        <span>Max Rows</span>
+                        <input name="MaxItems" type="number" min="1" step="1" value="500" />
+                    </label>
+                </div>
+                <div class="im1-option-grid">
+                    <label class="im1-setting-option">
+                        <input type="checkbox" name="ImportProducts" value="true" checked />
+                        <span><strong>Products</strong></span>
+                    </label>
+                    <input type="hidden" name="ImportProducts" value="false" />
+                    <label class="im1-setting-option">
+                        <input type="checkbox" name="ImportSupplierPricing" value="true" checked />
+                        <span><strong>Supplier pricing</strong></span>
+                    </label>
+                    <input type="hidden" name="ImportSupplierPricing" value="false" />
+                    <label class="im1-setting-option">
+                        <input type="checkbox" name="UpdateExistingProducts" value="true" checked />
+                        <span><strong>Update existing</strong></span>
+                    </label>
+                    <input type="hidden" name="UpdateExistingProducts" value="false" />
+                    <label class="im1-setting-option">
+                        <input type="checkbox" name="CreateMissingProducts" value="true" checked />
+                        <span><strong>Create missing</strong></span>
+                    </label>
+                    <input type="hidden" name="CreateMissingProducts" value="false" />
+                </div>
+                <footer class="im1-settings-actions">
+                    <button class="im1-button im1-button-primary" type="submit">Import Product Loadsheet</button>
+                </footer>
+            </form>
+        </article>
+
+        <article class="im1-settings-panel">
+            <header class="im1-section-header">
+                <div>
+                    <h2>Fitment Import</h2>
+                    <p>Queue YMM fitment enrichment for active Turn14 SKUs.</p>
+                </div>
+            </header>
+
+            <form class="im1-settings-form" asp-action="ImportTurn14Fitment" method="post">
+                @Html.AntiForgeryToken()
+                <div class="im1-settings-grid">
+                    <label class="im1-field">
+                        <span>Import Mode</span>
+                        <select name="ImportMode">
+                            <option value="LimitedTest">Limited test</option>
+                            <option value="Delta">Delta</option>
+                            <option value="Full">Full</option>
+                        </select>
+                    </label>
+                    <label class="im1-field">
+                        <span>Max SKUs</span>
+                        <input name="MaxSkus" type="number" min="1" step="1" value="500" />
+                    </label>
+                    <label class="im1-field">
+                        <span>Fitment limit</span>
+                        <input name="FitmentLimit" type="number" min="1" step="1" placeholder="Blank for all rows" />
+                    </label>
+                    <label class="im1-field">
+                        <span>Delay ms</span>
+                        <input name="DelayMilliseconds" type="number" min="0" max="5000" step="50" value="@Model.Settings.FitmentScheduleDelayMilliseconds" />
+                    </label>
+                </div>
+                <footer class="im1-settings-actions">
+                    <button class="im1-button im1-button-primary" type="submit">Import Fitment</button>
+                </footer>
+            </form>
+        </article>
+
+        <article class="im1-settings-panel">
+            <header class="im1-section-header">
+                <div>
+                    <h2>Media Enrichment</h2>
+                    <p>Queue Turn14 item-data API enrichment for products missing images.</p>
+                </div>
+            </header>
+
+            <form class="im1-settings-form" asp-action="ImportTurn14MediaEnrichment" method="post">
+                @Html.AntiForgeryToken()
+                <div class="im1-settings-grid">
+                    <label class="im1-field">
+                        <span>Import Mode</span>
+                        <select name="ImportMode">
+                            <option value="LimitedTest">Limited test</option>
+                            <option value="Delta">Delta</option>
+                            <option value="Full">Full</option>
+                        </select>
+                    </label>
+                    <label class="im1-field">
+                        <span>Max Products</span>
+                        <input name="MaxItems" type="number" min="1" step="1" value="500" />
+                    </label>
+                    <label class="im1-field">
+                        <span>Delay ms</span>
+                        <input name="DelayMilliseconds" type="number" min="0" max="5000" step="50" value="@Model.Settings.MediaScheduleDelayMilliseconds" />
+                    </label>
+                </div>
+                <footer class="im1-settings-actions">
+                    <button class="im1-button im1-button-primary" type="submit">Enrich Media</button>
+                </footer>
+            </form>
+        </article>
+    </aside>
+</section>
+
+<section class="im1-settings-panel">
+    <header class="im1-section-header">
+        <div>
+            <h2>Recent Imports</h2>
+            <p>Latest Turn14 product loadsheet import requests.</p>
+        </div>
+    </header>
+    <div class="table-wrap im1-table-compact">
+        <table>
+            <thead>
+                <tr>
+                    <th>Requested</th>
+                    <th>Type</th>
+                    <th>Status</th>
+                    <th>Progress</th>
+                    <th>Source</th>
+                    <th>Started</th>
+                    <th>Completed</th>
+                    <th>Message</th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var run in Model.RecentImportRuns)
+                {
+                    <tr>
+                        <td>@run.RequestedAtUtc.ToString("yyyy-MM-dd HH:mm")</td>
+                        <td>@run.ImportType</td>
+                        <td>@run.Status</td>
+                        <td>
+                            <div class="im1-import-progress" aria-label="Import progress @run.ProgressPercent%">
+                                <span style="width: @run.ProgressPercent%"></span>
+                            </div>
+                            <span class="im1-import-progress-count">
+                                @(run.ProgressTotal is null ? run.ProgressProcessed.ToString("N0") : $"{run.ProgressProcessed:N0} / {run.ProgressTotal.Value:N0}")
+                            </span>
+                        </td>
+                        <td>@run.Source</td>
+                        <td>@(run.StartedAtUtc?.ToString("yyyy-MM-dd HH:mm") ?? "-")</td>
+                        <td>@(run.CompletedAtUtc?.ToString("yyyy-MM-dd HH:mm") ?? "-")</td>
+                        <td>@run.Message</td>
+                    </tr>
+                }
+                @if (Model.RecentImportRuns.Count == 0)
+                {
+                    <tr>
+                        <td colspan="8">No Turn14 imports have been requested.</td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </div>
+</section>
