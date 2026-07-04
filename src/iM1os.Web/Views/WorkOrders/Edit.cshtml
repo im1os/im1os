@@ -429,6 +429,18 @@
                 const number = Number(value);
                 return Number.isFinite(number) ? number.toFixed(2) : "0.00";
             };
+            const formatCurrency = value => {
+                if (value === null || value === undefined || value === "") {
+                    return "-";
+                }
+
+                const number = Number(value);
+                if (!Number.isFinite(number)) {
+                    return "-";
+                }
+
+                return `${number < 0 ? "-$" : "$"}${Math.abs(number).toFixed(2)}`;
+            };
 
             const setText = (selector, value) => {
                 const element = document.querySelector(selector);
@@ -791,7 +803,6 @@
                 const fitmentYear = fieldValue("[data-edit-unit-year]");
                 const fitmentMake = fieldValue("[data-edit-unit-make]");
                 const fitmentModel = fieldValue("[data-edit-unit-model]");
-                const fitmentType = fieldValue("[data-edit-unit-type]");
                 if (!fitmentYear || !fitmentMake || !fitmentModel) {
                     countLabel.textContent = "No unit fitment";
                     return;
@@ -799,9 +810,6 @@
 
                 countLabel.textContent = "Loading...";
                 const url = new URL(fitmentCountUrl, window.location.origin);
-                if (fitmentType) {
-                    url.searchParams.set("vehicleType", fitmentType);
-                }
                 url.searchParams.set("year", fitmentYear);
                 url.searchParams.set("make", fitmentMake);
                 url.searchParams.set("model", fitmentModel);
@@ -886,6 +894,450 @@
                 row.scrollIntoView({ block: "center", behavior: "smooth" });
             };
 
+            const inventoryTotalFromWarehouses = warehouses => {
+                if (!(warehouses || []).length) return "-";
+                let total = 0;
+                let hasNumber = false;
+                let hasPlus = false;
+                (warehouses || []).forEach(warehouse => {
+                    if (Number.isFinite(Number(warehouse.quantity))) {
+                        total += Number(warehouse.quantity);
+                        hasNumber = true;
+                        return;
+                    }
+
+                    const display = warehouse.quantityDisplay || "";
+                    const match = display.match(/\d+/);
+                    if (match) {
+                        total += Number(match[0]);
+                        hasNumber = true;
+                        hasPlus = hasPlus || display.includes("+");
+                    }
+                });
+
+                return hasNumber ? `${total.toLocaleString()}${hasPlus ? "+" : ""}` : "Available";
+            };
+            const inventoryResultCache = new Map();
+            const batchInventoryCacheKey = (batchUrl, supplierProductId) => `${batchUrl || ""}::${supplierProductId || ""}`;
+            const hasInventoryFromWarehouses = warehouses => {
+                let hasWarehouse = false;
+                for (const warehouse of warehouses || []) {
+                    hasWarehouse = true;
+                    if (Number.isFinite(Number(warehouse.quantity))) {
+                        if (Number(warehouse.quantity) > 0) return true;
+                        continue;
+                    }
+
+                    const display = warehouse.quantityDisplay || "";
+                    const match = display.match(/\d+/);
+                    if (match && Number(match[0]) > 0) return true;
+                    if (!match && /available|in stock/i.test(display)) return true;
+                }
+
+                return hasWarehouse && !(warehouses || []).some(warehouse => Number(warehouse.quantity) === 0 || /^0$/.test(warehouse.quantityDisplay || ""));
+            };
+            const selectLeastCostInStockOffer = item => {
+                const rows = [...(item?.querySelectorAll("[data-offer-row]") || [])];
+                if (!rows.length) return;
+                const inStockRows = rows.filter(row => row.dataset.hasInventory === "true");
+                const candidates = inStockRows.length ? inStockRows : rows;
+                const selected = candidates
+                    .map(row => ({ row, cost: Number(row.dataset.offerCost) }))
+                    .sort((a, b) => (Number.isFinite(a.cost) ? a.cost : Number.MAX_VALUE) - (Number.isFinite(b.cost) ? b.cost : Number.MAX_VALUE))[0]?.row;
+                if (!selected) return;
+                rows.forEach(row => {
+                    const isSelected = row === selected;
+                    row.classList.toggle("im1-supplier-offer-selected", isSelected);
+                    const status = row.querySelector("header span");
+                    if (status) status.textContent = isSelected ? "Lowest in stock" : "Option";
+                    const button = row.querySelector("button");
+                    if (button) button.textContent = isSelected ? "Add selected" : "Add this supplier";
+                });
+            };
+            const updateOfferInventoryState = (source, result) => {
+                const supplierProductId = source.dataset.supplierProductId;
+                const item = source.closest("[data-item-result]");
+                if (!supplierProductId || !item || !result?.isAvailable) return;
+                const row = item.querySelector(`[data-offer-supplier-product-id="${supplierProductId}"]`);
+                if (!row) return;
+                row.dataset.hasInventory = hasInventoryFromWarehouses(result.warehouses || []) ? "true" : "false";
+                selectLeastCostInStockOffer(item);
+            };
+
+            const renderInventoryResult = (panel, result, emptyMessage) => {
+                const status = panel.querySelector("header span");
+                const grid = panel.querySelector(".im1-live-inventory-grid");
+                if (!result?.isAvailable) {
+                    status.textContent = result?.message || "Inventory unavailable.";
+                    return;
+                }
+
+                const warehouses = result.warehouses || [];
+                if (!warehouses.length) {
+                    status.textContent = result.message || emptyMessage;
+                    updateOfferInventoryState(panel, result);
+                    return;
+                }
+
+                status.textContent = result.message || "Live";
+                const supplierCode = panel.dataset.supplierCode;
+                if (supplierCode) {
+                    const summary = panel.closest("[data-item-result]")?.querySelector(`[data-inventory-summary-code="${supplierCode}"]`);
+                    if (summary) {
+                        summary.textContent = `${supplierCode}: ${inventoryTotalFromWarehouses(warehouses)}`;
+                    }
+                }
+                updateOfferInventoryState(panel, result);
+                grid.replaceChildren(...warehouses.map(warehouse => {
+                    const row = document.createElement("div");
+                    row.className = "im1-live-inventory-row";
+                    const label = document.createElement("span");
+                    label.textContent = `${(warehouse.warehouseName || warehouse.warehouseCode || "Warehouse").replace(/\s+Warehouse$/i, "")}:`;
+                    const quantity = document.createElement("strong");
+                    quantity.textContent = warehouse.quantityDisplay || "-";
+                    row.append(label, quantity);
+                    return row;
+                }));
+            };
+
+            const createInventoryPanel = item => {
+                if ((!item.inventoryUrl && !item.inventoryBatchUrl) || !item.inventoryLabel) {
+                    return null;
+                }
+
+                const section = document.createElement("section");
+                section.className = "im1-live-inventory im1-workorder-live-inventory";
+                if (item.supplierCode) {
+                    section.dataset.supplierCode = item.supplierCode;
+                }
+                if (item.supplierProductId) {
+                    section.dataset.supplierProductId = item.supplierProductId;
+                }
+                if (item.inventoryUrl) {
+                    section.dataset.inventoryUrl = item.inventoryUrl;
+                }
+                if (item.inventoryBatchUrl) {
+                    section.dataset.inventoryBatchUrl = item.inventoryBatchUrl;
+                    section.dataset.supplierProductId = item.supplierProductId;
+                }
+
+                const header = document.createElement("header");
+                const title = document.createElement("strong");
+                const status = document.createElement("span");
+                title.textContent = (item.inventoryLabel || "Warehouses").replace(/\s+Warehouse Inventory$/i, " Warehouses");
+                status.textContent = "Loading live inventory...";
+                header.append(title, status);
+                const grid = document.createElement("div");
+                grid.className = "im1-live-inventory-grid";
+                section.append(header, grid);
+                return section;
+            };
+
+            const renderInventorySummaryResult = (summary, result) => {
+                const supplierCode = summary.dataset.inventorySummaryCode;
+                if (!supplierCode || !result?.isAvailable) {
+                    return;
+                }
+
+                summary.textContent = `${supplierCode}: ${inventoryTotalFromWarehouses(result.warehouses || [])}`;
+                updateOfferInventoryState(summary, result);
+            };
+
+            const loadInventorySummaries = async (scope = document) => {
+                const singleSummaries = [...scope.querySelectorAll("[data-inventory-summary-url]")]
+                    .filter(summary => summary.dataset.inventorySummaryLoaded !== "true");
+                for (const summary of singleSummaries) {
+                    summary.dataset.inventorySummaryLoaded = "true";
+                    const cached = inventoryResultCache.get(summary.dataset.inventorySummaryUrl);
+                    if (cached) {
+                        renderInventorySummaryResult(summary, cached);
+                        continue;
+                    }
+
+                    try {
+                        const response = await fetch(summary.dataset.inventorySummaryUrl, { credentials: "same-origin", headers: { "Accept": "application/json" } });
+                        if (response.ok) {
+                            const result = await response.json();
+                            inventoryResultCache.set(summary.dataset.inventorySummaryUrl, result);
+                            renderInventorySummaryResult(summary, result);
+                        }
+                    } catch {
+                    }
+                }
+
+                const batchSummaries = [...scope.querySelectorAll("[data-inventory-summary-batch-url]")]
+                    .filter(summary => summary.dataset.inventorySummaryLoaded !== "true");
+                const summariesByUrl = new Map();
+                batchSummaries.forEach(summary => {
+                    const url = summary.dataset.inventorySummaryBatchUrl;
+                    if (!url) {
+                        return;
+                    }
+
+                    const cached = inventoryResultCache.get(batchInventoryCacheKey(url, summary.dataset.supplierProductId));
+                    if (cached) {
+                        summary.dataset.inventorySummaryLoaded = "true";
+                        renderInventorySummaryResult(summary, cached);
+                        return;
+                    }
+
+                    if (!summariesByUrl.has(url)) {
+                        summariesByUrl.set(url, []);
+                    }
+                    summariesByUrl.get(url).push(summary);
+                });
+
+                for (const [batchUrl, summaries] of summariesByUrl) {
+                    const url = new URL(batchUrl, window.location.origin);
+                    summaries.forEach(summary => {
+                        summary.dataset.inventorySummaryLoaded = "true";
+                        url.searchParams.append("supplierProductIds", summary.dataset.supplierProductId);
+                    });
+
+                    try {
+                        const response = await fetch(url.toString(), { credentials: "same-origin", headers: { "Accept": "application/json" } });
+                        if (!response.ok) {
+                            continue;
+                        }
+
+                        const result = await response.json();
+                        const items = new Map((result.items || []).map(item => [item.supplierProductId, item]));
+                        summaries.forEach(summary => {
+                            const item = items.get(summary.dataset.supplierProductId);
+                            if (item) {
+                                inventoryResultCache.set(batchInventoryCacheKey(batchUrl, summary.dataset.supplierProductId), item);
+                                renderInventorySummaryResult(summary, item);
+                            }
+                        });
+                    } catch {
+                    }
+                }
+            };
+
+            const createInventorySummary = offers => {
+                if (!offers.length) {
+                    return null;
+                }
+
+                const summary = document.createElement("div");
+                summary.className = "im1-inventory-summary im1-inventory-summary-primary";
+                summary.setAttribute("aria-label", "Inventory");
+                offers.forEach(offer => {
+                    const value = document.createElement("span");
+                    value.dataset.inventorySummaryCode = offer.supplierCode || "";
+                    if (offer.supplierProductId) {
+                        value.dataset.supplierProductId = offer.supplierProductId;
+                    }
+                    if (offer.inventoryUrl) {
+                        value.dataset.inventorySummaryUrl = offer.inventoryUrl;
+                    }
+                    if (offer.inventoryBatchUrl) {
+                        value.dataset.inventorySummaryBatchUrl = offer.inventoryBatchUrl;
+                        value.dataset.supplierProductId = offer.supplierProductId;
+                    }
+                    const inventory = offer.cachedInventoryTotal !== null && offer.cachedInventoryTotal !== undefined
+                        ? Number(offer.cachedInventoryTotal).toLocaleString()
+                        : offer.hasCachedInventory ? "Available" : "-";
+                    value.textContent = `${offer.supplierCode}: ${inventory}`;
+                    summary.append(value);
+                });
+                return summary;
+            };
+
+            const createSupplierOfferGrid = item => {
+                const offers = item.offers || [];
+                if (offers.length === 0) {
+                    return null;
+                }
+
+                const details = document.createElement("details");
+                details.className = "im1-supplier-offers im1-workorder-supplier-offers";
+                const summary = document.createElement("summary");
+                summary.textContent = `Supplier options (${offers.length.toLocaleString()})`;
+                const grid = document.createElement("div");
+                grid.className = "im1-supplier-offer-grid";
+                offers.forEach(offer => {
+                    const row = document.createElement("article");
+                    row.className = `im1-supplier-offer${offer.isDefaultOffer ? " im1-supplier-offer-selected" : ""}`;
+                    row.dataset.offerRow = "";
+                    row.dataset.offerSupplierProductId = offer.supplierProductId || "";
+                    row.dataset.offerCost = String(offer.actualCost ?? offer.dealerCost ?? Number.MAX_VALUE);
+                    row.dataset.hasInventory = offer.hasCachedInventory ? "true" : "false";
+                    const header = document.createElement("header");
+                    const supplier = document.createElement("strong");
+                    const status = document.createElement("span");
+                    supplier.textContent = offer.supplierName || offer.supplierCode || "-";
+                    status.textContent = offer.hasCachedInventory ? "Cached stock" : "Check inventory";
+                    header.append(supplier, status);
+                    const metrics = document.createElement("dl");
+                    [
+                        ["SKU", offer.supplierSku || "-"],
+                        ["MFG Part#", offer.manufacturerPartNumber || "-"],
+                        ["Retail", formatCurrency(offer.msrp)],
+                        ["Actual", formatCurrency(offer.actualCost)]
+                    ].forEach(([label, value]) => {
+                        const wrapper = document.createElement("div");
+                        const term = document.createElement("dt");
+                        const detail = document.createElement("dd");
+                        term.textContent = label;
+                        detail.textContent = value;
+                        wrapper.append(term, detail);
+                        metrics.append(wrapper);
+                    });
+                    const addOffer = document.createElement("button");
+                    addOffer.type = "button";
+                    addOffer.className = "im1-button im1-button-secondary";
+                    addOffer.textContent = offer.isDefaultOffer ? "Add selected" : "Add this supplier";
+                    addOffer.addEventListener("click", () => addItemToEstimate({
+                        ...item,
+                        ...offer,
+                        lineType: "Parts",
+                        quantity: 1,
+                        rate: offer.msrp ?? offer.actualCost ?? offer.dealerCost ?? 0,
+                        isTaxable: true
+                    }));
+                    row.append(header, metrics);
+                    const inventory = createInventoryPanel(offer);
+                    if (inventory) {
+                        row.append(inventory);
+                    }
+                    row.append(addOffer);
+                    grid.append(row);
+                });
+                details.addEventListener("toggle", () => {
+                    if (details.open) {
+                        loadInventoryPanels(details);
+                    }
+                });
+                details.append(summary, grid);
+                return details;
+            };
+
+            const createFitmentPopout = item => {
+                const fitmentRows = item.fitment || [];
+                if (!fitmentRows.length) {
+                    return null;
+                }
+
+                const details = document.createElement("details");
+                details.className = "im1-fitment-popout im1-workorder-fitment-popout";
+                const summary = document.createElement("summary");
+                summary.textContent = `Fitment (${fitmentRows.length.toLocaleString()})`;
+                const wrapper = document.createElement("div");
+                wrapper.className = "im1-fitment-grid-wrap";
+                const table = document.createElement("table");
+                table.className = "im1-fitment-grid";
+                const thead = document.createElement("thead");
+                const headerRow = document.createElement("tr");
+                ["Year", "Make", "Model"].forEach(label => {
+                    const cell = document.createElement("th");
+                    cell.textContent = label;
+                    headerRow.append(cell);
+                });
+                thead.append(headerRow);
+                const tbody = document.createElement("tbody");
+                fitmentRows.forEach(fitment => {
+                    const row = document.createElement("tr");
+                    [
+                        fitment.year,
+                        fitment.make,
+                        fitment.model
+                    ].forEach(value => {
+                        const cell = document.createElement("td");
+                        cell.textContent = value === null || value === undefined || value === "" ? "-" : value;
+                        row.append(cell);
+                    });
+                    tbody.append(row);
+                });
+                table.append(thead, tbody);
+                wrapper.append(table);
+                details.append(summary, wrapper);
+                return details;
+            };
+
+            const loadInventoryPanels = async (scope = document) => {
+                await loadInventorySummaries(scope);
+                const partsUnlimitedPanels = [...scope.querySelectorAll("[data-inventory-batch-url]")]
+                    .filter(panel => panel.dataset.inventoryLoaded !== "true" && !panel.closest(".im1-supplier-offers:not([open])"))
+                    .filter(panel => {
+                        const cached = inventoryResultCache.get(batchInventoryCacheKey(panel.dataset.inventoryBatchUrl, panel.dataset.supplierProductId));
+                        if (!cached) {
+                            return true;
+                        }
+
+                        panel.dataset.inventoryLoaded = "true";
+                        renderInventoryResult(panel, cached, "No Parts Unlimited warehouse inventory returned.");
+                        return false;
+                    });
+                const panelsByUrl = new Map();
+                partsUnlimitedPanels.forEach(panel => {
+                    const url = panel.dataset.inventoryBatchUrl;
+                    if (!url) {
+                        return;
+                    }
+
+                    if (!panelsByUrl.has(url)) {
+                        panelsByUrl.set(url, []);
+                    }
+                    panelsByUrl.get(url).push(panel);
+                });
+
+                for (const [batchUrl, panels] of panelsByUrl) {
+                    const url = new URL(batchUrl, window.location.origin);
+                    panels.forEach(panel => {
+                        panel.dataset.inventoryLoaded = "true";
+                        url.searchParams.append("supplierProductIds", panel.dataset.supplierProductId);
+                    });
+
+                    try {
+                        const response = await fetch(url.toString(), { credentials: "same-origin", headers: { "Accept": "application/json" } });
+                        if (!response.ok) {
+                            panels.forEach(panel => panel.querySelector("header span").textContent = `Inventory unavailable (${response.status}).`);
+                            continue;
+                        }
+
+                        const result = await response.json();
+                        const items = new Map((result.items || []).map(item => [item.supplierProductId, item]));
+                        panels.forEach(panel => {
+                            const item = items.get(panel.dataset.supplierProductId);
+                            if (item) {
+                                inventoryResultCache.set(batchInventoryCacheKey(batchUrl, panel.dataset.supplierProductId), item);
+                                renderInventoryResult(panel, item, "No Parts Unlimited warehouse inventory returned.");
+                            } else {
+                                panel.querySelector("header span").textContent = result.message || "Inventory unavailable.";
+                            }
+                        });
+                    } catch {
+                        panels.forEach(panel => panel.querySelector("header span").textContent = "Inventory unavailable.");
+                    }
+                }
+
+                const livePanels = [...scope.querySelectorAll("[data-inventory-url]")]
+                    .filter(panel => panel.dataset.inventoryLoaded !== "true" && !panel.closest(".im1-supplier-offers:not([open])"));
+                for (const panel of livePanels) {
+                    panel.dataset.inventoryLoaded = "true";
+                    const cached = inventoryResultCache.get(panel.dataset.inventoryUrl);
+                    if (cached) {
+                        renderInventoryResult(panel, cached, "No warehouse inventory returned.");
+                        continue;
+                    }
+
+                    try {
+                        const response = await fetch(panel.dataset.inventoryUrl, { credentials: "same-origin", headers: { "Accept": "application/json" } });
+                        if (!response.ok) {
+                            panel.querySelector("header span").textContent = `Inventory unavailable (${response.status}).`;
+                            continue;
+                        }
+
+                        const result = await response.json();
+                        inventoryResultCache.set(panel.dataset.inventoryUrl, result);
+                        renderInventoryResult(panel, result, "No warehouse inventory returned.");
+                    } catch {
+                        panel.querySelector("header span").textContent = "Inventory unavailable.";
+                    }
+                }
+            };
+
             const renderItemResults = items => {
                 const results = lookup.querySelector("[data-item-results]");
                 results.innerHTML = "";
@@ -897,20 +1349,70 @@
                 for (const item of items) {
                     const article = document.createElement("article");
                     article.className = "im1-workorder-item-result";
+                    article.dataset.itemResult = "";
+                    const media = document.createElement("div");
+                    media.className = "im1-workorder-item-media";
+                    const image = document.createElement("div");
+                    image.className = "im1-workorder-item-image";
+                    if (item.imageUrl) {
+                        const img = document.createElement("img");
+                        img.src = item.imageUrl;
+                        img.alt = "";
+                        img.loading = "lazy";
+                        img.referrerPolicy = "no-referrer";
+                        image.append(img);
+                    } else {
+                        const placeholder = document.createElement("span");
+                        placeholder.textContent = item.lineType === "Labor" ? "Labor" : "No Image";
+                        image.append(placeholder);
+                    }
+                    media.append(image);
+                    const offers = item.offers || [];
+                    const inventorySummary = createInventorySummary(offers);
+                    if (inventorySummary) {
+                        media.append(inventorySummary);
+                    }
+
                     const body = document.createElement("div");
+                    body.className = "im1-workorder-item-result-body";
                     const title = document.createElement("strong");
                     title.textContent = item.title || item.supplierSku || "Supplier item";
                     const meta = document.createElement("span");
                     meta.textContent = [item.supplierCode, item.supplierSku, item.brand, item.manufacturerPartNumber].filter(Boolean).join(" | ");
-                    body.append(title, meta);
+                    const metrics = document.createElement("dl");
+                    [
+                        ["Retail", formatCurrency(item.msrp ?? item.rate)],
+                        ["Actual", formatCurrency(item.actualCost)],
+                        ["Dealer", formatCurrency(item.dealerCost)],
+                        ["Fitment", item.fitmentRecordCount === undefined ? "-" : `${Number(item.fitmentRecordCount || 0).toLocaleString()} records`]
+                    ].forEach(([label, value]) => {
+                        const wrapper = document.createElement("div");
+                        const term = document.createElement("dt");
+                        const detail = document.createElement("dd");
+                        term.textContent = label;
+                        detail.textContent = value;
+                        wrapper.append(term, detail);
+                        metrics.append(wrapper);
+                    });
+                    body.append(title, meta, metrics);
+                    const fitmentPopout = createFitmentPopout(item);
+                    if (fitmentPopout) {
+                        body.append(fitmentPopout);
+                    }
+                    const supplierOffers = createSupplierOfferGrid(item);
+                    if (supplierOffers) {
+                        body.append(supplierOffers);
+                    }
                     const button = document.createElement("button");
                     button.type = "button";
                     button.className = "im1-button im1-button-secondary";
                     button.textContent = "Add";
                     button.addEventListener("click", () => addItemToEstimate(item));
-                    article.append(body, button);
+                    article.append(media, body, button);
                     results.append(article);
                 }
+
+                loadInventoryPanels(results);
             };
 
             const runItemSearch = async () => {
@@ -921,7 +1423,6 @@
                 const fitmentYear = fieldValue("[data-edit-unit-year]");
                 const fitmentMake = fieldValue("[data-edit-unit-make]");
                 const fitmentModel = fieldValue("[data-edit-unit-model]");
-                const fitmentType = fieldValue("[data-edit-unit-type]");
                 if (query) {
                     url.searchParams.set("query", query);
                 }
@@ -929,9 +1430,6 @@
                     url.searchParams.set("laborOnly", "true");
                 }
                 if (!laborOnly && useFitment && fitmentYear && fitmentMake && fitmentModel) {
-                    if (fitmentType) {
-                        url.searchParams.set("vehicleType", fitmentType);
-                    }
                     url.searchParams.set("year", fitmentYear);
                     url.searchParams.set("make", fitmentMake);
                     url.searchParams.set("model", fitmentModel);
@@ -983,6 +1481,7 @@
                     fitment.disabled = event.target.checked;
                 }
             });
+            lookup?.querySelector("[data-use-unit-fitment]")?.addEventListener("change", updateFitmentCount);
             renderTechnicianSplits();
             updateFitmentCount();
         })();

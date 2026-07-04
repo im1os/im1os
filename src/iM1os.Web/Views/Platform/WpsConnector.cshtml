@@ -13,8 +13,8 @@
             new IM1WorkspaceStatModel("Configured", Model.Status.IsConfigured ? "Ready" : "Incomplete", Model.Status.SupplierName),
             new IM1WorkspaceStatModel("Items", Model.DatabaseMetrics.SupplierProductCount.ToString("N0"), "In database"),
             new IM1WorkspaceStatModel("Fitment Records", Model.DatabaseMetrics.FitmentRecordCount.ToString("N0"), "In database"),
-            new IM1WorkspaceStatModel("Master", Model.Settings.ImportMasterFileOnSchedule ? "Scheduled" : "Manual", $"{Model.Settings.MasterFileScheduleIntervalHours} hr interval"),
-            new IM1WorkspaceStatModel("Fitment", Model.Settings.ImportFitmentOnSchedule ? "Scheduled" : "Manual", $"{Model.Settings.FitmentScheduleIntervalHours} hr interval")
+            new IM1WorkspaceStatModel("Master", Model.Settings.ImportMasterFileOnSchedule ? "Scheduled" : "Manual", $"{Model.Settings.MasterFileScheduleIntervalDays} day interval"),
+            new IM1WorkspaceStatModel("Fitment", Model.Settings.ImportFitmentOnSchedule ? "Scheduled" : "Manual", $"{Model.Settings.FitmentScheduleIntervalDays} day interval")
         },
         new[] { new IM1ActionModel("Global Scheduler", Url.Action("Scheduler"), "secondary") },
         Model.Status.LastConnectionStatus ?? "WPS supplier setup");
@@ -118,8 +118,8 @@
                             </select>
                         </label>
                         <label class="im1-field">
-                            <span>Schedule Interval (hours)</span>
-                            <input name="MasterFileScheduleIntervalHours" type="number" min="1" max="168" step="1" value="@Model.Settings.MasterFileScheduleIntervalHours" />
+                            <span>Schedule Interval (days)</span>
+                            <input name="MasterFileScheduleIntervalDays" type="number" min="1" max="365" step="1" value="@Model.Settings.MasterFileScheduleIntervalDays" />
                         </label>
                         <label class="im1-field">
                             <span>Scheduled max items</span>
@@ -141,8 +141,8 @@
                     </div>
                     <div class="im1-scheduler-config-fields im1-scheduler-config-fields-fitment">
                         <label class="im1-field">
-                            <span>Schedule Interval (hours)</span>
-                            <input name="FitmentScheduleIntervalHours" type="number" min="1" max="168" step="1" value="@Model.Settings.FitmentScheduleIntervalHours" />
+                            <span>Schedule Interval (days)</span>
+                            <input name="FitmentScheduleIntervalDays" type="number" min="1" max="365" step="1" value="@Model.Settings.FitmentScheduleIntervalDays" />
                         </label>
                         <label class="im1-field">
                             <span>Max SKUs</span>

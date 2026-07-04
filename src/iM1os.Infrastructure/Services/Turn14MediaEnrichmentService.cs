@@ -41,10 +41,11 @@ public sealed class Turn14MediaEnrichmentService(
 
         var delayMilliseconds = Math.Clamp(request.DelayMilliseconds, 0, 5000);
         var maxItems = request.MaxItems;
+        // SupplierImagesJson is jsonb in PostgreSQL; comparing it to an empty string makes PostgreSQL parse '' as JSON.
         var query = dbContext.SupplierProducts
             .Where(x =>
                 x.SupplierId == supplier.Id &&
-                (x.SupplierImagesJson == null || x.SupplierImagesJson == string.Empty))
+                x.SupplierImagesJson == null)
             .OrderBy(x => x.SupplierSku)
             .AsQueryable();
         if (maxItems is not null)
@@ -69,94 +70,26 @@ public sealed class Turn14MediaEnrichmentService(
             return new Turn14MediaEnrichmentRunResult(importRun.Id, 0, 0, 0, false);
         }
 
-        var token = await GetApiAccessTokenAsync(secrets, cancellationToken);
+        var tokenProvider = new Turn14AccessTokenProvider(tokenCancellationToken => GetApiAccessTokenAsync(secrets, tokenCancellationToken));
         var processed = 0;
         var updated = 0;
         var skipped = 0;
         var stoppedForRateLimit = false;
-        var productsMissingItemIds = candidates
-            .Where(x => string.IsNullOrWhiteSpace(x.SourceSupplierProductId))
-            .ToList();
-        if (productsMissingItemIds.Count > 0)
+        try
         {
-            try
-            {
-                var matchedItemIds = await ResolveItemIdsAsync(token, productsMissingItemIds, importRun, delayMilliseconds, cancellationToken);
-                importRun.ProgressProcessed = 0;
-                importRun.ProgressTotal = candidates.Count;
-                importRun.Message = $"Turn14 media enrichment resolved {matchedItemIds:N0} item ids. Fetching media for {candidates.Count:N0} products.";
-                await dbContext.SaveChangesAsync(cancellationToken);
-            }
-            catch (Turn14RateLimitException exception)
-            {
-                logger.LogWarning(exception, "Turn14 media enrichment paused by API rate limit while resolving item ids.");
-                stoppedForRateLimit = true;
-            }
+            var bulkEnrichment = await EnrichFromItemsIndexAsync(tokenProvider, candidates, importRun, delayMilliseconds, cancellationToken);
+            processed += bulkEnrichment.ImagesUpdated;
+            updated += bulkEnrichment.ImagesUpdated;
+            skipped += candidates.Count - bulkEnrichment.ImagesUpdated;
+            importRun.ProgressProcessed = processed;
+            importRun.ProgressTotal = candidates.Count;
+            importRun.Message = $"Turn14 media enrichment bulk-filled {bulkEnrichment.ImagesUpdated:N0} thumbnails and resolved {bulkEnrichment.ItemIdsResolved:N0} item ids. Detail media fetch skipped.";
+            await dbContext.SaveChangesAsync(cancellationToken);
         }
-
-        foreach (var supplierProduct in candidates)
+        catch (Turn14RateLimitException exception)
         {
-            if (stoppedForRateLimit)
-            {
-                break;
-            }
-
-            cancellationToken.ThrowIfCancellationRequested();
-            try
-            {
-                if (string.IsNullOrWhiteSpace(supplierProduct.SourceSupplierProductId))
-                {
-                    skipped++;
-                    processed++;
-                    importRun.ProgressProcessed = processed;
-                    importRun.Message = $"Turn14 media enrichment skipped {skipped:N0} products without API item ids. Processed {processed:N0} / {candidates.Count:N0}.";
-                    await dbContext.SaveChangesAsync(cancellationToken);
-                    continue;
-                }
-
-                if (delayMilliseconds > 0)
-                {
-                    await Task.Delay(delayMilliseconds, cancellationToken);
-                }
-
-                var itemData = await GetItemDataAsync(token, supplierProduct.SourceSupplierProductId!, cancellationToken);
-                if (itemData is null)
-                {
-                    skipped++;
-                }
-                else
-                {
-                    var globalProduct = await dbContext.GlobalProducts
-                        .SingleAsync(x => x.Id == supplierProduct.GlobalProductId, cancellationToken);
-                    var imageJson = MediaJson(itemData.Images);
-                    if (imageJson is not null)
-                    {
-                        supplierProduct.SupplierImagesJson = imageJson;
-                        globalProduct.ImagesJson = imageJson;
-                    }
-
-                    globalProduct.LongDescription = itemData.BestDescription ?? globalProduct.LongDescription;
-                    supplierProduct.SourceDataJson = JsonSerializer.Serialize(new
-                    {
-                        turn14ItemId = supplierProduct.SourceSupplierProductId,
-                        mediaEnrichedAtUtc = clock.UtcNow,
-                        itemData
-                    });
-                    supplierProduct.LastSyncedAtUtc = clock.UtcNow;
-                    updated++;
-                }
-
-                processed++;
-                importRun.ProgressProcessed = processed;
-                importRun.Message = $"Turn14 media enrichment fetching media. Processed {processed:N0} / {candidates.Count:N0}; updated {updated:N0}, skipped {skipped:N0}.";
-                await dbContext.SaveChangesAsync(cancellationToken);
-            }
-            catch (Turn14RateLimitException exception)
-            {
-                logger.LogWarning(exception, "Turn14 media enrichment paused by API rate limit after {Processed} products.", processed);
-                stoppedForRateLimit = true;
-                break;
-            }
+            logger.LogWarning(exception, "Turn14 media enrichment paused by API rate limit while scanning items index.");
+            stoppedForRateLimit = true;
         }
 
         importRun.Status = "Completed";
@@ -164,14 +97,14 @@ public sealed class Turn14MediaEnrichmentService(
         importRun.ProgressProcessed = processed;
         importRun.Message = stoppedForRateLimit
             ? $"Turn14 media enrichment paused by API rate limit after {processed} products. Updated {updated}, skipped {skipped}. It will resume on the next run."
-            : $"Turn14 media enrichment completed. Processed {processed}, updated {updated}, skipped {skipped}.";
+            : $"Turn14 media enrichment completed using items-index thumbnails. Processed {processed}, updated {updated}, skipped {skipped}.";
         await dbContext.SaveChangesAsync(cancellationToken);
 
         return new Turn14MediaEnrichmentRunResult(importRun.Id, processed, updated, skipped, stoppedForRateLimit);
     }
 
-    private async Task<int> ResolveItemIdsAsync(
-        string accessToken,
+    private async Task<Turn14ItemsIndexEnrichmentResult> EnrichFromItemsIndexAsync(
+        Turn14AccessTokenProvider tokenProvider,
         IReadOnlyCollection<SupplierProduct> supplierProducts,
         SupplierConnectorImportRun importRun,
         int delayMilliseconds,
@@ -184,7 +117,7 @@ public sealed class Turn14MediaEnrichmentService(
             .ToHashSet(StringComparer.OrdinalIgnoreCase);
         if (pendingSkus.Count == 0)
         {
-            return 0;
+            return new Turn14ItemsIndexEnrichmentResult(0, 0);
         }
 
         var productsBySku = supplierProducts
@@ -192,10 +125,10 @@ public sealed class Turn14MediaEnrichmentService(
             .GroupBy(x => x.SupplierSku, StringComparer.OrdinalIgnoreCase)
             .ToDictionary(x => x.Key, x => x.ToList(), StringComparer.OrdinalIgnoreCase);
         var client = httpClientFactory.CreateClient("Turn14Api");
-        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", accessToken);
         var page = 1;
         var totalPages = 1;
-        var matched = 0;
+        var itemIdsResolved = 0;
+        var imagesUpdated = 0;
 
         while (page <= totalPages && pendingSkus.Count > 0)
         {
@@ -204,12 +137,13 @@ public sealed class Turn14MediaEnrichmentService(
                 await Task.Delay(delayMilliseconds, cancellationToken);
             }
 
-            using var response = await GetTurn14ApiAsync(client, $"https://api.turn14.com/v1/items?page={page}", cancellationToken);
+            using var response = await GetTurn14ApiAsync(client, tokenProvider, $"https://api.turn14.com/v1/items?page={page}", cancellationToken);
             await using var stream = await response.Content.ReadAsStreamAsync(cancellationToken);
             using var document = await JsonDocument.ParseAsync(stream, cancellationToken: cancellationToken);
             totalPages = ReadInt(document.RootElement, "meta", "total_pages") ?? totalPages;
             if (document.RootElement.TryGetProperty("data", out var data) && data.ValueKind == JsonValueKind.Array)
             {
+                var thumbnailUpdates = new List<(SupplierProduct Product, string ImageJson)>();
                 foreach (var item in data.EnumerateArray())
                 {
                     var apiItem = Turn14ApiItem.FromJson(item);
@@ -223,23 +157,67 @@ public sealed class Turn14MediaEnrichmentService(
 
                     foreach (var product in products)
                     {
-                        product.SourceSupplierProductId = apiItem.Id;
-                        product.LastSyncedAtUtc = clock.UtcNow;
+                        if (string.IsNullOrWhiteSpace(product.SourceSupplierProductId))
+                        {
+                            product.SourceSupplierProductId = apiItem.Id;
+                            itemIdsResolved++;
+                        }
+
+                        if (product.SupplierImagesJson is null &&
+                            MediaJson(apiItem.Thumbnail) is { } imageJson)
+                        {
+                            product.SupplierImagesJson = imageJson;
+                            thumbnailUpdates.Add((product, imageJson));
+                        }
+
+                        if (product.SourceSupplierProductId == apiItem.Id || product.SupplierImagesJson is not null)
+                        {
+                            product.LastSyncedAtUtc = clock.UtcNow;
+                        }
                     }
 
                     pendingSkus.Remove(apiItem.PartNumber);
-                    matched += products.Count;
                 }
+
+                imagesUpdated += await ApplyThumbnailUpdatesAsync(thumbnailUpdates, cancellationToken);
             }
 
             importRun.ProgressProcessed = page;
             importRun.ProgressTotal = totalPages;
-            importRun.Message = $"Resolving Turn14 API item ids: scanning API page {page:N0} / {totalPages:N0}; matched {matched:N0} / {supplierProducts.Count:N0} products.";
+            importRun.Message = $"Scanning Turn14 items index page {page:N0} / {totalPages:N0}; resolved {itemIdsResolved:N0} item ids and bulk-filled {imagesUpdated:N0} thumbnails.";
             await dbContext.SaveChangesAsync(cancellationToken);
             page++;
         }
 
-        return matched;
+        return new Turn14ItemsIndexEnrichmentResult(itemIdsResolved, imagesUpdated);
+    }
+
+    private async Task<int> ApplyThumbnailUpdatesAsync(
+        IReadOnlyCollection<(SupplierProduct Product, string ImageJson)> updates,
+        CancellationToken cancellationToken)
+    {
+        if (updates.Count == 0)
+        {
+            return 0;
+        }
+
+        var globalProductIds = updates
+            .Select(x => x.Product.GlobalProductId)
+            .Distinct()
+            .ToList();
+        var globalProductsById = await dbContext.GlobalProducts
+            .Where(x => globalProductIds.Contains(x.Id))
+            .ToDictionaryAsync(x => x.Id, cancellationToken);
+
+        foreach (var (product, imageJson) in updates)
+        {
+            if (globalProductsById.TryGetValue(product.GlobalProductId, out var globalProduct))
+            {
+                globalProduct.ImagesJson = imageJson;
+            }
+        }
+
+        return updates.Count;
     }
 
     private async Task<string> GetApiAccessTokenAsync(Turn14ConnectorSecrets secrets, CancellationToken cancellationToken)
@@ -260,11 +238,10 @@ public sealed class Turn14MediaEnrichmentService(
             : throw new InvalidOperationException("Turn14 token response did not include an access token.");
     }
 
-    private async Task<Turn14ItemData?> GetItemDataAsync(string accessToken, string itemId, CancellationToken cancellationToken)
+    private async Task<Turn14ItemData?> GetItemDataAsync(Turn14AccessTokenProvider tokenProvider, string itemId, CancellationToken cancellationToken)
     {
         var client = httpClientFactory.CreateClient("Turn14Api");
-        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", accessToken);
-        using var response = await GetTurn14ApiAsync(client, $"https://api.turn14.com/v1/items/data/{Uri.EscapeDataString(itemId)}", cancellationToken);
+        using var response = await GetTurn14ApiAsync(client, tokenProvider, $"https://api.turn14.com/v1/items/data/{Uri.EscapeDataString(itemId)}", cancellationToken);
         if (!response.IsSuccessStatusCode)
         {
             return null;
@@ -283,12 +260,28 @@ public sealed class Turn14MediaEnrichmentService(
         return item.ValueKind == JsonValueKind.Object ? Turn14ItemData.FromJson(item) : null;
     }
 
-    private static async Task<HttpResponseMessage> GetTurn14ApiAsync(HttpClient client, string requestUrl, CancellationToken cancellationToken)
+    private static async Task<HttpResponseMessage> GetTurn14ApiAsync(
+        HttpClient client,
+        Turn14AccessTokenProvider tokenProvider,
+        string requestUrl,
+        CancellationToken cancellationToken)
     {
         const int maxAttempts = 3;
+        var refreshedForUnauthorized = false;
         for (var attempt = 1; attempt <= maxAttempts; attempt++)
         {
-            var response = await client.GetAsync(requestUrl, cancellationToken);
+            using var httpRequest = new HttpRequestMessage(HttpMethod.Get, requestUrl);
+            httpRequest.Headers.Authorization = new AuthenticationHeaderValue("Bearer", await tokenProvider.GetAsync(cancellationToken));
+            var response = await client.SendAsync(httpRequest, cancellationToken);
+            if (response.StatusCode == HttpStatusCode.Unauthorized && !refreshedForUnauthorized)
+            {
+                response.Dispose();
+                await tokenProvider.RefreshAsync(cancellationToken);
+                refreshedForUnauthorized = true;
+                attempt--;
+                continue;
+            }
+
             if (response.StatusCode != HttpStatusCode.TooManyRequests)
             {
                 response.EnsureSuccessStatusCode();
@@ -308,6 +301,23 @@ public sealed class Turn14MediaEnrichmentService(
         throw new Turn14RateLimitException("Turn14 API rate limit reached.");
     }
 
+    private sealed class Turn14AccessTokenProvider(Func<CancellationToken, Task<string>> requestTokenAsync)
+    {
+        private string? accessToken;
+
+        public async Task<string> GetAsync(CancellationToken cancellationToken)
+        {
+            accessToken ??= await requestTokenAsync(cancellationToken);
+            return accessToken;
+        }
+
+        public async Task<string> RefreshAsync(CancellationToken cancellationToken)
+        {
+            accessToken = await requestTokenAsync(cancellationToken);
+            return accessToken;
+        }
+    }
+
     private static string? MediaJson(IReadOnlyCollection<Turn14Image> images)
     {
         return images.Count == 0
@@ -323,7 +333,16 @@ public sealed class Turn14MediaEnrichmentService(
             }));
     }
 
-    private sealed record Turn14ApiItem(string Id, string? PartNumber)
+    private static string? MediaJson(string? primaryImage)
+    {
+        return Clean(primaryImage) is not { } imageUrl
+            ? null
+            : JsonSerializer.Serialize(new[] { new { url = imageUrl, isPrimary = true } });
+    }
+
+    private sealed record Turn14ItemsIndexEnrichmentResult(int ItemIdsResolved, int ImagesUpdated);
+
+    private sealed record Turn14ApiItem(string Id, string? PartNumber, string? Thumbnail)
     {
         public static Turn14ApiItem FromJson(JsonElement item)
         {
@@ -333,7 +352,8 @@ public sealed class Turn14MediaEnrichmentService(
 
             return new Turn14ApiItem(
                 StringValue(item, "id") ?? string.Empty,
-                StringValue(attributes, "part_number"));
+                StringValue(attributes, "part_number"),
+                StringValue(attributes, "thumbnail"));
         }
     }
 
@@ -466,7 +486,25 @@ public sealed class Turn14MediaEnrichmentService(
 
     private static string? Clean(string? value)
     {
-        return string.IsNullOrWhiteSpace(value) ? null : value.Trim();
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            return null;
+        }
+
+        var trimmed = value.Trim();
+        if (!trimmed.Any(char.IsControl))
+        {
+            return trimmed;
+        }
+
+        return new string(trimmed.Where(x => !char.IsControl(x)).ToArray());
+    }
+
+    private static string? SanitizeJsonForPostgres(string? json)
+    {
+        return string.IsNullOrWhiteSpace(json)
+            ? null
+            : json.Replace("\\u0000", string.Empty, StringComparison.OrdinalIgnoreCase);
     }
 
     private sealed class Turn14RateLimitException(string message) : Exception(message);

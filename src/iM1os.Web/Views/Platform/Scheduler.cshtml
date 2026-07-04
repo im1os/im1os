@@ -61,7 +61,7 @@
                                 @(item.IsEnabled ? "Enabled" : "Disabled")
                             </span>
                         </td>
-                        <td>@Math.Max(1, (int)Math.Ceiling(item.CadenceMinutes / 60m)) hr</td>
+                        <td>@Math.Max(1, (int)Math.Ceiling(item.CadenceMinutes / 1440m)) day</td>
                         <td>@(item.LastQueuedAtUtc?.ToString("yyyy-MM-dd HH:mm") ?? "-")</td>
                         <td>@(item.NextDueAtUtc?.ToString("yyyy-MM-dd HH:mm") ?? "-")</td>
                         <td>

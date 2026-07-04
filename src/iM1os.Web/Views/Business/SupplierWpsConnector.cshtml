@@ -28,7 +28,7 @@
         {
             new IM1WorkspaceStatModel("Supplier", Model.Status.IsEnabled ? "Enabled" : "Disabled", Model.Status.ConnectorKey),
             new IM1WorkspaceStatModel("Configured", Model.Status.IsConfigured ? "Ready" : "Incomplete", Model.Status.SupplierName),
-            new IM1WorkspaceStatModel("Pricing", Model.Status.SyncDealerPricingOnSchedule ? "Scheduled" : "Manual", $"{Model.Settings.DealerPricingScheduleIntervalHours} hr interval")
+            new IM1WorkspaceStatModel("Pricing", Model.Status.SyncDealerPricingOnSchedule ? "Scheduled" : "Manual", $"{Model.Settings.DealerPricingScheduleIntervalDays} day interval")
         },
         supplierActions,
         Model.Status.LastConnectionStatus ?? "Company WPS supplier setup");
@@ -124,8 +124,8 @@
                     </div>
                     <div class="im1-scheduler-config-fields">
                         <label class="im1-field">
-                            <span>Schedule Interval (hours)</span>
-                            <input name="DealerPricingScheduleIntervalHours" type="number" min="1" max="168" step="1" value="@Model.Settings.DealerPricingScheduleIntervalHours" />
+                            <span>Schedule Interval (days)</span>
+                            <input name="DealerPricingScheduleIntervalDays" type="number" min="1" max="365" step="1" value="@Model.Settings.DealerPricingScheduleIntervalDays" />
                         </label>
                         <label class="im1-field">
                             <span>Scheduled max items</span>

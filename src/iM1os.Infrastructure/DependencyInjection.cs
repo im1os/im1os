@@ -33,6 +33,7 @@ public static class DependencyInjection
             options.UseNpgsql(configuration.GetConnectionString("DefaultConnection")));
 
         var redisConnection = configuration.GetConnectionString("Redis");
+        services.AddMemoryCache();
         if (!string.IsNullOrWhiteSpace(redisConnection))
         {
             services.AddStackExchangeRedisCache(options => options.Configuration = redisConnection);
@@ -52,6 +53,7 @@ public static class DependencyInjection
         services.AddScoped<IPlatformAuthenticationService, PlatformAuthenticationService>();
         services.AddScoped<ITenantProvisioningService, TenantProvisioningService>();
         services.AddScoped<ITenantManagerService, TenantManagerService>();
+        services.AddScoped<IPlatformOperationsService, PlatformOperationsService>();
         services.AddScoped<ITenantModuleEntitlementService, TenantModuleEntitlementService>();
         services.AddScoped<IPlatformSupplierConnectorService, PlatformSupplierConnectorService>();
         services.AddScoped<ICompanySupplierService, CompanySupplierService>();

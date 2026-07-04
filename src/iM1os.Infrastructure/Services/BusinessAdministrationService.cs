@@ -438,7 +438,7 @@ public sealed class BusinessAdministrationService(
                             ? "Needs credentials"
                             : "Paused";
                 var syncCadence = configuration is not null && configuration.SyncDealerPricingOnSchedule
-                    ? $"{MinutesToHours(configuration.DealerPricingScheduleIntervalMinutes)} hr"
+                    ? $"{MinutesToDays(configuration.DealerPricingScheduleIntervalMinutes)} day"
                     : "Manual";
                 var lastSyncAt = configuration is not null && latestRuns.TryGetValue(configuration.Id, out var lastRun)
                     ? lastRun
@@ -547,9 +547,9 @@ public sealed class BusinessAdministrationService(
             : !string.IsNullOrWhiteSpace(configuration.ApiKey) ? "Ready" : "Missing";
     }
 
-    private static int MinutesToHours(int value)
+    private static int MinutesToDays(int value)
     {
-        return Math.Max(1, (int)Math.Ceiling((value <= 0 ? 1440 : value) / 60m));
+        return Math.Max(1, (int)Math.Ceiling((value <= 0 ? 1440 : value) / 1440m));
     }
 
     private static string NormalizeConnectorStatus(string? value)

@@ -13,7 +13,12 @@
             new IM1WorkspaceStatModel("Trials", Model.TrialTenants.ToString(), "Trial companies"),
             new IM1WorkspaceStatModel("Suspended", Model.SuspendedTenants.ToString(), "Needs attention")
         },
-        new[] { new IM1ActionModel("Create Company", Url.Action("CreateTenant"), "primary"), new IM1ActionModel("Company Manager", Url.Action("Tenants"), "secondary") },
+        new[]
+        {
+            new IM1ActionModel("Create Company", Url.Action("CreateTenant"), "primary"),
+            new IM1ActionModel("Company Manager", Url.Action("Tenants"), "secondary"),
+            new IM1ActionModel("Operations", Url.Action("Operations"), "secondary")
+        },
         Model.SuspendedTenants > 0 ? $"{Model.SuspendedTenants} suspended companies" : "Platform healthy");
 }
 

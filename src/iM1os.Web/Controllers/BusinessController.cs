@@ -87,7 +87,7 @@ public sealed class BusinessController(
 
         var page = await supplierItemSearchService.SearchForCompanyAsync(
             organizationId,
-            new SupplierItemSearchRequest(query, supplierCode, vehicleType, year, make, model, offset, searchExecuted),
+            new SupplierItemSearchRequest(query, supplierCode, vehicleType, year, make, model, offset, searchExecuted, IncludeFacets: false),
             SupplierItemSearchPageSize,
             cancellationToken);
         return Json(new
@@ -96,7 +96,7 @@ public sealed class BusinessController(
             page.Offset,
             page.PageSize,
             page.HasMore,
-            NextOffset = page.Offset + page.Results.Count,
+            NextOffset = page.TotalResults,
             Results = page.Results.Select(x => new
             {
                 x.SupplierProductId,
@@ -115,6 +115,47 @@ public sealed class BusinessController(
                 x.DealerCost,
                 x.ActualCost,
                 x.ImageUrl,
+                x.CrossReferences,
+                x.IsCrossReference,
+                x.Fitment,
+                Offers = (x.Offers ?? []).Select(offer => new
+                {
+                    offer.SupplierProductId,
+                    offer.GlobalProductId,
+                    offer.SupplierCode,
+                    offer.SupplierName,
+                    offer.SupplierSku,
+                    offer.ManufacturerPartNumber,
+                    offer.Upc,
+                    offer.Brand,
+                    offer.Title,
+                    offer.Category,
+                    offer.Status,
+                    offer.FitmentRecordCount,
+                    offer.Msrp,
+                    offer.DealerCost,
+                    offer.ActualCost,
+                    offer.ImageUrl,
+                    offer.HasCachedInventory,
+                    offer.CachedInventoryTotal,
+                    offer.IsDefaultOffer,
+                    FetchFitmentUrl = Url.Action(nameof(SupplierFetchItemFitment), new { offer.SupplierProductId, organizationId }),
+                    InventoryUrl = offer.SupplierCode == "WPS"
+                        ? Url.Action(nameof(SupplierWpsInventory), new { offer.SupplierProductId, organizationId })
+                        : offer.SupplierCode == "TURN14"
+                            ? Url.Action(nameof(SupplierTurn14Inventory), new { offer.SupplierProductId, organizationId })
+                        : null,
+                    InventoryBatchUrl = offer.SupplierCode == "PU"
+                        ? Url.Action(nameof(SupplierPartsUnlimitedInventory), new { organizationId })
+                        : null,
+                    InventoryLabel = offer.SupplierCode switch
+                    {
+                        "WPS" => "WPS Warehouse Inventory",
+                        "TURN14" => "Turn14 Warehouse Inventory",
+                        "PU" => "Parts Unlimited Warehouse Inventory",
+                        _ => null
+                    }
+                }),
                 FetchFitmentUrl = Url.Action(nameof(SupplierFetchItemFitment), new { x.SupplierProductId, organizationId }),
                 InventoryUrl = x.SupplierCode == "WPS"
                     ? Url.Action(nameof(SupplierWpsInventory), new { x.SupplierProductId, organizationId })

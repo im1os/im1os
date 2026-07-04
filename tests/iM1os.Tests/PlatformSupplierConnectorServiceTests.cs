@@ -27,10 +27,10 @@ public sealed class PlatformSupplierConnectorServiceTests
             ApiKey: "api-key",
             ImportMasterFileOnSchedule: true,
             MasterFileImportMode: "ManualAndScheduled",
-            MasterFileScheduleIntervalHours: 12,
+            MasterFileScheduleIntervalDays: 12,
             MasterFileScheduleMaxItems: 2000,
             ImportFitmentOnSchedule: true,
-            FitmentScheduleIntervalHours: 24,
+            FitmentScheduleIntervalDays: 24,
             FitmentScheduleMaxSkus: 1000,
             FitmentScheduleFitmentLimit: 1,
             FitmentScheduleDelayMilliseconds: 250,
@@ -46,12 +46,12 @@ public sealed class PlatformSupplierConnectorServiceTests
         Assert.Equal("D2240487", page.Settings.DealerAccountNumber);
         Assert.Equal(string.Empty, page.Settings.DataDepotPassword);
         Assert.Equal("api-key", page.Settings.ApiKey);
-        Assert.Equal(12, page.Settings.MasterFileScheduleIntervalHours);
-        Assert.Equal(720, await dbContext.SupplierConnectorConfigurations.Select(x => x.MasterFileScheduleCadenceMinutes).SingleAsync());
+        Assert.Equal(12, page.Settings.MasterFileScheduleIntervalDays);
+        Assert.Equal(17280, await dbContext.SupplierConnectorConfigurations.Select(x => x.MasterFileScheduleCadenceMinutes).SingleAsync());
         Assert.Equal(2000, page.Settings.MasterFileScheduleMaxItems);
         Assert.True(page.Settings.ImportFitmentOnSchedule);
-        Assert.Equal(24, page.Settings.FitmentScheduleIntervalHours);
-        Assert.Equal(1440, await dbContext.SupplierConnectorConfigurations.Select(x => x.FitmentScheduleCadenceMinutes).SingleAsync());
+        Assert.Equal(24, page.Settings.FitmentScheduleIntervalDays);
+        Assert.Equal(34560, await dbContext.SupplierConnectorConfigurations.Select(x => x.FitmentScheduleCadenceMinutes).SingleAsync());
         Assert.Equal(1000, page.Settings.FitmentScheduleMaxSkus);
         Assert.Equal(1, page.Settings.FitmentScheduleFitmentLimit);
         Assert.Equal(250, page.Settings.FitmentScheduleDelayMilliseconds);
@@ -98,10 +98,10 @@ public sealed class PlatformSupplierConnectorServiceTests
             ApiKey: "api-key",
             ImportMasterFileOnSchedule: false,
             MasterFileImportMode: "Manual",
-            MasterFileScheduleIntervalHours: 24,
+            MasterFileScheduleIntervalDays: 24,
             MasterFileScheduleMaxItems: null,
             ImportFitmentOnSchedule: false,
-            FitmentScheduleIntervalHours: 24,
+            FitmentScheduleIntervalDays: 24,
             FitmentScheduleMaxSkus: null,
             FitmentScheduleFitmentLimit: null,
             FitmentScheduleDelayMilliseconds: 250,
@@ -142,7 +142,7 @@ public sealed class PlatformSupplierConnectorServiceTests
     }
 
     [Fact]
-    public async Task Manual_full_import_modes_ignore_posted_max_limits()
+    public async Task Manual_full_import_modes_ignore_posted_item_limits_except_brand_file_cap()
     {
         var now = new DateTimeOffset(2026, 6, 29, 15, 50, 0, TimeSpan.Zero);
         await using var dbContext = CreateContext(now);
@@ -167,16 +167,16 @@ public sealed class PlatformSupplierConnectorServiceTests
             ApiClientSecret: "turn14-secret",
             ImportMasterFileOnSchedule: false,
             MasterFileImportMode: "Manual",
-            MasterFileScheduleIntervalHours: 24,
+            MasterFileScheduleIntervalDays: 24,
             MasterFileScheduleMaxItems: null,
             ImportFitmentOnSchedule: false,
-            FitmentScheduleIntervalHours: 24,
+            FitmentScheduleIntervalDays: 24,
             FitmentScheduleMaxSkus: null,
             FitmentScheduleFitmentLimit: null,
             FitmentScheduleDelayMilliseconds: 250,
             FitmentSourceBaseUrl: "https://saas.indie-moto.com",
             ImportMediaOnSchedule: false,
-            MediaScheduleIntervalHours: 24,
+            MediaScheduleIntervalDays: 24,
             MediaScheduleMaxItems: null,
             MediaScheduleDelayMilliseconds: 750),
             "platform-user-1",
@@ -204,14 +204,14 @@ public sealed class PlatformSupplierConnectorServiceTests
             BrandFileUrls: "https://files.parts-unlimited.test/brand.zip",
             BrandFileMaxFiles: null,
             ImportBrandImagesOnSchedule: false,
-            BrandImagesScheduleIntervalHours: 24,
+            BrandImagesScheduleIntervalDays: 24,
             BrandImagesScheduleMaxFiles: null,
             ImportMasterFileOnSchedule: false,
             MasterFileImportMode: "Manual",
-            MasterFileScheduleIntervalHours: 24,
+            MasterFileScheduleIntervalDays: 24,
             MasterFileScheduleMaxItems: null,
             ImportFitmentOnSchedule: false,
-            FitmentScheduleIntervalHours: 24,
+            FitmentScheduleIntervalDays: 24,
             FitmentScheduleMaxSkus: null,
             FitmentScheduleFitmentLimit: null,
             FitmentScheduleDelayMilliseconds: 250,
@@ -238,7 +238,7 @@ public sealed class PlatformSupplierConnectorServiceTests
         await AssertImportRunLimitIsNullAsync(dbContext, "Turn14MediaEnrichment", "MaxItems");
         await AssertImportRunLimitIsNullAsync(dbContext, "PartsUnlimitedBundle", "MaxItems");
         await AssertImportRunLimitIsNullAsync(dbContext, "PartsUnlimitedFitment", "MaxSkus");
-        await AssertImportRunLimitIsNullAsync(dbContext, "PartsUnlimitedBrandImages", "BrandFileMaxFiles");
+        await AssertImportRunLimitAsync(dbContext, "PartsUnlimitedBrandImages", "BrandFileMaxFiles", 500);
     }
 
     [Fact]
@@ -257,10 +257,10 @@ public sealed class PlatformSupplierConnectorServiceTests
             ApiKey: "api-key",
             ImportMasterFileOnSchedule: true,
             MasterFileImportMode: "ManualAndScheduled",
-            MasterFileScheduleIntervalHours: 12,
+            MasterFileScheduleIntervalDays: 12,
             MasterFileScheduleMaxItems: 2000,
             ImportFitmentOnSchedule: false,
-            FitmentScheduleIntervalHours: 24,
+            FitmentScheduleIntervalDays: 24,
             FitmentScheduleMaxSkus: 500,
             FitmentScheduleFitmentLimit: null,
             FitmentScheduleDelayMilliseconds: 250,
@@ -297,16 +297,16 @@ public sealed class PlatformSupplierConnectorServiceTests
             ApiClientSecret: "turn14-secret",
             ImportMasterFileOnSchedule: true,
             MasterFileImportMode: "ManualAndScheduled",
-            MasterFileScheduleIntervalHours: 6,
+            MasterFileScheduleIntervalDays: 6,
             MasterFileScheduleMaxItems: 500,
             ImportFitmentOnSchedule: true,
-            FitmentScheduleIntervalHours: 12,
+            FitmentScheduleIntervalDays: 12,
             FitmentScheduleMaxSkus: 200,
             FitmentScheduleFitmentLimit: 1,
             FitmentScheduleDelayMilliseconds: 250,
             FitmentSourceBaseUrl: "https://saas.indie-moto.test",
             ImportMediaOnSchedule: true,
-            MediaScheduleIntervalHours: 6,
+            MediaScheduleIntervalDays: 6,
             MediaScheduleMaxItems: 300,
             MediaScheduleDelayMilliseconds: 750),
             "platform-user-1",
@@ -320,15 +320,15 @@ public sealed class PlatformSupplierConnectorServiceTests
         Assert.Equal(string.Empty, page.Settings.Password);
         Assert.Equal("turn14-client", page.Settings.ApiClientId);
         Assert.Equal(string.Empty, page.Settings.ApiClientSecret);
-        Assert.Equal(6, page.Settings.MasterFileScheduleIntervalHours);
-        Assert.Equal(360, await dbContext.SupplierConnectorConfigurations.Select(x => x.MasterFileScheduleCadenceMinutes).SingleAsync());
+        Assert.Equal(6, page.Settings.MasterFileScheduleIntervalDays);
+        Assert.Equal(8640, await dbContext.SupplierConnectorConfigurations.Select(x => x.MasterFileScheduleCadenceMinutes).SingleAsync());
         Assert.Equal(500, page.Settings.MasterFileScheduleMaxItems);
         Assert.True(page.Settings.ImportFitmentOnSchedule);
-        Assert.Equal(12, page.Settings.FitmentScheduleIntervalHours);
+        Assert.Equal(12, page.Settings.FitmentScheduleIntervalDays);
         Assert.Equal(200, page.Settings.FitmentScheduleMaxSkus);
         Assert.Equal(1, page.Settings.FitmentScheduleFitmentLimit);
         Assert.True(page.Settings.ImportMediaOnSchedule);
-        Assert.Equal(6, page.Settings.MediaScheduleIntervalHours);
+        Assert.Equal(6, page.Settings.MediaScheduleIntervalDays);
         Assert.Equal(300, page.Settings.MediaScheduleMaxItems);
         Assert.True(page.Status.HasStoredCredentials);
         Assert.True(page.Status.HasApiCredentials);
@@ -353,16 +353,16 @@ public sealed class PlatformSupplierConnectorServiceTests
             ApiClientSecret: "turn14-secret",
             ImportMasterFileOnSchedule: false,
             MasterFileImportMode: "Manual",
-            MasterFileScheduleIntervalHours: 24,
+            MasterFileScheduleIntervalDays: 24,
             MasterFileScheduleMaxItems: null,
             ImportFitmentOnSchedule: false,
-            FitmentScheduleIntervalHours: 24,
+            FitmentScheduleIntervalDays: 24,
             FitmentScheduleMaxSkus: null,
             FitmentScheduleFitmentLimit: null,
             FitmentScheduleDelayMilliseconds: 250,
             FitmentSourceBaseUrl: "https://saas.indie-moto.com",
             ImportMediaOnSchedule: false,
-            MediaScheduleIntervalHours: 24,
+            MediaScheduleIntervalDays: 24,
             MediaScheduleMaxItems: null,
             MediaScheduleDelayMilliseconds: 750),
             "platform-user-1",
@@ -401,16 +401,16 @@ public sealed class PlatformSupplierConnectorServiceTests
             ApiClientSecret: "turn14-secret",
             ImportMasterFileOnSchedule: true,
             MasterFileImportMode: "Scheduled",
-            MasterFileScheduleIntervalHours: 8,
+            MasterFileScheduleIntervalDays: 8,
             MasterFileScheduleMaxItems: 1000,
             ImportFitmentOnSchedule: false,
-            FitmentScheduleIntervalHours: 24,
+            FitmentScheduleIntervalDays: 24,
             FitmentScheduleMaxSkus: null,
             FitmentScheduleFitmentLimit: null,
             FitmentScheduleDelayMilliseconds: 250,
             FitmentSourceBaseUrl: "https://saas.indie-moto.com",
             ImportMediaOnSchedule: true,
-            MediaScheduleIntervalHours: 6,
+            MediaScheduleIntervalDays: 6,
             MediaScheduleMaxItems: 500,
             MediaScheduleDelayMilliseconds: 750),
             "platform-user-1",
@@ -422,7 +422,7 @@ public sealed class PlatformSupplierConnectorServiceTests
         var loadsheet = page.Events.Single(x => x.EventType == "Turn14ProductLoadsheet");
         Assert.Equal("Turn14ProductLoadsheet", loadsheet.EventType);
         Assert.True(loadsheet.IsEnabled);
-        Assert.Equal(480, loadsheet.CadenceMinutes);
+        Assert.Equal(11520, loadsheet.CadenceMinutes);
         Assert.Equal("Platform", loadsheet.ConfiguratorController);
         Assert.Equal("Turn14Connector", loadsheet.ConfiguratorAction);
         Assert.Equal(now, loadsheet.NextDueAtUtc);
@@ -431,7 +431,7 @@ public sealed class PlatformSupplierConnectorServiceTests
         Assert.Null(fitment.NextDueAtUtc);
         var media = page.Events.Single(x => x.EventType == "Turn14MediaEnrichment");
         Assert.True(media.IsEnabled);
-        Assert.Equal(360, media.CadenceMinutes);
+        Assert.Equal(8640, media.CadenceMinutes);
         Assert.Equal(now, media.NextDueAtUtc);
     }
 
@@ -452,14 +452,14 @@ public sealed class PlatformSupplierConnectorServiceTests
             BrandFileUrls: string.Empty,
             BrandFileMaxFiles: null,
             ImportBrandImagesOnSchedule: true,
-            BrandImagesScheduleIntervalHours: 24,
+            BrandImagesScheduleIntervalDays: 24,
             BrandImagesScheduleMaxFiles: null,
             ImportMasterFileOnSchedule: false,
             MasterFileImportMode: "Manual",
-            MasterFileScheduleIntervalHours: 24,
+            MasterFileScheduleIntervalDays: 24,
             MasterFileScheduleMaxItems: null,
             ImportFitmentOnSchedule: false,
-            FitmentScheduleIntervalHours: 24,
+            FitmentScheduleIntervalDays: 24,
             FitmentScheduleMaxSkus: null,
             FitmentScheduleFitmentLimit: null,
             FitmentScheduleDelayMilliseconds: 250,
@@ -525,14 +525,14 @@ public sealed class PlatformSupplierConnectorServiceTests
             BrandFileUrls: string.Empty,
             BrandFileMaxFiles: null,
             ImportBrandImagesOnSchedule: false,
-            BrandImagesScheduleIntervalHours: 24,
+            BrandImagesScheduleIntervalDays: 24,
             BrandImagesScheduleMaxFiles: null,
             ImportMasterFileOnSchedule: false,
             MasterFileImportMode: "Manual",
-            MasterFileScheduleIntervalHours: 24,
+            MasterFileScheduleIntervalDays: 24,
             MasterFileScheduleMaxItems: null,
             ImportFitmentOnSchedule: false,
-            FitmentScheduleIntervalHours: 24,
+            FitmentScheduleIntervalDays: 24,
             FitmentScheduleMaxSkus: null,
             FitmentScheduleFitmentLimit: 1,
             FitmentScheduleDelayMilliseconds: 250,
@@ -592,14 +592,14 @@ public sealed class PlatformSupplierConnectorServiceTests
             BrandFileUrls: string.Empty,
             BrandFileMaxFiles: null,
             ImportBrandImagesOnSchedule: false,
-            BrandImagesScheduleIntervalHours: 24,
+            BrandImagesScheduleIntervalDays: 24,
             BrandImagesScheduleMaxFiles: null,
             ImportMasterFileOnSchedule: false,
             MasterFileImportMode: "Manual",
-            MasterFileScheduleIntervalHours: 24,
+            MasterFileScheduleIntervalDays: 24,
             MasterFileScheduleMaxItems: null,
             ImportFitmentOnSchedule: false,
-            FitmentScheduleIntervalHours: 24,
+            FitmentScheduleIntervalDays: 24,
             FitmentScheduleMaxSkus: null,
             FitmentScheduleFitmentLimit: 1,
             FitmentScheduleDelayMilliseconds: 250,
@@ -677,6 +677,17 @@ public sealed class PlatformSupplierConnectorServiceTests
         using var document = JsonDocument.Parse(importRun.ParametersJson ?? "{}");
         Assert.True(document.RootElement.TryGetProperty(limitProperty, out var value));
         Assert.Equal(JsonValueKind.Null, value.ValueKind);
+    }
+
+    private static async Task AssertImportRunLimitAsync(ApplicationDbContext dbContext, string importType, string limitProperty, int expectedLimit)
+    {
+        var importRun = await dbContext.SupplierConnectorImportRuns.SingleAsync(x => x.ImportType == importType);
+
+        Assert.Equal(expectedLimit, importRun.ProgressTotal);
+        Assert.Contains($"first {expectedLimit:N0}", importRun.Message ?? string.Empty);
+        using var document = JsonDocument.Parse(importRun.ParametersJson ?? "{}");
+        Assert.True(document.RootElement.TryGetProperty(limitProperty, out var value));
+        Assert.Equal(expectedLimit, value.GetInt32());
     }
 
     private sealed class TestClock(DateTimeOffset now) : IDateTimeProvider

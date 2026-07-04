@@ -12,7 +12,7 @@ namespace iM1os.Tests;
 public sealed class CompanySupplierServiceTests
 {
     [Fact]
-    public async Task Company_wps_settings_use_hours_but_persist_minutes()
+    public async Task Company_wps_settings_use_days_but_persist_minutes()
     {
         var now = new DateTimeOffset(2026, 6, 29, 18, 0, 0, TimeSpan.Zero);
         var organizationId = Guid.NewGuid();
@@ -32,13 +32,13 @@ public sealed class CompanySupplierServiceTests
                 ApiKey: "api-key",
                 ApiSecret: "secret",
                 SyncDealerPricingOnSchedule: true,
-                DealerPricingScheduleIntervalHours: 12,
+                DealerPricingScheduleIntervalDays: 12,
                 DealerPricingScheduleMaxItems: 200),
             CancellationToken.None);
 
-        Assert.Equal(12, page.Settings.DealerPricingScheduleIntervalHours);
+        Assert.Equal(12, page.Settings.DealerPricingScheduleIntervalDays);
         var configuration = await dbContext.CompanySupplierConnectorConfigurations.IgnoreQueryFilters().SingleAsync();
-        Assert.Equal(720, configuration.DealerPricingScheduleIntervalMinutes);
+        Assert.Equal(17280, configuration.DealerPricingScheduleIntervalMinutes);
     }
 
     [Fact]

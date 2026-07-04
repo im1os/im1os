@@ -57,7 +57,7 @@ public sealed class CompanySupplierService(
 
         configuration.AuthMode = "API Key";
         configuration.SyncDealerPricingOnSchedule = request.SyncDealerPricingOnSchedule;
-        configuration.DealerPricingScheduleIntervalMinutes = HoursToMinutes(request.DealerPricingScheduleIntervalHours);
+        configuration.DealerPricingScheduleIntervalMinutes = DaysToMinutes(request.DealerPricingScheduleIntervalDays);
         configuration.DealerPricingScheduleMaxItems = PositiveOrNull(request.DealerPricingScheduleMaxItems);
         configuration.LastConnectionStatus = IsConfigured(configuration) ? "Ready" : "Incomplete";
         configuration.LastConnectionMessage = IsConfigured(configuration)
@@ -174,7 +174,7 @@ public sealed class CompanySupplierService(
 
         configuration.AuthMode = definition.AuthMode;
         configuration.SyncDealerPricingOnSchedule = request.SyncDealerPricingOnSchedule;
-        configuration.DealerPricingScheduleIntervalMinutes = HoursToMinutes(request.DealerPricingScheduleIntervalHours);
+        configuration.DealerPricingScheduleIntervalMinutes = DaysToMinutes(request.DealerPricingScheduleIntervalDays);
         configuration.DealerPricingScheduleMaxItems = PositiveOrNull(request.DealerPricingScheduleMaxItems);
         configuration.LastConnectionStatus = IsConfigured(configuration, definition) ? "Ready" : "Incomplete";
         configuration.LastConnectionMessage = IsConfigured(configuration, definition)
@@ -504,7 +504,7 @@ public sealed class CompanySupplierService(
         configuration.ApiKey ?? string.Empty,
         string.Empty,
         configuration.SyncDealerPricingOnSchedule,
-        MinutesToHours(configuration.DealerPricingScheduleIntervalMinutes),
+        MinutesToDays(configuration.DealerPricingScheduleIntervalMinutes),
         configuration.DealerPricingScheduleMaxItems);
 
     private static CompanySupplierConnectorSettingsRequest ToGenericSettings(CompanySupplierConnectorConfiguration configuration, CompanySupplierConnectorDefinition definition) => new(
@@ -515,7 +515,7 @@ public sealed class CompanySupplierService(
         configuration.ApiKey ?? string.Empty,
         string.Empty,
         configuration.SyncDealerPricingOnSchedule,
-        MinutesToHours(configuration.DealerPricingScheduleIntervalMinutes),
+        MinutesToDays(configuration.DealerPricingScheduleIntervalMinutes),
         configuration.DealerPricingScheduleMaxItems);
 
     private static bool IsConfigured(CompanySupplierConnectorConfiguration configuration)
@@ -535,14 +535,14 @@ public sealed class CompanySupplierService(
         return Math.Clamp(value <= 0 ? min : value, min, max);
     }
 
-    private static int HoursToMinutes(int value)
+    private static int DaysToMinutes(int value)
     {
-        return ClampPositive(value, 1, 168) * 60;
+        return ClampPositive(value, 1, 365) * 1440;
     }
 
-    private static int MinutesToHours(int value)
+    private static int MinutesToDays(int value)
     {
-        return Math.Max(1, (int)Math.Ceiling((value <= 0 ? 1440 : value) / 60m));
+        return Math.Max(1, (int)Math.Ceiling((value <= 0 ? 1440 : value) / 1440m));
     }
 
     private static int ImportProgressPercent(string status, int processed, int? total)

@@ -5,6 +5,8 @@ using iM1os.Domain.Platform;
 using iM1os.Infrastructure.Persistence;
 using iM1os.Infrastructure.Services;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Caching.Memory;
+using Microsoft.Extensions.Logging.Abstractions;
 
 namespace iM1os.Tests;
 
@@ -72,17 +74,170 @@ public sealed class SupplierItemSearchServiceTests
         var skuResult = await service.SearchAsync("020-00010", 10, CancellationToken.None);
         var mfgResult = await service.SearchAsync("TC M6-M8", 10, CancellationToken.None);
         var titleResult = await service.SearchAsync("thread chasers", 10, CancellationToken.None);
+        var formattedTitleResult = await service.SearchAsync("bolt m6/m8", 10, CancellationToken.None);
 
         Assert.Single(skuResult.Results);
         Assert.Single(mfgResult.Results);
         var item = Assert.Single(titleResult.Results);
+        Assert.Single(formattedTitleResult.Results);
         Assert.Equal("020-00010", item.SupplierSku);
         Assert.Equal("TC-M6M8", item.ManufacturerPartNumber);
-        Assert.Equal("M6/M8 THREAD CHASERS", item.Title);
+        Assert.Equal("BOLT M6/M8 THREAD CHASERS - TC-M6M8", item.Title);
         Assert.Equal(4.99m, item.Msrp);
         Assert.Equal(3.26m, item.DealerCost);
         Assert.Equal(1, item.FitmentRecordCount);
         Assert.Equal("https://cdn.example.test/thread-chaser.jpg", item.ImageUrl);
+    }
+
+    [Fact]
+    public async Task Search_title_formatter_does_not_duplicate_existing_maker_or_part_number()
+    {
+        await using var dbContext = CreateContext();
+        var supplier = new Supplier { Name = "Western Power Sports", Code = "WPS", ConnectorKey = "WPS" };
+        var product = new GlobalProduct
+        {
+            Brand = "MAXIMA",
+            Manufacturer = "MAXIMA",
+            ManufacturerPartNumber = "59901-10",
+            Description = "MAXIMA FORK FLUID 10W LITER - 59901-10",
+            Status = "Active"
+        };
+        var supplierProduct = new SupplierProduct
+        {
+            SupplierId = supplier.Id,
+            GlobalProductId = product.Id,
+            SupplierSku = "59901-10",
+            SupplierDescription = "MAXIMA FORK FLUID 10W LITER - 59901-10",
+            SupplierPartNumber = "59901-10",
+            ManufacturerPartNumber = "59901-10",
+            SupplierStatus = "Active"
+        };
+
+        dbContext.Suppliers.Add(supplier);
+        dbContext.GlobalProducts.Add(product);
+        dbContext.SupplierProducts.Add(supplierProduct);
+        await dbContext.SaveChangesAsync();
+
+        var service = CreateService(dbContext);
+
+        var page = await service.SearchAsync("MAXIMA FORK", 10, CancellationToken.None);
+
+        var item = Assert.Single(page.Results);
+        Assert.Equal("MAXIMA FORK FLUID 10W LITER - 59901-10", item.Title);
+    }
+
+    [Fact]
+    public async Task Search_sorts_exact_matches_before_partial_matches()
+    {
+        await using var dbContext = CreateContext();
+        var supplier = new Supplier { Name = "Western Power Sports", Code = "WPS", ConnectorKey = "WPS" };
+        var exactProduct = new GlobalProduct
+        {
+            Brand = "MAXIMA",
+            Manufacturer = "MAXIMA",
+            ManufacturerPartNumber = "22916",
+            Description = "FORMULA K2 16OZ",
+            Status = "Active"
+        };
+        var partialProduct = new GlobalProduct
+        {
+            Brand = "MAXIMA",
+            Manufacturer = "MAXIMA",
+            ManufacturerPartNumber = "ABC-22916-KIT",
+            Description = "FORMULA K2 DISPLAY KIT",
+            Status = "Active"
+        };
+        var exactSupplierProduct = new SupplierProduct
+        {
+            SupplierId = supplier.Id,
+            GlobalProductId = exactProduct.Id,
+            SupplierSku = "22916",
+            SupplierDescription = "FORMULA K2 16OZ",
+            SupplierPartNumber = "22916",
+            ManufacturerPartNumber = "22916",
+            NormalizedManufacturerPartNumber = "22916",
+            SupplierStatus = "Active"
+        };
+        var partialSupplierProduct = new SupplierProduct
+        {
+            SupplierId = supplier.Id,
+            GlobalProductId = partialProduct.Id,
+            SupplierSku = "ABC-22916-KIT",
+            SupplierDescription = "FORMULA K2 DISPLAY KIT 22916",
+            SupplierPartNumber = "ABC-22916-KIT",
+            ManufacturerPartNumber = "ABC-22916-KIT",
+            NormalizedManufacturerPartNumber = "ABC22916KIT",
+            SupplierStatus = "Active"
+        };
+
+        dbContext.Suppliers.Add(supplier);
+        dbContext.GlobalProducts.AddRange(exactProduct, partialProduct);
+        dbContext.SupplierProducts.AddRange(partialSupplierProduct, exactSupplierProduct);
+        await dbContext.SaveChangesAsync();
+
+        var service = CreateService(dbContext);
+
+        var page = await service.SearchAsync("22916", 10, CancellationToken.None);
+
+        Assert.Equal(2, page.Results.Count);
+        Assert.Equal("22916", page.Results.First().SupplierSku);
+        Assert.Equal("MAXIMA FORMULA K2 16OZ - 22916", page.Results.First().Title);
+    }
+
+    [Fact]
+    public async Task Search_uses_manufacturer_as_secondary_sort()
+    {
+        await using var dbContext = CreateContext();
+        var supplier = new Supplier { Name = "Western Power Sports", Code = "WPS", ConnectorKey = "WPS" };
+        var maximaProduct = new GlobalProduct
+        {
+            Brand = "MAXIMA",
+            Manufacturer = "MAXIMA",
+            ManufacturerPartNumber = "22916",
+            Description = "FORMULA K2 16OZ",
+            Status = "Active"
+        };
+        var belRayProduct = new GlobalProduct
+        {
+            Brand = "BEL-RAY",
+            Manufacturer = "BEL-RAY",
+            ManufacturerPartNumber = "99210",
+            Description = "FORMULA K2 16OZ",
+            Status = "Active"
+        };
+        var maximaSupplierProduct = new SupplierProduct
+        {
+            SupplierId = supplier.Id,
+            GlobalProductId = maximaProduct.Id,
+            SupplierSku = "M-22916",
+            SupplierDescription = "FORMULA K2 16OZ",
+            SupplierPartNumber = "M-22916",
+            ManufacturerPartNumber = "22916",
+            SupplierStatus = "Active"
+        };
+        var belRaySupplierProduct = new SupplierProduct
+        {
+            SupplierId = supplier.Id,
+            GlobalProductId = belRayProduct.Id,
+            SupplierSku = "B-99210",
+            SupplierDescription = "FORMULA K2 16OZ",
+            SupplierPartNumber = "B-99210",
+            ManufacturerPartNumber = "99210",
+            SupplierStatus = "Active"
+        };
+
+        dbContext.Suppliers.Add(supplier);
+        dbContext.GlobalProducts.AddRange(maximaProduct, belRayProduct);
+        dbContext.SupplierProducts.AddRange(maximaSupplierProduct, belRaySupplierProduct);
+        await dbContext.SaveChangesAsync();
+
+        var service = CreateService(dbContext);
+
+        var page = await service.SearchAsync("FORMULA K2 16OZ", 10, CancellationToken.None);
+
+        Assert.Equal(2, page.Results.Count);
+        Assert.Equal("BEL-RAY", page.Results.First().Brand);
+        Assert.Equal("MAXIMA", page.Results.Last().Brand);
     }
 
     [Fact]
@@ -170,6 +325,108 @@ public sealed class SupplierItemSearchServiceTests
 
         var mismatchedTypePage = await service.SearchAsync(new SupplierItemSearchRequest(null, null, "Street", 2018, "KTM", "125 SX"), 10, CancellationToken.None);
         Assert.Empty(mismatchedTypePage.Results);
+    }
+
+    [Fact]
+    public async Task Ymm_supplier_search_includes_cross_supplier_mfg_part_references()
+    {
+        await using var dbContext = CreateContext();
+        var wps = new Supplier { Name = "Western Power Sports", Code = "WPS", ConnectorKey = "WPS" };
+        var partsUnlimited = new Supplier { Name = "Parts Unlimited", Code = "PU", ConnectorKey = "PU" };
+        var wpsProduct = new GlobalProduct
+        {
+            Brand = "BOLT",
+            Manufacturer = "BOLT",
+            ManufacturerPartNumber = "TC-M6M8",
+            NormalizedManufacturerPartNumber = "TCM6M8",
+            Description = "Thread Chasers",
+            Status = "Active"
+        };
+        var partsUnlimitedProduct = new GlobalProduct
+        {
+            Brand = "BOLT",
+            Manufacturer = "BOLT",
+            ManufacturerPartNumber = "TC M6 M8",
+            NormalizedManufacturerPartNumber = "TCM6M8",
+            Description = "Thread Chaser Kit",
+            Status = "Active"
+        };
+        var wpsSupplierProduct = new SupplierProduct
+        {
+            SupplierId = wps.Id,
+            GlobalProductId = wpsProduct.Id,
+            SupplierSku = "020-00104",
+            SupplierDescription = "THREAD CHASERS",
+            SupplierPartNumber = "020-00104",
+            ManufacturerPartNumber = "TC-M6M8",
+            NormalizedManufacturerPartNumber = "TCM6M8",
+            SupplierStatus = "STK"
+        };
+        var partsUnlimitedSupplierProduct = new SupplierProduct
+        {
+            SupplierId = partsUnlimited.Id,
+            GlobalProductId = partsUnlimitedProduct.Id,
+            SupplierSku = "PU-12345",
+            SupplierDescription = "THREAD CHASER KIT",
+            SupplierPartNumber = "PU-12345",
+            ManufacturerPartNumber = "TC M6 M8",
+            NormalizedManufacturerPartNumber = "TCM6M8",
+            SupplierStatus = "Active"
+        };
+
+        dbContext.Suppliers.AddRange(wps, partsUnlimited);
+        dbContext.GlobalProducts.AddRange(wpsProduct, partsUnlimitedProduct);
+        dbContext.SupplierProducts.AddRange(wpsSupplierProduct, partsUnlimitedSupplierProduct);
+        dbContext.SupplierFitmentRecords.AddRange(
+            new SupplierFitmentRecord
+            {
+                SupplierId = wps.Id,
+                SupplierProductId = wpsSupplierProduct.Id,
+                GlobalProductId = wpsProduct.Id,
+                SupplierKey = "WPS",
+                SupplierSku = "020-00104",
+                VehicleClass = "offroad_dirt",
+                VehicleType = "Offroad / Dirt",
+                Year = 2018,
+                Make = "KTM",
+                Model = "125 SX",
+                ResolutionStatus = "Resolved",
+                ImportedAtUtc = new DateTimeOffset(2026, 6, 29, 12, 0, 0, TimeSpan.Zero)
+            },
+            new SupplierFitmentRecord
+            {
+                SupplierId = partsUnlimited.Id,
+                SupplierProductId = partsUnlimitedSupplierProduct.Id,
+                GlobalProductId = partsUnlimitedProduct.Id,
+                SupplierKey = "PU",
+                SupplierSku = "PU-12345",
+                VehicleClass = "offroad_dirt",
+                VehicleType = "Offroad / Dirt",
+                Year = 2019,
+                Make = "Yamaha",
+                Model = "YZ250F",
+                ResolutionStatus = "Resolved",
+                ImportedAtUtc = new DateTimeOffset(2026, 6, 29, 12, 0, 0, TimeSpan.Zero)
+            });
+        await dbContext.SaveChangesAsync();
+
+        var service = CreateService(dbContext);
+
+        var page = await service.SearchAsync(new SupplierItemSearchRequest(null, "WPS", "Offroad / Dirt", 2018, "KTM", "125 SX"), 10, CancellationToken.None);
+
+        var item = Assert.Single(page.Results);
+        Assert.Equal("WPS", item.SupplierCode);
+        Assert.Equal("020-00104", item.SupplierSku);
+        Assert.False(item.IsCrossReference);
+        Assert.Empty(item.CrossReferences);
+        Assert.NotNull(item.Offers);
+        Assert.Equal(2, item.Offers!.Count);
+        Assert.Contains(item.Offers, offer => offer.SupplierCode == "WPS" && offer.SupplierSku == "020-00104" && offer.IsDefaultOffer);
+        Assert.Contains(item.Offers, offer => offer.SupplierCode == "PU" && offer.SupplierSku == "PU-12345" && offer.ManufacturerPartNumber == "TC M6 M8");
+        Assert.NotNull(item.Fitment);
+        Assert.Equal(2, item.Fitment!.Count);
+        Assert.Contains(item.Fitment, fitment => fitment.Year == 2018 && fitment.Make == "KTM" && fitment.Model == "125 SX" && fitment.SupplierCodes.Contains("WPS"));
+        Assert.Contains(item.Fitment, fitment => fitment.Year == 2019 && fitment.Make == "Yamaha" && fitment.Model == "YZ250F" && fitment.SupplierCodes.Contains("PU"));
     }
 
     [Fact]
@@ -290,7 +547,11 @@ public sealed class SupplierItemSearchServiceTests
 
     private static SupplierItemSearchService CreateService(ApplicationDbContext dbContext)
     {
-        return new SupplierItemSearchService(dbContext, new TenantModuleEntitlementService(dbContext));
+        return new SupplierItemSearchService(
+            dbContext,
+            new TenantModuleEntitlementService(dbContext),
+            new MemoryCache(new MemoryCacheOptions()),
+            NullLogger<SupplierItemSearchService>.Instance);
     }
 
     private sealed class TestClock : IDateTimeProvider

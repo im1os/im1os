@@ -22,6 +22,7 @@ public sealed class PartsUnlimitedBundleImportService(
 {
     private const int BundleWriteBatchSize = 1000;
     private const int BundleCacheRetentionDays = 3;
+    private const int BrandFileCacheRetentionDays = 3;
     private const string SupplierCode = "PU";
     private const string DefaultBaseApiUrl = "https://api.parts-unlimited.com/api";
     private const string DefaultBundlePath = "/v1/parts/bundle";
@@ -709,10 +710,10 @@ public sealed class PartsUnlimitedBundleImportService(
                 importRun.Message = $"Processing Parts Unlimited brand image file {counters.BrandFilesProcessed + 1:N0} of {brandFileUrls.Count:N0}. Images updated {counters.BrandImagesUpdated:N0}, unmatched {counters.BrandImageRowsUnmatched:N0}.";
                 await dbContext.SaveChangesAsync(cancellationToken);
 
-                var brandFilePath = await DownloadBrandFileAsync(configuration, apiKey, brandFileUrl, dealerPortalClient, importRun.Id, counters.BrandFilesProcessed + 1, cancellationToken);
+                var brandFile = await DownloadBrandFileAsync(configuration, apiKey, brandFileUrl, dealerPortalClient, importRun.Id, counters.BrandFilesProcessed + 1, cancellationToken);
                 try
                 {
-                    await ProcessBrandFileAsync(supplierId, brandFilePath, counters, cancellationToken);
+                    await ProcessBrandFileAsync(supplierId, brandFile.Path, counters, cancellationToken);
                     counters.BrandFilesProcessed++;
                     importRun.ProgressProcessed = counters.BrandFilesProcessed;
                     await dbContext.SaveChangesAsync(cancellationToken);
@@ -720,7 +721,10 @@ public sealed class PartsUnlimitedBundleImportService(
                 }
                 finally
                 {
-                    TryDeleteDownloadDirectory(brandFilePath);
+                    if (brandFile.DeleteAfterImport)
+                    {
+                        TryDeleteDownloadDirectory(brandFile.Path);
+                    }
                 }
             }
         }
@@ -732,7 +736,7 @@ public sealed class PartsUnlimitedBundleImportService(
         return counters;
     }
 
-    private async Task<string> DownloadBrandFileAsync(
+    private async Task<BrandFileDownload> DownloadBrandFileAsync(
         SupplierConnectorConfiguration configuration,
         string apiKey,
         string source,
@@ -742,6 +746,15 @@ public sealed class PartsUnlimitedBundleImportService(
         CancellationToken cancellationToken)
     {
         var requestUri = BuildSupplementalUri(configuration, source);
+        var cachePath = BrandFileCachePath(requestUri, dateTimeProvider.UtcNow);
+        if (File.Exists(cachePath) && new FileInfo(cachePath).Length > 0)
+        {
+            logger.LogInformation("Using cached Parts Unlimited brand file from {CachePath}.", cachePath);
+            return new BrandFileDownload(cachePath, DeleteAfterImport: false);
+        }
+
+        CleanupOldBrandFileCache(dateTimeProvider.UtcNow);
+
         var useDealerPortal = IsDealerPortalBrandExportUri(requestUri);
         var client = useDealerPortal
             ? dealerPortalClient ?? throw new InvalidOperationException("Parts Unlimited dealer portal session is required for cached brand file downloads.")
@@ -761,21 +774,71 @@ public sealed class PartsUnlimitedBundleImportService(
         using var response = await client.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
         response.EnsureSuccessStatusCode();
 
-        var runDirectory = Path.Combine(Path.GetTempPath(), "im1os-parts-unlimited", importRunId.ToString("N"), "brand-files", sequence.ToString(CultureInfo.InvariantCulture));
-        Directory.CreateDirectory(runDirectory);
-        var extension = response.Content.Headers.ContentType?.MediaType?.Contains("zip", StringComparison.OrdinalIgnoreCase) == true ? ".zip" : Path.GetExtension(requestUri.LocalPath);
-        if (string.IsNullOrWhiteSpace(extension))
-        {
-            extension = ".zip";
-        }
-
-        var filePath = Path.Combine(runDirectory, $"parts-unlimited-brand-{sequence}{extension}");
-        await using (var output = File.Create(filePath))
+        Directory.CreateDirectory(Path.GetDirectoryName(cachePath)!);
+        var tempPath = $"{cachePath}.{importRunId:N}.{sequence.ToString(CultureInfo.InvariantCulture)}.tmp";
+        await using (var output = File.Create(tempPath))
         {
             await response.Content.CopyToAsync(output, cancellationToken);
         }
 
-        return filePath;
+        if (File.Exists(cachePath))
+        {
+            File.Delete(cachePath);
+        }
+
+        File.Move(tempPath, cachePath);
+        logger.LogInformation("Downloaded and cached Parts Unlimited brand file at {CachePath}.", cachePath);
+        return new BrandFileDownload(cachePath, DeleteAfterImport: false);
+    }
+
+    private static string BrandFileCachePath(Uri requestUri, DateTimeOffset now)
+    {
+        var cacheKey = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(requestUri.AbsoluteUri)));
+        var extension = BrandFileCacheExtension(requestUri);
+        return Path.Combine(
+            Path.GetTempPath(),
+            "im1os-parts-unlimited",
+            "brand-file-cache",
+            now.UtcDateTime.ToString("yyyyMMdd", CultureInfo.InvariantCulture),
+            $"{cacheKey}{extension}");
+    }
+
+    private static string BrandFileCacheExtension(Uri requestUri)
+    {
+        if (IsDealerPortalBrandExportUri(requestUri))
+        {
+            return ".zip";
+        }
+
+        var extension = Path.GetExtension(requestUri.LocalPath);
+        return string.IsNullOrWhiteSpace(extension) ? ".zip" : extension;
+    }
+
+    private static void CleanupOldBrandFileCache(DateTimeOffset now)
+    {
+        try
+        {
+            var cacheRoot = Path.Combine(Path.GetTempPath(), "im1os-parts-unlimited", "brand-file-cache");
+            if (!Directory.Exists(cacheRoot))
+            {
+                return;
+            }
+
+            var oldestRetainedDate = DateOnly.FromDateTime(now.UtcDateTime).AddDays(-BrandFileCacheRetentionDays);
+            foreach (var directory in Directory.EnumerateDirectories(cacheRoot))
+            {
+                var directoryName = Path.GetFileName(directory);
+                if (DateOnly.TryParseExact(directoryName, "yyyyMMdd", CultureInfo.InvariantCulture, DateTimeStyles.None, out var cacheDate) &&
+                    cacheDate < oldestRetainedDate)
+                {
+                    Directory.Delete(directory, recursive: true);
+                }
+            }
+        }
+        catch
+        {
+            // Best-effort cache cleanup only.
+        }
     }
 
     private static IReadOnlyCollection<string> ResolveBrandFileUrls(SupplierConnectorConfiguration configuration, PartsUnlimitedBundleRunParameters parameters)
@@ -923,6 +986,7 @@ public sealed class PartsUnlimitedBundleImportService(
             .Descendants()
             .Where(x => x.Name.LocalName.Equals("partImage", StringComparison.OrdinalIgnoreCase))
             .ToList();
+        var records = new List<BrandImageImportRecord>();
 
         foreach (var imageElement in imageElements)
         {
@@ -939,54 +1003,130 @@ public sealed class PartsUnlimitedBundleImportService(
                 record[element.Name.LocalName] = Clean(element.Value);
             }
 
-            await UpsertBrandImageRecordAsync(supplierId, record, counters, cancellationToken);
+            var imageValue = FirstField(record, "partImage", "PartImage", "image", "Image");
+            var images = DecodePartImageUrls(imageValue).ToList();
+            if (images.Count == 0)
+            {
+                continue;
+            }
+
+            counters.BrandImageRowsProcessed++;
+            records.Add(new BrandImageImportRecord(
+                PartNumberCandidates(record).Distinct(StringComparer.OrdinalIgnoreCase).ToArray(),
+                JsonSerializer.Serialize(images)));
         }
+
+        await UpsertBrandImageRecordsAsync(supplierId, records, counters, cancellationToken);
     }
 
-    private async Task UpsertBrandImageRecordAsync(
+    private async Task UpsertBrandImageRecordsAsync(
         Guid supplierId,
-        IReadOnlyDictionary<string, string?> row,
+        IReadOnlyCollection<BrandImageImportRecord> records,
         BrandImportCounters counters,
         CancellationToken cancellationToken)
     {
-        var imageValue = FirstField(row, "partImage", "PartImage", "image", "Image");
-        var images = DecodePartImageUrls(imageValue).ToList();
-        if (images.Count == 0)
+        if (records.Count == 0)
         {
             return;
         }
 
-        counters.BrandImageRowsProcessed++;
-        var skuCandidates = PartNumberCandidates(row).ToList();
-        SupplierProduct? supplierProduct = null;
-        foreach (var candidate in skuCandidates)
+        var candidates = records
+            .SelectMany(x => x.PartNumberCandidates)
+            .Where(x => !string.IsNullOrWhiteSpace(x))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+        var supplierProducts = new List<SupplierProduct>();
+        foreach (var candidateBatch in candidates.Chunk(5000))
         {
-            supplierProduct = await dbContext.SupplierProducts
-                .FirstOrDefaultAsync(x =>
+            var batch = candidateBatch;
+            supplierProducts.AddRange(await dbContext.SupplierProducts
+                .Where(x =>
                     x.SupplierId == supplierId &&
-                    (x.SupplierSku == candidate || x.SupplierPartNumber == candidate || x.ManufacturerPartNumber == candidate),
-                    cancellationToken);
-            if (supplierProduct is not null)
+                    (batch.Contains(x.SupplierSku) ||
+                        (x.SupplierPartNumber != null && batch.Contains(x.SupplierPartNumber)) ||
+                        (x.ManufacturerPartNumber != null && batch.Contains(x.ManufacturerPartNumber))))
+                .OrderBy(x => x.SupplierSku)
+                .ToListAsync(cancellationToken));
+        }
+
+        supplierProducts = supplierProducts
+            .GroupBy(x => x.Id)
+            .Select(x => x.First())
+            .ToList();
+        var supplierProductsByCandidate = BuildSupplierProductCandidateMap(supplierProducts);
+        var globalProductIds = supplierProducts
+            .Select(x => x.GlobalProductId)
+            .Distinct()
+            .ToArray();
+        var globalProductsById = globalProductIds.Length == 0
+            ? new Dictionary<Guid, GlobalProduct>()
+            : await dbContext.GlobalProducts
+                .Where(x => globalProductIds.Contains(x.Id))
+                .ToDictionaryAsync(x => x.Id, cancellationToken);
+
+        foreach (var record in records)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            var supplierProduct = MatchSupplierProduct(record.PartNumberCandidates, supplierProductsByCandidate);
+            if (supplierProduct is null)
             {
-                break;
+                counters.BrandImageRowsUnmatched++;
+                continue;
+            }
+
+            var updated = false;
+            if (!string.Equals(supplierProduct.SupplierImagesJson, record.ImagesJson, StringComparison.Ordinal))
+            {
+                supplierProduct.SupplierImagesJson = record.ImagesJson;
+                updated = true;
+            }
+
+            if (globalProductsById.TryGetValue(supplierProduct.GlobalProductId, out var globalProduct) &&
+                string.IsNullOrWhiteSpace(globalProduct.ImagesJson))
+            {
+                globalProduct.ImagesJson = record.ImagesJson;
+                updated = true;
+            }
+
+            if (updated)
+            {
+                counters.BrandImagesUpdated++;
+            }
+        }
+    }
+
+    private static IReadOnlyDictionary<string, SupplierProduct> BuildSupplierProductCandidateMap(IEnumerable<SupplierProduct> supplierProducts)
+    {
+        var productsByCandidate = new Dictionary<string, SupplierProduct>(StringComparer.OrdinalIgnoreCase);
+        foreach (var supplierProduct in supplierProducts)
+        {
+            AddCandidate(supplierProduct.SupplierSku);
+            AddCandidate(supplierProduct.SupplierPartNumber);
+            AddCandidate(supplierProduct.ManufacturerPartNumber);
+
+            void AddCandidate(string? value)
+            {
+                if (Clean(value) is { } candidate)
+                {
+                    productsByCandidate.TryAdd(candidate, supplierProduct);
+                }
             }
         }
 
-        if (supplierProduct is null)
+        return productsByCandidate;
+    }
+
+    private static SupplierProduct? MatchSupplierProduct(IEnumerable<string> partNumberCandidates, IReadOnlyDictionary<string, SupplierProduct> supplierProductsByCandidate)
+    {
+        foreach (var candidate in partNumberCandidates)
         {
-            counters.BrandImageRowsUnmatched++;
-            return;
+            if (supplierProductsByCandidate.TryGetValue(candidate, out var supplierProduct))
+            {
+                return supplierProduct;
+            }
         }
 
-        supplierProduct.SupplierImagesJson = JsonSerializer.Serialize(images);
-        var globalProduct = await dbContext.GlobalProducts
-            .FirstAsync(x => x.Id == supplierProduct.GlobalProductId, cancellationToken);
-        if (string.IsNullOrWhiteSpace(globalProduct.ImagesJson))
-        {
-            globalProduct.ImagesJson = supplierProduct.SupplierImagesJson;
-        }
-
-        counters.BrandImagesUpdated++;
+        return null;
     }
 
     private static Uri BuildSupplementalUri(SupplierConnectorConfiguration configuration, string source)
@@ -1376,6 +1516,12 @@ public sealed class PartsUnlimitedBundleImportService(
     }
 
     private sealed record BundleDownload(string Path, bool DeleteAfterImport);
+
+    private sealed record BrandFileDownload(string Path, bool DeleteAfterImport);
+
+    private sealed record BrandImageImportRecord(
+        IReadOnlyCollection<string> PartNumberCandidates,
+        string ImagesJson);
 
     private sealed record PartImportRow(
         string Sku,

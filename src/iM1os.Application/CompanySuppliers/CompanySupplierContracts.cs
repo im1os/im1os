@@ -32,7 +32,7 @@ public sealed record CompanyWpsConnectorSettingsRequest(
     string ApiKey,
     string ApiSecret,
     bool SyncDealerPricingOnSchedule,
-    int DealerPricingScheduleIntervalHours,
+    int DealerPricingScheduleIntervalDays,
     int? DealerPricingScheduleMaxItems);
 
 public sealed record CompanySupplierConnectorSettingsRequest(
@@ -43,7 +43,7 @@ public sealed record CompanySupplierConnectorSettingsRequest(
     string ApiKey,
     string ApiSecret,
     bool SyncDealerPricingOnSchedule,
-    int DealerPricingScheduleIntervalHours,
+    int DealerPricingScheduleIntervalDays,
     int? DealerPricingScheduleMaxItems);
 
 public sealed record CompanyWpsDealerPricingSyncRequest(

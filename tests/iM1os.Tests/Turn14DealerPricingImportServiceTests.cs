@@ -107,6 +107,45 @@ public sealed class Turn14DealerPricingImportServiceTests
     }
 
     [Fact]
+    public async Task Dealer_pricing_import_refreshes_token_and_retries_pricing_page_after_unauthorized_response()
+    {
+        var organizationId = Guid.NewGuid();
+        await using var dbContext = CreateContext();
+        var (supplierProduct, importRun) = await SeedImportRunAsync(dbContext, organizationId, ["078595"], maxItems: 1);
+        var httpClientFactory = new SequenceHttpClientFactory(
+            new(HttpStatusCode.OK, """{"access_token":"token-1"}""", "application/json"),
+            new(HttpStatusCode.Unauthorized, """{"error":"invalid_token","error_description":"The access token provided has expired"}""", "application/json"),
+            new(HttpStatusCode.OK, """{"access_token":"token-2"}""", "application/json"),
+            new(HttpStatusCode.OK, """
+{
+  "data": [
+    { "id": "078595", "type": "pricing", "attributes": { "purchase_cost": 29.96 } }
+  ],
+  "meta": { "total_pages": 1 },
+  "links": { "self": "/v1/pricing", "last": "/v1/pricing", "next": null }
+}
+""", "application/json"));
+        var service = new Turn14DealerPricingImportService(
+            dbContext,
+            httpClientFactory,
+            new TestClock(),
+            NullLogger<Turn14DealerPricingImportService>.Instance);
+
+        var result = await service.ImportAsync(new Turn14DealerPricingImportRequest(importRun.Id), CancellationToken.None);
+
+        Assert.Equal(1, result.RowsProcessed);
+        Assert.Equal(1, result.PricesUpserted);
+        Assert.Equal(
+            ["https://api.turn14.test/v1/token", "https://api.turn14.test/v1/pricing", "https://api.turn14.test/v1/token", "https://api.turn14.test/v1/pricing"],
+            httpClientFactory.RequestUris);
+        Assert.Equal([null, "Bearer token-1", null, "Bearer token-2"], httpClientFactory.AuthorizationHeaders);
+
+        var companyPrice = await dbContext.CompanySupplierPrices.AsNoTracking().SingleAsync();
+        Assert.Equal(supplierProduct.Id, companyPrice.SupplierProductId);
+        Assert.Equal(29.96m, companyPrice.ActualDealerCost);
+    }
+
+    [Fact]
     public async Task Dealer_pricing_import_normalizes_base_api_url_without_scheme()
     {
         var organizationId = Guid.NewGuid();

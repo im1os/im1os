@@ -180,6 +180,79 @@ public sealed class PartsUnlimitedBundleImportServiceTests
     }
 
     [Fact]
+    public async Task Brand_image_import_reuses_same_day_cached_brand_file()
+    {
+        var now = new DateTimeOffset(2026, 7, 2, 19, 0, 0, TimeSpan.Zero);
+        await using var dbContext = CreateContext(now);
+        var supplier = new Supplier { Name = "Parts Unlimited", Code = "PU", ConnectorKey = "PU", IsActive = true };
+        var configuration = new SupplierConnectorConfiguration
+        {
+            SupplierId = supplier.Id,
+            ConnectorKey = "PU",
+            DisplayName = "Parts Unlimited",
+            BaseApiUrl = "https://api.parts-unlimited.test/api",
+            MasterFileUrl = "/v1/parts/bundle",
+            ApiKey = "pu-key",
+            AuthMode = "ApiKeyHeader",
+            IsEnabled = true
+        };
+        var globalProduct = new GlobalProduct
+        {
+            Brand = "MOTION PRO",
+            Description = "Existing matching product",
+            Status = "Active",
+            IsActive = true
+        };
+        var supplierProduct = new SupplierProduct
+        {
+            SupplierId = supplier.Id,
+            GlobalProductId = globalProduct.Id,
+            SupplierSku = "20481",
+            SupplierPartNumber = "20481",
+            SupplierStatus = "S"
+        };
+        var brandFileUrl = $"https://files-{Guid.NewGuid():N}.parts-unlimited.test/brand.zip";
+        var firstRun = new SupplierConnectorImportRun
+        {
+            SupplierConnectorConfigurationId = configuration.Id,
+            ImportType = "PartsUnlimitedBrandImages",
+            Status = "Queued",
+            RequestedAtUtc = now,
+            ParametersJson = $$"""{"ImportBrandFiles":true,"BrandFileUrls":"{{brandFileUrl}}","BrandFileMaxFiles":1}"""
+        };
+        var secondRun = new SupplierConnectorImportRun
+        {
+            SupplierConnectorConfigurationId = configuration.Id,
+            ImportType = "PartsUnlimitedBrandImages",
+            Status = "Queued",
+            RequestedAtUtc = now.AddMinutes(5),
+            ParametersJson = $$"""{"ImportBrandFiles":true,"BrandFileUrls":"{{brandFileUrl}}","BrandFileMaxFiles":1}"""
+        };
+        dbContext.Suppliers.Add(supplier);
+        dbContext.SupplierConnectorConfigurations.Add(configuration);
+        dbContext.GlobalProducts.Add(globalProduct);
+        dbContext.SupplierProducts.Add(supplierProduct);
+        dbContext.SupplierConnectorImportRuns.AddRange(firstRun, secondRun);
+        await dbContext.SaveChangesAsync();
+
+        var httpClientFactory = new CountingBrandFileHttpClientFactory();
+        var service = new PartsUnlimitedBundleImportService(
+            dbContext,
+            httpClientFactory,
+            new TestClock(now),
+            NullLogger<PartsUnlimitedBundleImportService>.Instance);
+
+        var firstResult = await service.ImportAsync(new PartsUnlimitedBrandImageImportRequest(firstRun.Id, 1), CancellationToken.None);
+        var secondResult = await service.ImportAsync(new PartsUnlimitedBrandImageImportRequest(secondRun.Id, 1), CancellationToken.None);
+
+        Assert.Equal(1, httpClientFactory.BrandFileRequestCount);
+        Assert.Equal(1, firstResult.BrandImagesUpdated);
+        Assert.Equal(0, secondResult.BrandImagesUpdated);
+        Assert.Equal(2, await dbContext.SupplierConnectorImportRuns.CountAsync(x => x.Status == "Completed"));
+        Assert.Contains("asset.parts-unlimited.com/media/edge/6/3/6/636AE97B-7081-49B2-857C-87ADA5B0FEE2.png", supplierProduct.SupplierImagesJson);
+    }
+
+    [Fact]
     public async Task Bundle_import_repoints_existing_supplier_product_to_matching_global_product()
     {
         var now = new DateTimeOffset(2026, 7, 1, 21, 0, 0, TimeSpan.Zero);
@@ -646,6 +719,32 @@ public sealed class PartsUnlimitedBundleImportServiceTests
             return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK)
             {
                 Content = new ByteArrayContent(BundleZip())
+            });
+        }
+    }
+
+    private sealed class CountingBrandFileHttpClientFactory : IHttpClientFactory
+    {
+        private readonly CountingBrandFileHttpMessageHandler handler = new();
+
+        public int BrandFileRequestCount => handler.BrandFileRequestCount;
+
+        public HttpClient CreateClient(string name)
+        {
+            return new HttpClient(handler, disposeHandler: false);
+        }
+    }
+
+    private sealed class CountingBrandFileHttpMessageHandler : HttpMessageHandler
+    {
+        public int BrandFileRequestCount { get; private set; }
+
+        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+        {
+            BrandFileRequestCount++;
+            return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK)
+            {
+                Content = new ByteArrayContent(BrandZip())
             });
         }
     }

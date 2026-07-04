@@ -16,6 +16,7 @@ public sealed class PlatformController(
     IWpsLiveInventoryService wpsLiveInventoryService,
     ITurn14LiveInventoryService turn14LiveInventoryService,
     IPartsUnlimitedLiveInventoryService partsUnlimitedLiveInventoryService,
+    IPlatformOperationsService platformOperationsService,
     ITenantProvisioningService tenantProvisioningService) : Controller
 {
     private const int SupplierItemSearchPageSize = 25;
@@ -154,6 +155,13 @@ public sealed class PlatformController(
 
     [Authorize(Roles = "Platform Administrator")]
     [HttpGet]
+    public async Task<IActionResult> Operations(CancellationToken cancellationToken)
+    {
+        return View(await platformOperationsService.GetOperationsAsync(cancellationToken));
+    }
+
+    [Authorize(Roles = "Platform Administrator")]
+    [HttpGet]
     public async Task<IActionResult> ItemSearch(string? query, string? supplierCode, string? vehicleType, int? year, string? make, string? model, bool searchExecuted, CancellationToken cancellationToken)
     {
         return View(await supplierItemSearchService.SearchAsync(new SupplierItemSearchRequest(query, supplierCode, vehicleType, year, make, model, SearchExecuted: searchExecuted), SupplierItemSearchPageSize, cancellationToken));
@@ -163,14 +171,17 @@ public sealed class PlatformController(
     [HttpGet]
     public async Task<IActionResult> ItemSearchResults(string? query, string? supplierCode, string? vehicleType, int? year, string? make, string? model, bool searchExecuted, int offset, CancellationToken cancellationToken)
     {
-        var page = await supplierItemSearchService.SearchAsync(new SupplierItemSearchRequest(query, supplierCode, vehicleType, year, make, model, offset, searchExecuted), SupplierItemSearchPageSize, cancellationToken);
+        var page = await supplierItemSearchService.SearchAsync(
+            new SupplierItemSearchRequest(query, supplierCode, vehicleType, year, make, model, offset, searchExecuted, IncludeFacets: false),
+            SupplierItemSearchPageSize,
+            cancellationToken);
         return Json(new
         {
             page.TotalResults,
             page.Offset,
             page.PageSize,
             page.HasMore,
-            NextOffset = page.Offset + page.Results.Count,
+            NextOffset = page.TotalResults,
             Results = page.Results.Select(x => new
             {
                 x.SupplierProductId,
@@ -188,6 +199,48 @@ public sealed class PlatformController(
                 x.Msrp,
                 x.ActualCost,
                 x.ImageUrl,
+                x.CrossReferences,
+                x.IsCrossReference,
+                x.Fitment,
+                Offers = (x.Offers ?? []).Select(offer => new
+                {
+                    offer.SupplierProductId,
+                    offer.GlobalProductId,
+                    offer.SupplierCode,
+                    offer.SupplierName,
+                    offer.SupplierSku,
+                    offer.ManufacturerPartNumber,
+                    offer.Upc,
+                    offer.Brand,
+                    offer.Title,
+                    offer.Category,
+                    offer.Status,
+                    offer.FitmentRecordCount,
+                    offer.Msrp,
+                    offer.DealerCost,
+                    offer.ActualCost,
+                    offer.ImageUrl,
+                    offer.HasCachedInventory,
+                    offer.CachedInventoryTotal,
+                    offer.IsDefaultOffer,
+                    FetchFitmentUrl = Url.Action(nameof(FetchItemFitment), new { offer.SupplierProductId }),
+                    InventoryUrl = offer.SupplierCode switch
+                    {
+                        "WPS" => Url.Action(nameof(WpsInventory), new { offer.SupplierProductId }),
+                        "TURN14" => Url.Action(nameof(Turn14Inventory), new { offer.SupplierProductId }),
+                        _ => null
+                    },
+                    InventoryBatchUrl = offer.SupplierCode == "PU"
+                        ? Url.Action(nameof(PartsUnlimitedInventory))
+                        : null,
+                    InventoryLabel = offer.SupplierCode switch
+                    {
+                        "WPS" => "WPS Warehouse Inventory",
+                        "TURN14" => "Turn14 Warehouse Inventory",
+                        "PU" => "Parts Unlimited Warehouse Inventory",
+                        _ => null
+                    }
+                }),
                 FetchFitmentUrl = Url.Action(nameof(FetchItemFitment), new { x.SupplierProductId }),
                 InventoryUrl = x.SupplierCode switch
                 {

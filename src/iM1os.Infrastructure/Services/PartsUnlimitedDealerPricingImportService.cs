@@ -14,7 +14,7 @@ public sealed class PartsUnlimitedDealerPricingImportService(
     IDateTimeProvider dateTimeProvider,
     ILogger<PartsUnlimitedDealerPricingImportService> logger) : IPartsUnlimitedDealerPricingImportService
 {
-    private const int MaxBatchSize = 25;
+    private const int MaxBatchSize = 500;
     private const string SupplierCode = "PU";
     private const string DefaultBaseApiUrl = "https://api.parts-unlimited.com/api";
 

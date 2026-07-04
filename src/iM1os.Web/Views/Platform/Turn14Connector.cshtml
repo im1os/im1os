@@ -18,9 +18,9 @@
             new IM1WorkspaceStatModel("API", Model.Status.HasApiCredentials ? "Ready" : "Missing", "Images and inventory"),
             new IM1WorkspaceStatModel("Items", Model.DatabaseMetrics.SupplierProductCount.ToString("N0"), "In database"),
             new IM1WorkspaceStatModel("Fitment Records", Model.DatabaseMetrics.FitmentRecordCount.ToString("N0"), "In database"),
-            new IM1WorkspaceStatModel("Loadsheet", Model.ProductLoadsheetStatus.FileLastModifiedUtc?.ToString("yyyy-MM-dd HH:mm") ?? (Model.Settings.ImportMasterFileOnSchedule ? "Scheduled" : "Manual"), Model.ProductLoadsheetStatus.FileName ?? $"{Model.Settings.MasterFileScheduleIntervalHours} hr interval"),
-            new IM1WorkspaceStatModel("Fitment", Model.Settings.ImportFitmentOnSchedule ? "Scheduled" : "Manual", $"{Model.Settings.FitmentScheduleIntervalHours} hr interval"),
-            new IM1WorkspaceStatModel("Media", Model.Settings.ImportMediaOnSchedule ? "Scheduled" : "Manual", $"{Model.Settings.MediaScheduleIntervalHours} hr interval")
+            new IM1WorkspaceStatModel("Loadsheet", Model.ProductLoadsheetStatus.FileLastModifiedUtc?.ToString("yyyy-MM-dd HH:mm") ?? (Model.Settings.ImportMasterFileOnSchedule ? "Scheduled" : "Manual"), Model.ProductLoadsheetStatus.FileName ?? $"{Model.Settings.MasterFileScheduleIntervalDays} day interval"),
+            new IM1WorkspaceStatModel("Fitment", Model.Settings.ImportFitmentOnSchedule ? "Scheduled" : "Manual", $"{Model.Settings.FitmentScheduleIntervalDays} day interval"),
+            new IM1WorkspaceStatModel("Media", Model.Settings.ImportMediaOnSchedule ? "Scheduled" : "Manual", $"{Model.Settings.MediaScheduleIntervalDays} day interval")
         },
         new[] { new IM1ActionModel("Global Scheduler", Url.Action("Scheduler"), "secondary") },
         Model.Status.LastConnectionStatus ?? "Turn14 supplier setup");
@@ -98,8 +98,8 @@
                             </select>
                         </label>
                         <label class="im1-field">
-                            <span>Schedule Interval (hours)</span>
-                            <input name="MasterFileScheduleIntervalHours" type="number" min="1" max="168" step="1" value="@Model.Settings.MasterFileScheduleIntervalHours" />
+                            <span>Schedule Interval (days)</span>
+                            <input name="MasterFileScheduleIntervalDays" type="number" min="1" max="365" step="1" value="@Model.Settings.MasterFileScheduleIntervalDays" />
                         </label>
                         <label class="im1-field">
                             <span>Scheduled max rows</span>
@@ -120,8 +120,8 @@
                     </div>
                     <div class="im1-scheduler-config-fields im1-scheduler-config-fields-fitment">
                         <label class="im1-field">
-                            <span>Schedule Interval (hours)</span>
-                            <input name="FitmentScheduleIntervalHours" type="number" min="1" max="168" step="1" value="@Model.Settings.FitmentScheduleIntervalHours" />
+                            <span>Schedule Interval (days)</span>
+                            <input name="FitmentScheduleIntervalDays" type="number" min="1" max="365" step="1" value="@Model.Settings.FitmentScheduleIntervalDays" />
                         </label>
                         <label class="im1-field">
                             <span>Max SKUs</span>
@@ -154,8 +154,8 @@
                     </div>
                     <div class="im1-scheduler-config-fields">
                         <label class="im1-field">
-                            <span>Schedule Interval (hours)</span>
-                            <input name="MediaScheduleIntervalHours" type="number" min="1" max="168" step="1" value="@Model.Settings.MediaScheduleIntervalHours" />
+                            <span>Schedule Interval (days)</span>
+                            <input name="MediaScheduleIntervalDays" type="number" min="1" max="365" step="1" value="@Model.Settings.MediaScheduleIntervalDays" />
                         </label>
                         <label class="im1-field">
                             <span>Max Products</span>

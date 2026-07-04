@@ -28,7 +28,8 @@ public sealed record SupplierItemSearchRequest(
     string? Make,
     string? Model,
     int Offset = 0,
-    bool SearchExecuted = false);
+    bool SearchExecuted = false,
+    bool IncludeFacets = true);
 
 public sealed record SupplierSearchOption(
     string Code,
@@ -52,7 +53,54 @@ public sealed record SupplierItemSearchResult(
     decimal? Msrp,
     decimal? DealerCost,
     decimal? ActualCost,
-    string? ImageUrl);
+    string? ImageUrl,
+    IReadOnlyCollection<SupplierItemCrossReferenceResult> CrossReferences,
+    bool IsCrossReference = false,
+    IReadOnlyCollection<SupplierItemOfferResult>? Offers = null,
+    IReadOnlyCollection<SupplierItemFitmentResult>? Fitment = null);
+
+public sealed record SupplierItemOfferResult(
+    Guid SupplierProductId,
+    Guid GlobalProductId,
+    string SupplierCode,
+    string SupplierName,
+    string SupplierSku,
+    string? ManufacturerPartNumber,
+    string? Upc,
+    string Brand,
+    string Title,
+    string? Category,
+    string Status,
+    int FitmentRecordCount,
+    decimal? Msrp,
+    decimal? DealerCost,
+    decimal? ActualCost,
+    string? ImageUrl,
+    bool HasCachedInventory,
+    int? CachedInventoryTotal,
+    bool IsDefaultOffer);
+
+public sealed record SupplierItemCrossReferenceResult(
+    Guid SupplierProductId,
+    Guid GlobalProductId,
+    string SupplierCode,
+    string SupplierName,
+    string SupplierSku,
+    string? ManufacturerPartNumber,
+    string Brand,
+    string Title,
+    string Status);
+
+public sealed record SupplierItemFitmentResult(
+    int Year,
+    string Make,
+    string Model,
+    string? Submodel,
+    string? Engine,
+    string? Notes,
+    string? VehicleType,
+    IReadOnlyCollection<string> SupplierCodes,
+    IReadOnlyCollection<string> SupplierSkus);
 
 public interface ISupplierItemSearchService
 {

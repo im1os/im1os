@@ -1,4 +1,5 @@
 using System.Globalization;
+using System.Net;
 using System.Net.Http.Headers;
 using System.Text.Json;
 using iM1os.Application.Common;
@@ -40,8 +41,10 @@ public sealed class Turn14DealerPricingImportService(
         var now = dateTimeProvider.UtcNow;
         var baseApiUrl = NormalizeBaseApiUrl(Clean(configuration.BaseApiUrl) ?? DefaultBaseApiUrl);
         var source = $"{baseApiUrl}/v1/pricing";
-        var token = await RequestAccessTokenAsync(baseApiUrl, clientId, clientSecret, cancellationToken);
+        var tokenProvider = new Turn14AccessTokenProvider(tokenCancellationToken =>
+            RequestAccessTokenAsync(baseApiUrl, clientId, clientSecret, tokenCancellationToken));
         var supplierProducts = await dbContext.SupplierProducts
+            .AsNoTracking()
             .Where(x => x.SupplierId == supplier.Id)
             .OrderBy(x => x.SupplierSku)
             .ToListAsync(cancellationToken);
@@ -63,12 +66,13 @@ public sealed class Turn14DealerPricingImportService(
         var nextRequestUri = source;
         while (nextRequestUri is not null && (maxItems is null || counters.RowsProcessed < maxItems.Value))
         {
-            var page = await DownloadPricingPageAsync(baseApiUrl, nextRequestUri, token, cancellationToken);
+            var page = await DownloadPricingPageAsync(baseApiUrl, nextRequestUri, tokenProvider, cancellationToken);
             if (importRun.ProgressTotal is null && page.TotalPages is > 0)
             {
                 importRun.ProgressTotal = page.TotalPages.Value * Math.Max(page.Rows.Count, 1);
             }
 
+            var priceUpdates = new List<PriceUpdate>();
             foreach (var row in page.Rows)
             {
                 if (maxItems is not null && counters.RowsProcessed >= maxItems.Value)
@@ -90,15 +94,11 @@ public sealed class Turn14DealerPricingImportService(
                     continue;
                 }
 
-                await UpsertCompanyPriceAsync(importRun.OrganizationId, supplier.Id, supplierProduct, row, now, cancellationToken);
+                priceUpdates.Add(new PriceUpdate(supplierProduct, row));
                 counters.PricesUpserted++;
-                if (counters.RowsProcessed % 100 == 0)
-                {
-                    importRun.ProgressProcessed = counters.RowsProcessed;
-                    await dbContext.SaveChangesAsync(cancellationToken);
-                }
             }
 
+            await UpsertCompanyPricesAsync(importRun.OrganizationId, supplier.Id, priceUpdates, now, cancellationToken);
             nextRequestUri = page.NextRequestUri;
             importRun.ProgressProcessed = counters.RowsProcessed;
             await dbContext.SaveChangesAsync(cancellationToken);
@@ -139,53 +139,85 @@ public sealed class Turn14DealerPricingImportService(
         return token;
     }
 
-    private async Task<PricingPage> DownloadPricingPageAsync(string baseApiUrl, string requestUri, string accessToken, CancellationToken cancellationToken)
+    private async Task<PricingPage> DownloadPricingPageAsync(
+        string baseApiUrl,
+        string requestUri,
+        Turn14AccessTokenProvider tokenProvider,
+        CancellationToken cancellationToken)
     {
         var client = httpClientFactory.CreateClient("Turn14Api");
-        using var request = new HttpRequestMessage(HttpMethod.Get, ResolveRequestUri(baseApiUrl, requestUri));
-        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", accessToken);
-        using var response = await client.SendAsync(request, cancellationToken);
-        if (!response.IsSuccessStatusCode)
+        var refreshedForUnauthorized = false;
+        while (true)
         {
-            var body = await response.Content.ReadAsStringAsync(cancellationToken);
-            throw new InvalidOperationException($"Turn14 pricing request failed with HTTP {(int)response.StatusCode}: {TrimForMessage(body)}");
-        }
+            using var request = new HttpRequestMessage(HttpMethod.Get, ResolveRequestUri(baseApiUrl, requestUri));
+            request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", await tokenProvider.GetAsync(cancellationToken));
+            using var response = await client.SendAsync(request, cancellationToken);
+            if (response.StatusCode == HttpStatusCode.Unauthorized && !refreshedForUnauthorized)
+            {
+                await tokenProvider.RefreshAsync(cancellationToken);
+                refreshedForUnauthorized = true;
+                continue;
+            }
 
-        await using var stream = await response.Content.ReadAsStreamAsync(cancellationToken);
-        using var document = await JsonDocument.ParseAsync(stream, cancellationToken: cancellationToken);
-        return new PricingPage(
-            ParsePricingRows(document.RootElement),
-            ReadNextRequestUri(document.RootElement, baseApiUrl),
-            ReadTotalPages(document.RootElement));
+            if (!response.IsSuccessStatusCode)
+            {
+                var body = await response.Content.ReadAsStringAsync(cancellationToken);
+                throw new InvalidOperationException($"Turn14 pricing request failed with HTTP {(int)response.StatusCode}: {TrimForMessage(body)}");
+            }
+
+            await using var stream = await response.Content.ReadAsStreamAsync(cancellationToken);
+            using var document = await JsonDocument.ParseAsync(stream, cancellationToken: cancellationToken);
+            return new PricingPage(
+                ParsePricingRows(document.RootElement),
+                ReadNextRequestUri(document.RootElement, baseApiUrl),
+                ReadTotalPages(document.RootElement));
+        }
     }
 
-    private async Task UpsertCompanyPriceAsync(Guid organizationId, Guid supplierId, SupplierProduct supplierProduct, PricingRow row, DateTimeOffset now, CancellationToken cancellationToken)
+    private async Task UpsertCompanyPricesAsync(
+        Guid organizationId,
+        Guid supplierId,
+        IReadOnlyCollection<PriceUpdate> updates,
+        DateTimeOffset now,
+        CancellationToken cancellationToken)
     {
-        var price = await dbContext.CompanySupplierPrices
-            .IgnoreQueryFilters()
-            .SingleOrDefaultAsync(x => x.OrganizationId == organizationId && x.SupplierProductId == supplierProduct.Id, cancellationToken);
-        if (price is null)
+        if (updates.Count == 0)
         {
-            price = new CompanySupplierPrice
-            {
-                OrganizationId = organizationId,
-                SupplierId = supplierId,
-                SupplierProductId = supplierProduct.Id,
-                SupplierSku = supplierProduct.SupplierSku,
-                SourceSupplierProductId = supplierProduct.SourceSupplierProductId,
-                ActualDealerCost = row.ActualDealerCost!.Value,
-                LastSyncedAtUtc = now
-            };
-            dbContext.CompanySupplierPrices.Add(price);
+            return;
         }
 
-        price.SupplierSku = supplierProduct.SupplierSku;
-        price.SourceSupplierProductId = Clean(supplierProduct.SourceSupplierProductId) ?? row.SourceSupplierProductId;
-        price.ActualDealerCost = row.ActualDealerCost!.Value;
-        price.Currency = Clean(row.Currency) ?? "USD";
-        price.EffectiveDate = row.EffectiveDate;
-        price.LastSyncedAtUtc = now;
-        price.SourceDataJson = row.SourceJson;
+        var supplierProductIds = updates.Select(x => x.SupplierProduct.Id).Distinct().ToArray();
+        var prices = await dbContext.CompanySupplierPrices
+            .IgnoreQueryFilters()
+            .Where(x => x.OrganizationId == organizationId && supplierProductIds.Contains(x.SupplierProductId))
+            .ToDictionaryAsync(x => x.SupplierProductId, cancellationToken);
+        foreach (var update in updates)
+        {
+            if (!prices.TryGetValue(update.SupplierProduct.Id, out var price))
+            {
+                price = new CompanySupplierPrice
+                {
+                    OrganizationId = organizationId,
+                    SupplierId = supplierId,
+                    SupplierProductId = update.SupplierProduct.Id,
+                    SupplierSku = update.SupplierProduct.SupplierSku,
+                    SourceSupplierProductId = update.SupplierProduct.SourceSupplierProductId,
+                    ActualDealerCost = update.Row.ActualDealerCost!.Value,
+                    LastSyncedAtUtc = now
+                };
+                dbContext.CompanySupplierPrices.Add(price);
+                prices[update.SupplierProduct.Id] = price;
+            }
+
+            price.SupplierId = supplierId;
+            price.SupplierSku = update.SupplierProduct.SupplierSku;
+            price.SourceSupplierProductId = Clean(update.SupplierProduct.SourceSupplierProductId) ?? update.Row.SourceSupplierProductId;
+            price.ActualDealerCost = update.Row.ActualDealerCost!.Value;
+            price.Currency = Clean(update.Row.Currency) ?? "USD";
+            price.EffectiveDate = update.Row.EffectiveDate;
+            price.LastSyncedAtUtc = now;
+            price.SourceDataJson = update.Row.SourceJson;
+        }
     }
 
     private static IReadOnlyCollection<PricingRow> ParsePricingRows(JsonElement root)
@@ -494,6 +526,25 @@ public sealed class Turn14DealerPricingImportService(
     private sealed record PricingPage(IReadOnlyCollection<PricingRow> Rows, string? NextRequestUri, int? TotalPages);
 
     private sealed record PricingRow(string? SourceSupplierProductId, string? SupplierSku, decimal? ActualDealerCost, string? Currency, DateOnly? EffectiveDate, string SourceJson);
+
+    private sealed record PriceUpdate(SupplierProduct SupplierProduct, PricingRow Row);
+
+    private sealed class Turn14AccessTokenProvider(Func<CancellationToken, Task<string>> requestTokenAsync)
+    {
+        private string? accessToken;
+
+        public async Task<string> GetAsync(CancellationToken cancellationToken)
+        {
+            accessToken ??= await requestTokenAsync(cancellationToken);
+            return accessToken;
+        }
+
+        public async Task<string> RefreshAsync(CancellationToken cancellationToken)
+        {
+            accessToken = await requestTokenAsync(cancellationToken);
+            return accessToken;
+        }
+    }
 
     private sealed class Counters
     {

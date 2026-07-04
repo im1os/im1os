@@ -11,6 +11,9 @@ namespace iM1os.Web.Controllers;
 public sealed class WorkOrdersController(
     IWorkOrderService workOrderService,
     ISupplierItemSearchService supplierItemSearchService,
+    IWpsLiveInventoryService wpsLiveInventoryService,
+    ITurn14LiveInventoryService turn14LiveInventoryService,
+    IPartsUnlimitedLiveInventoryService partsUnlimitedLiveInventoryService,
     IWebHostEnvironment environment) : Controller
 {
     private const int WorkOrderItemSearchPageSize = 12;
@@ -125,6 +128,9 @@ public sealed class WorkOrdersController(
                     DealerCost = (decimal?)null,
                     ActualCost = (decimal?)null,
                     ImageUrl = (string?)null,
+                    InventoryUrl = (string?)null,
+                    InventoryBatchUrl = (string?)null,
+                    InventoryLabel = (string?)null,
                     LineType = "Labor",
                     Quantity = x.BaseHours ?? 1m,
                     Rate = x.Rate,
@@ -135,14 +141,14 @@ public sealed class WorkOrdersController(
 
         var page = await supplierItemSearchService.SearchForCompanyAsync(
             organizationId,
-            new SupplierItemSearchRequest(query, supplierCode, vehicleType, year, make, model, offset, SearchExecuted: true),
+            new SupplierItemSearchRequest(query, supplierCode, vehicleType, year, make, model, offset, SearchExecuted: true, IncludeFacets: false),
             WorkOrderItemSearchPageSize,
             cancellationToken);
 
         return Json(new
         {
             page.HasMore,
-            NextOffset = page.Offset + page.Results.Count,
+            NextOffset = page.TotalResults,
             Results = page.Results.Select(x => new
             {
                 x.SupplierProductId,
@@ -155,16 +161,94 @@ public sealed class WorkOrdersController(
                 x.Title,
                 x.Category,
                 x.Status,
+                x.FitmentRecordCount,
                 x.Msrp,
                 x.DealerCost,
                 x.ActualCost,
                 x.ImageUrl,
+                x.CrossReferences,
+                x.IsCrossReference,
+                x.Fitment,
+                Offers = (x.Offers ?? []).Select(offer => new
+                {
+                    offer.SupplierProductId,
+                    offer.GlobalProductId,
+                    offer.SupplierCode,
+                    offer.SupplierName,
+                    offer.SupplierSku,
+                    offer.ManufacturerPartNumber,
+                    offer.Upc,
+                    offer.Brand,
+                    offer.Title,
+                    offer.Category,
+                    offer.Status,
+                    offer.FitmentRecordCount,
+                    offer.Msrp,
+                    offer.DealerCost,
+                    offer.ActualCost,
+                    offer.ImageUrl,
+                    offer.HasCachedInventory,
+                    offer.CachedInventoryTotal,
+                    offer.IsDefaultOffer,
+                    InventoryUrl = offer.SupplierCode == "WPS"
+                        ? Url.Action(nameof(WpsInventory), new { offer.SupplierProductId })
+                        : offer.SupplierCode == "TURN14"
+                            ? Url.Action(nameof(Turn14Inventory), new { offer.SupplierProductId })
+                            : null,
+                    InventoryBatchUrl = offer.SupplierCode == "PU"
+                        ? Url.Action(nameof(PartsUnlimitedInventory))
+                        : null,
+                    InventoryLabel = offer.SupplierCode switch
+                    {
+                        "WPS" => "WPS Warehouse Inventory",
+                        "TURN14" => "Turn14 Warehouse Inventory",
+                        "PU" => "Parts Unlimited Warehouse Inventory",
+                        _ => null
+                    },
+                    LineType = "Parts",
+                    Quantity = 1m,
+                    Rate = offer.Msrp ?? offer.ActualCost ?? offer.DealerCost ?? 0m,
+                    IsTaxable = true
+                }),
+                InventoryUrl = x.SupplierCode == "WPS"
+                    ? Url.Action(nameof(WpsInventory), new { x.SupplierProductId })
+                    : x.SupplierCode == "TURN14"
+                        ? Url.Action(nameof(Turn14Inventory), new { x.SupplierProductId })
+                        : null,
+                InventoryBatchUrl = x.SupplierCode == "PU"
+                    ? Url.Action(nameof(PartsUnlimitedInventory))
+                    : null,
+                InventoryLabel = x.SupplierCode switch
+                {
+                    "WPS" => "WPS Warehouse Inventory",
+                    "TURN14" => "Turn14 Warehouse Inventory",
+                    "PU" => "Parts Unlimited Warehouse Inventory",
+                    _ => null
+                },
                 LineType = "Parts",
                 Quantity = 1m,
                 Rate = x.Msrp ?? x.ActualCost ?? x.DealerCost ?? 0m,
                 IsTaxable = true
             })
         });
+    }
+
+    [HttpGet]
+    public async Task<IActionResult> WpsInventory(Guid supplierProductId, CancellationToken cancellationToken)
+    {
+        return Json(await wpsLiveInventoryService.GetInventoryForCompanyAsync(OrganizationId(), supplierProductId, cancellationToken));
+    }
+
+    [HttpGet]
+    public async Task<IActionResult> Turn14Inventory(Guid supplierProductId, CancellationToken cancellationToken)
+    {
+        return Json(await turn14LiveInventoryService.GetInventoryForCompanyAsync(OrganizationId(), supplierProductId, cancellationToken));
+    }
+
+    [HttpGet]
+    public async Task<IActionResult> PartsUnlimitedInventory([FromQuery] Guid[] supplierProductIds, CancellationToken cancellationToken)
+    {
+        return Json(await partsUnlimitedLiveInventoryService.GetInventoryForCompanyAsync(OrganizationId(), supplierProductIds.Take(WorkOrderItemSearchPageSize).ToArray(), cancellationToken));
     }
 
     [HttpGet]

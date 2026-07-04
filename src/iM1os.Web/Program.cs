@@ -147,6 +147,10 @@ app.MapControllerRoute(
     pattern: "platform/suppliers/scheduler",
     defaults: new { controller = "Platform", action = "Scheduler" });
 app.MapControllerRoute(
+    name: "platform-operations",
+    pattern: "platform/operations",
+    defaults: new { controller = "Platform", action = "Operations" });
+app.MapControllerRoute(
     name: "platform-supplier-wps-inventory",
     pattern: "platform/suppliers/wps/inventory",
     defaults: new { controller = "Platform", action = "WpsInventory" });
@@ -322,6 +326,18 @@ app.MapControllerRoute(
     name: "company-work-order-fitment-count",
     pattern: "company/work-orders/fitment-count",
     defaults: new { controller = "WorkOrders", action = "FitmentItemCount" });
+app.MapControllerRoute(
+    name: "company-work-order-wps-inventory",
+    pattern: "company/work-orders/wps-inventory",
+    defaults: new { controller = "WorkOrders", action = "WpsInventory" });
+app.MapControllerRoute(
+    name: "company-work-order-turn14-inventory",
+    pattern: "company/work-orders/turn14-inventory",
+    defaults: new { controller = "WorkOrders", action = "Turn14Inventory" });
+app.MapControllerRoute(
+    name: "company-work-order-parts-unlimited-inventory",
+    pattern: "company/work-orders/parts-unlimited-inventory",
+    defaults: new { controller = "WorkOrders", action = "PartsUnlimitedInventory" });
 app.MapControllerRoute(
     name: "company-work-order-save",
     pattern: "company/work-orders/save",

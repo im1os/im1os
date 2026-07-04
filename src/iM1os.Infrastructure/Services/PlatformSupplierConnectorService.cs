@@ -201,10 +201,10 @@ public sealed class PlatformSupplierConnectorService(
         configuration.AuthMode = "DataDepotDealerLoginAndApiKey";
         configuration.ImportMasterFileOnSchedule = request.ImportMasterFileOnSchedule;
         configuration.MasterFileImportMode = Required(request.MasterFileImportMode, "Master File import mode");
-        configuration.MasterFileScheduleCadenceMinutes = HoursToMinutes(request.MasterFileScheduleIntervalHours);
+        configuration.MasterFileScheduleCadenceMinutes = DaysToMinutes(request.MasterFileScheduleIntervalDays);
         configuration.MasterFileScheduleMaxItems = PositiveOrNull(request.MasterFileScheduleMaxItems);
         configuration.ImportFitmentOnSchedule = request.ImportFitmentOnSchedule;
-        configuration.FitmentScheduleCadenceMinutes = HoursToMinutes(request.FitmentScheduleIntervalHours);
+        configuration.FitmentScheduleCadenceMinutes = DaysToMinutes(request.FitmentScheduleIntervalDays);
         configuration.FitmentScheduleMaxSkus = PositiveOrNull(request.FitmentScheduleMaxSkus);
         configuration.FitmentScheduleFitmentLimit = PositiveOrNull(request.FitmentScheduleFitmentLimit);
         configuration.FitmentScheduleDelayMilliseconds = ClampPositive(request.FitmentScheduleDelayMilliseconds, 0, 5000);
@@ -281,16 +281,16 @@ public sealed class PlatformSupplierConnectorService(
         configuration.MasterFileUrl = "POST /export.php stockExport=items";
         configuration.ImportMasterFileOnSchedule = request.ImportMasterFileOnSchedule;
         configuration.MasterFileImportMode = Required(request.MasterFileImportMode, "Product loadsheet import mode");
-        configuration.MasterFileScheduleCadenceMinutes = HoursToMinutes(request.MasterFileScheduleIntervalHours);
+        configuration.MasterFileScheduleCadenceMinutes = DaysToMinutes(request.MasterFileScheduleIntervalDays);
         configuration.MasterFileScheduleMaxItems = PositiveOrNull(request.MasterFileScheduleMaxItems);
         configuration.ImportFitmentOnSchedule = request.ImportFitmentOnSchedule;
-        configuration.FitmentScheduleCadenceMinutes = HoursToMinutes(request.FitmentScheduleIntervalHours);
+        configuration.FitmentScheduleCadenceMinutes = DaysToMinutes(request.FitmentScheduleIntervalDays);
         configuration.FitmentScheduleMaxSkus = PositiveOrNull(request.FitmentScheduleMaxSkus);
         configuration.FitmentScheduleFitmentLimit = PositiveOrNull(request.FitmentScheduleFitmentLimit);
         configuration.FitmentScheduleDelayMilliseconds = ClampPositive(request.FitmentScheduleDelayMilliseconds, 0, 5000);
         configuration.FitmentSourceBaseUrl = Clean(request.FitmentSourceBaseUrl) ?? DefaultFitmentSourceBaseUrl;
         configuration.ImportMediaOnSchedule = request.ImportMediaOnSchedule;
-        configuration.MediaScheduleCadenceMinutes = HoursToMinutes(request.MediaScheduleIntervalHours);
+        configuration.MediaScheduleCadenceMinutes = DaysToMinutes(request.MediaScheduleIntervalDays);
         configuration.MediaScheduleMaxItems = PositiveOrNull(request.MediaScheduleMaxItems);
         configuration.MediaScheduleDelayMilliseconds = ClampPositive(request.MediaScheduleDelayMilliseconds, 0, 5000);
         var secrets = Turn14ConnectorSecrets.FromConfiguration(configuration);
@@ -374,16 +374,16 @@ public sealed class PlatformSupplierConnectorService(
         configuration.AuthMode = "ApiKeyHeader";
         configuration.ImportMasterFileOnSchedule = request.ImportMasterFileOnSchedule;
         configuration.MasterFileImportMode = Required(request.MasterFileImportMode, "Bundle import mode");
-        configuration.MasterFileScheduleCadenceMinutes = HoursToMinutes(request.MasterFileScheduleIntervalHours);
+        configuration.MasterFileScheduleCadenceMinutes = DaysToMinutes(request.MasterFileScheduleIntervalDays);
         configuration.MasterFileScheduleMaxItems = PositiveOrNull(request.MasterFileScheduleMaxItems);
         configuration.ImportFitmentOnSchedule = request.ImportFitmentOnSchedule;
-        configuration.FitmentScheduleCadenceMinutes = HoursToMinutes(request.FitmentScheduleIntervalHours);
+        configuration.FitmentScheduleCadenceMinutes = DaysToMinutes(request.FitmentScheduleIntervalDays);
         configuration.FitmentScheduleMaxSkus = PositiveOrNull(request.FitmentScheduleMaxSkus);
         configuration.FitmentScheduleFitmentLimit = PositiveOrNull(request.FitmentScheduleFitmentLimit);
         configuration.FitmentScheduleDelayMilliseconds = ClampPositive(request.FitmentScheduleDelayMilliseconds, 0, 5000);
         configuration.FitmentSourceBaseUrl = Clean(request.FitmentSourceBaseUrl) ?? DefaultFitmentSourceBaseUrl;
         configuration.ImportMediaOnSchedule = request.ImportBrandImagesOnSchedule;
-        configuration.MediaScheduleCadenceMinutes = HoursToMinutes(request.BrandImagesScheduleIntervalHours);
+        configuration.MediaScheduleCadenceMinutes = DaysToMinutes(request.BrandImagesScheduleIntervalDays);
         configuration.MediaScheduleMaxItems = PositiveOrNull(request.BrandImagesScheduleMaxFiles);
         configuration.MediaScheduleDelayMilliseconds = 750;
 
@@ -721,7 +721,7 @@ public sealed class PlatformSupplierConnectorService(
         var missingFields = RequiredPartsUnlimitedBrandImageFields(configuration, options).ToArray();
         var now = dateTimeProvider.UtcNow;
         var status = missingFields.Length == 0 ? "Queued" : "Blocked";
-        var maxFiles = EffectiveManualLimit(request.ImportMode, request.MaxFiles);
+        var maxFiles = PositiveOrNull(request.MaxFiles);
         var message = missingFields.Length == 0
             ? (maxFiles is null
                 ? "Parts Unlimited brand image import queued."
@@ -1200,10 +1200,10 @@ public sealed class PlatformSupplierConnectorService(
                 configuration.ApiKey ?? string.Empty,
                 configuration.ImportMasterFileOnSchedule,
                 configuration.MasterFileImportMode ?? "Manual",
-                MinutesToHours(configuration.MasterFileScheduleCadenceMinutes),
+                MinutesToDays(configuration.MasterFileScheduleCadenceMinutes),
                 configuration.MasterFileScheduleMaxItems,
                 configuration.ImportFitmentOnSchedule,
-                MinutesToHours(configuration.FitmentScheduleCadenceMinutes),
+                MinutesToDays(configuration.FitmentScheduleCadenceMinutes),
                 configuration.FitmentScheduleMaxSkus,
                 configuration.FitmentScheduleFitmentLimit,
                 configuration.FitmentScheduleDelayMilliseconds < 0 ? 250 : configuration.FitmentScheduleDelayMilliseconds,
@@ -1268,16 +1268,16 @@ public sealed class PlatformSupplierConnectorService(
                 string.Empty,
                 configuration.ImportMasterFileOnSchedule,
                 configuration.MasterFileImportMode ?? "Manual",
-                MinutesToHours(configuration.MasterFileScheduleCadenceMinutes),
+                MinutesToDays(configuration.MasterFileScheduleCadenceMinutes),
                 configuration.MasterFileScheduleMaxItems,
                 configuration.ImportFitmentOnSchedule,
-                MinutesToHours(configuration.FitmentScheduleCadenceMinutes),
+                MinutesToDays(configuration.FitmentScheduleCadenceMinutes),
                 configuration.FitmentScheduleMaxSkus,
                 configuration.FitmentScheduleFitmentLimit,
                 configuration.FitmentScheduleDelayMilliseconds < 0 ? 250 : configuration.FitmentScheduleDelayMilliseconds,
                 configuration.FitmentSourceBaseUrl ?? DefaultFitmentSourceBaseUrl,
                 configuration.ImportMediaOnSchedule,
-                MinutesToHours(configuration.MediaScheduleCadenceMinutes),
+                MinutesToDays(configuration.MediaScheduleCadenceMinutes),
                 configuration.MediaScheduleMaxItems,
                 configuration.MediaScheduleDelayMilliseconds < 0 ? 750 : configuration.MediaScheduleDelayMilliseconds),
             new Turn14ConnectorStatus(
@@ -1364,14 +1364,14 @@ public sealed class PlatformSupplierConnectorService(
                 partsUnlimitedOptions.BrandFileUrls ?? string.Empty,
                 partsUnlimitedOptions.BrandFileMaxFiles,
                 configuration.ImportMediaOnSchedule,
-                MinutesToHours(configuration.MediaScheduleCadenceMinutes),
+                MinutesToDays(configuration.MediaScheduleCadenceMinutes),
                 configuration.MediaScheduleMaxItems,
                 configuration.ImportMasterFileOnSchedule,
                 configuration.MasterFileImportMode ?? "Manual",
-                MinutesToHours(configuration.MasterFileScheduleCadenceMinutes),
+                MinutesToDays(configuration.MasterFileScheduleCadenceMinutes),
                 configuration.MasterFileScheduleMaxItems,
                 configuration.ImportFitmentOnSchedule,
-                MinutesToHours(configuration.FitmentScheduleCadenceMinutes),
+                MinutesToDays(configuration.FitmentScheduleCadenceMinutes),
                 configuration.FitmentScheduleMaxSkus,
                 configuration.FitmentScheduleFitmentLimit,
                 configuration.FitmentScheduleDelayMilliseconds < 0 ? 250 : configuration.FitmentScheduleDelayMilliseconds,
@@ -1788,14 +1788,14 @@ public sealed class PlatformSupplierConnectorService(
         return Math.Min(Math.Max(value, minimum), maximum);
     }
 
-    private static int HoursToMinutes(int value)
+    private static int DaysToMinutes(int value)
     {
-        return ClampPositive(value, 1, 168) * 60;
+        return ClampPositive(value, 1, 365) * 1440;
     }
 
-    private static int MinutesToHours(int value)
+    private static int MinutesToDays(int value)
     {
-        return Math.Max(1, (int)Math.Ceiling((value <= 0 ? 1440 : value) / 60m));
+        return Math.Max(1, (int)Math.Ceiling((value <= 0 ? 1440 : value) / 1440m));
     }
 
     private static int? PositiveOrNull(int? value)

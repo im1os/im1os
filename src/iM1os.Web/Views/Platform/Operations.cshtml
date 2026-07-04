@@ -1,0 +1,234 @@
+@model iM1os.Application.Platform.PlatformOperationsPage
+
+@{
+    ViewData["Title"] = "Platform Operations";
+    static string FormatDate(DateTimeOffset? value) => value?.ToString("yyyy-MM-dd HH:mm:ss") ?? "-";
+    static string FormatProgress(int processed, int? total)
+    {
+        return total is null || total <= 0
+            ? processed.ToString("N0")
+            : $"{processed.ToString("N0")} / {total.Value.ToString("N0")}";
+    }
+
+    var hero = new IM1WorkspaceHeroModel(
+        "Operations",
+        "Platform",
+        "Read-only system diagnostics for database activity, imports, and catalog storage.",
+        new[]
+        {
+            new IM1WorkspaceStatModel("DB", Model.DatabaseName, $"Checked {Model.CheckedAtUtc:HH:mm:ss} UTC"),
+            new IM1WorkspaceStatModel("Active Queries", Model.ActiveDatabaseSessionCount.ToString("N0"), "Non-idle database sessions"),
+            new IM1WorkspaceStatModel("Index Builds", Model.IndexBuildCount.ToString("N0"), "PostgreSQL create-index progress"),
+            new IM1WorkspaceStatModel("Running Imports", Model.RunningImportCount.ToString("N0"), $"{Model.RecentFailedImportCount:N0} recent failed")
+        },
+        new[]
+        {
+            new IM1ActionModel("Refresh", Url.Action("Operations"), "primary"),
+            new IM1ActionModel("Scheduler", Url.Action("Scheduler"), "secondary")
+        },
+        Model.IndexBuildCount > 0 ? "Database index work in progress" : "No active index builds");
+}
+
+@await Html.PartialAsync("IM1WorkspaceHero", hero)
+
+@if (Model.Warnings.Count > 0)
+{
+    <section class="im1-status-strip">
+        <strong>Diagnostics Warning</strong>
+        <span>@string.Join(" | ", Model.Warnings)</span>
+    </section>
+}
+
+<section class="im1-workspace-grid">
+    <article class="im1-workspace-card span-12">
+        <header class="im1-section-header">
+            <div>
+                <h2>Index Builds</h2>
+                <p>Live rows from PostgreSQL create-index progress.</p>
+            </div>
+        </header>
+        @if (Model.IndexBuilds.Count == 0)
+        {
+            <p class="im1-empty-state">No indexes are currently building.</p>
+        }
+        else
+        {
+            <div class="table-wrap im1-table-compact">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>PID</th>
+                            <th>Table</th>
+                            <th>Index</th>
+                            <th>Phase</th>
+                            <th>Blocks</th>
+                            <th>Tuples</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var item in Model.IndexBuilds)
+                        {
+                            <tr>
+                                <td>@item.ProcessId</td>
+                                <td>@item.TableName</td>
+                                <td>@(item.IndexName ?? "-")</td>
+                                <td>@item.Phase</td>
+                                <td>@FormatProgress((int)Math.Min(item.BlocksDone, int.MaxValue), (int?)Math.Min(item.BlocksTotal, int.MaxValue))</td>
+                                <td>@FormatProgress((int)Math.Min(item.TuplesDone, int.MaxValue), (int?)Math.Min(item.TuplesTotal, int.MaxValue))</td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        }
+    </article>
+
+    <article class="im1-workspace-card span-12">
+        <header class="im1-section-header">
+            <div>
+                <h2>Active Database Sessions</h2>
+                <p>Non-idle sessions for the application database.</p>
+            </div>
+        </header>
+        @if (Model.ActiveDatabaseSessions.Count == 0)
+        {
+            <p class="im1-empty-state">No active database sessions.</p>
+        }
+        else
+        {
+            <div class="table-wrap im1-table-compact">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>PID</th>
+                            <th>User</th>
+                            <th>State</th>
+                            <th>Wait</th>
+                            <th>Age</th>
+                            <th>Query</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var item in Model.ActiveDatabaseSessions)
+                        {
+                            <tr>
+                                <td>@item.ProcessId</td>
+                                <td>@item.UserName</td>
+                                <td>@item.State</td>
+                                <td>@($"{item.WaitEventType ?? "-"} / {item.WaitEvent ?? "-"}")</td>
+                                <td>@item.Age</td>
+                                <td><span class="im1-table-subtext">@item.Query</span></td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        }
+    </article>
+
+    <article class="im1-workspace-card span-12">
+        <header class="im1-section-header">
+            <div>
+                <h2>Recent Imports</h2>
+                <p>Latest global and company supplier import runs.</p>
+            </div>
+        </header>
+        <div class="table-wrap im1-table-compact">
+            <table>
+                <thead>
+                    <tr>
+                        <th>Scope</th>
+                        <th>Type</th>
+                        <th>Status</th>
+                        <th>Progress</th>
+                        <th>Requested</th>
+                        <th>Started</th>
+                        <th>Completed</th>
+                        <th>Message</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var run in Model.RecentImportRuns)
+                    {
+                        <tr>
+                            <td>@run.Scope</td>
+                            <td>@run.ImportType</td>
+                            <td>@run.Status</td>
+                            <td>@FormatProgress(run.ProgressProcessed, run.ProgressTotal)</td>
+                            <td>@FormatDate(run.RequestedAtUtc)</td>
+                            <td>@FormatDate(run.StartedAtUtc)</td>
+                            <td>@FormatDate(run.CompletedAtUtc)</td>
+                            <td><span class="im1-table-subtext">@((run.Message ?? run.Source) ?? "-")</span></td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    </article>
+
+    <article class="im1-workspace-card span-6">
+        <header class="im1-section-header">
+            <div>
+                <h2>Largest Tables</h2>
+                <p>Approximate row counts from PostgreSQL catalog statistics.</p>
+            </div>
+        </header>
+        <div class="table-wrap im1-table-compact">
+            <table>
+                <thead>
+                    <tr>
+                        <th>Table</th>
+                        <th>Rows</th>
+                        <th>Total</th>
+                        <th>Data</th>
+                        <th>Indexes</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var item in Model.LargestTables)
+                    {
+                        <tr>
+                            <td>@item.TableName</td>
+                            <td>@item.EstimatedRows.ToString("N0")</td>
+                            <td>@item.TotalSize</td>
+                            <td>@item.TableSize</td>
+                            <td>@item.IndexSize</td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    </article>
+
+    <article class="im1-workspace-card span-6">
+        <header class="im1-section-header">
+            <div>
+                <h2>Largest Indexes</h2>
+                <p>Index size and scan counters from PostgreSQL stats.</p>
+            </div>
+        </header>
+        <div class="table-wrap im1-table-compact">
+            <table>
+                <thead>
+                    <tr>
+                        <th>Table</th>
+                        <th>Index</th>
+                        <th>Size</th>
+                        <th>Scans</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var item in Model.LargestIndexes)
+                    {
+                        <tr>
+                            <td>@item.TableName</td>
+                            <td><span class="im1-table-subtext">@item.IndexName</span></td>
+                            <td>@item.Size</td>
+                            <td>@item.IndexScans.ToString("N0")</td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    </article>
+</section>

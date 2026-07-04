@@ -35,16 +35,69 @@ public sealed class WpsMasterItemListImportWorker(
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
+        var workerCount = Math.Clamp(configuration.GetValue("SupplierImports:WorkerCount", 2), 1, 8);
+        logger.LogInformation("Starting supplier import worker with {WorkerCount} processor slots.", workerCount);
+
+        var tasks = Enumerable
+            .Range(1, workerCount)
+            .Select(workerSlot => RunProcessorLoopAsync(workerSlot, stoppingToken))
+            .Append(RunCoordinatorLoopAsync(stoppingToken))
+            .ToArray();
+
+        await Task.WhenAll(tasks);
+    }
+
+    private async Task RunCoordinatorLoopAsync(CancellationToken cancellationToken)
+    {
         using var timer = new PeriodicTimer(TimeSpan.FromSeconds(30));
 
-        while (!stoppingToken.IsCancellationRequested)
+        while (!cancellationToken.IsCancellationRequested)
         {
-            await ProcessNextRunAsync(stoppingToken);
-            await timer.WaitForNextTickAsync(stoppingToken);
+            try
+            {
+                await RunCoordinatorTickAsync(cancellationToken);
+            }
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+            {
+                return;
+            }
+            catch (Exception exception)
+            {
+                logger.LogError(exception, "Supplier import coordinator tick failed.");
+            }
+
+            await timer.WaitForNextTickAsync(cancellationToken);
         }
     }
 
-    private async Task ProcessNextRunAsync(CancellationToken cancellationToken)
+    private async Task RunProcessorLoopAsync(int workerSlot, CancellationToken cancellationToken)
+    {
+        using var idleTimer = new PeriodicTimer(TimeSpan.FromSeconds(5));
+
+        while (!cancellationToken.IsCancellationRequested)
+        {
+            var processed = false;
+            try
+            {
+                processed = await TryProcessNextRunAsync(workerSlot, cancellationToken);
+            }
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+            {
+                return;
+            }
+            catch (Exception exception)
+            {
+                logger.LogError(exception, "Supplier import worker slot {WorkerSlot} failed while processing the queue.", workerSlot);
+            }
+
+            if (!processed)
+            {
+                await idleTimer.WaitForNextTickAsync(cancellationToken);
+            }
+        }
+    }
+
+    private async Task RunCoordinatorTickAsync(CancellationToken cancellationToken)
     {
         using var scope = scopeFactory.CreateScope();
         var dbContext = scope.ServiceProvider.GetRequiredService<IApplicationDbContext>();
@@ -60,14 +113,21 @@ public sealed class WpsMasterItemListImportWorker(
         {
             logger.LogWarning("Company supplier pricing tables are not available yet; skipping company supplier pricing scheduler for this tick.");
         }
+    }
 
-        var nextRun = await NextQueuedRunAsync(dbContext, cancellationToken);
+    private async Task<bool> TryProcessNextRunAsync(int workerSlot, CancellationToken cancellationToken)
+    {
+        using var scope = scopeFactory.CreateScope();
+        var dbContext = scope.ServiceProvider.GetRequiredService<IApplicationDbContext>();
+        var clock = scope.ServiceProvider.GetRequiredService<IDateTimeProvider>();
+
+        var nextRun = await ClaimNextQueuedRunAsync(dbContext, clock.UtcNow, cancellationToken);
         CompanySupplierConnectorImportRun? nextCompanyRun = null;
         if (nextRun is null)
         {
             try
             {
-                nextCompanyRun = await NextQueuedCompanyRunAsync(dbContext, cancellationToken);
+                nextCompanyRun = await ClaimNextQueuedCompanyRunAsync(dbContext, clock.UtcNow, cancellationToken);
             }
             catch (Exception exception) when (IsMissingCompanySupplierTable(exception))
             {
@@ -76,20 +136,22 @@ public sealed class WpsMasterItemListImportWorker(
         }
         if (nextRun is null && nextCompanyRun is null)
         {
-            return;
+            return false;
         }
 
         if (nextCompanyRun is not null)
         {
+            logger.LogInformation("Worker slot {WorkerSlot} claimed company supplier import run {ImportRunId} ({ImportType}).", workerSlot, nextCompanyRun.Id, nextCompanyRun.ImportType);
             await ProcessDealerPricingRunAsync(scope.ServiceProvider, dbContext, nextCompanyRun, cancellationToken);
-            return;
+            return true;
         }
 
         if (nextRun is null)
         {
-            return;
+            return false;
         }
 
+        logger.LogInformation("Worker slot {WorkerSlot} claimed supplier import run {ImportRunId} ({ImportType}).", workerSlot, nextRun.Id, nextRun.ImportType);
         if (string.Equals(nextRun.ImportType, MasterImportType, StringComparison.OrdinalIgnoreCase))
         {
             if (DisableWpsMasterFileImports())
@@ -99,35 +161,35 @@ public sealed class WpsMasterItemListImportWorker(
                 nextRun.Message = "WPS Master Item List import blocked because SupplierImports:DisableWpsMasterFile is enabled.";
                 await dbContext.SaveChangesAsync(cancellationToken);
                 logger.LogWarning("Blocked WPS Master Item List import run {ImportRunId} because SupplierImports:DisableWpsMasterFile is enabled.", nextRun.Id);
-                return;
+                return true;
             }
 
             await ProcessMasterRunAsync(scope.ServiceProvider, dbContext, nextRun, cancellationToken);
-            return;
+            return true;
         }
 
         if (string.Equals(nextRun.ImportType, Turn14ProductLoadsheetImportType, StringComparison.OrdinalIgnoreCase))
         {
             await ProcessTurn14ProductLoadsheetRunAsync(scope.ServiceProvider, dbContext, nextRun, cancellationToken);
-            return;
+            return true;
         }
 
         if (string.Equals(nextRun.ImportType, PartsUnlimitedBundleImportType, StringComparison.OrdinalIgnoreCase))
         {
             await ProcessPartsUnlimitedBundleRunAsync(scope.ServiceProvider, dbContext, nextRun, cancellationToken);
-            return;
+            return true;
         }
 
         if (string.Equals(nextRun.ImportType, PartsUnlimitedBrandImagesImportType, StringComparison.OrdinalIgnoreCase))
         {
             await ProcessPartsUnlimitedBrandImagesRunAsync(scope.ServiceProvider, dbContext, nextRun, cancellationToken);
-            return;
+            return true;
         }
 
         if (string.Equals(nextRun.ImportType, Turn14MediaEnrichmentImportType, StringComparison.OrdinalIgnoreCase))
         {
             await ProcessTurn14MediaEnrichmentRunAsync(scope.ServiceProvider, dbContext, nextRun, cancellationToken);
-            return;
+            return true;
         }
 
         if (string.Equals(nextRun.ImportType, FitmentImportType, StringComparison.OrdinalIgnoreCase) ||
@@ -135,7 +197,10 @@ public sealed class WpsMasterItemListImportWorker(
             string.Equals(nextRun.ImportType, PartsUnlimitedFitmentImportType, StringComparison.OrdinalIgnoreCase))
         {
             await ProcessFitmentRunAsync(scope.ServiceProvider, dbContext, nextRun, cancellationToken);
+            return true;
         }
+
+        return false;
     }
 
     private async Task MarkInterruptedRunsFailedAsync(IApplicationDbContext dbContext, IDateTimeProvider clock, CancellationToken cancellationToken)
@@ -548,25 +613,107 @@ public sealed class WpsMasterItemListImportWorker(
         }
     }
 
-    private static async Task<SupplierConnectorImportRun?> NextQueuedRunAsync(IApplicationDbContext dbContext, CancellationToken cancellationToken)
+    private static async Task<SupplierConnectorImportRun?> ClaimNextQueuedRunAsync(IApplicationDbContext dbContext, DateTimeOffset claimedAtUtc, CancellationToken cancellationToken)
     {
-        var nextRun = await dbContext.SupplierConnectorImportRuns
-            .Where(x => (x.ImportType == MasterImportType || x.ImportType == FitmentImportType || x.ImportType == Turn14ProductLoadsheetImportType || x.ImportType == Turn14FitmentImportType || x.ImportType == Turn14MediaEnrichmentImportType || x.ImportType == PartsUnlimitedBundleImportType || x.ImportType == PartsUnlimitedBrandImagesImportType || x.ImportType == PartsUnlimitedFitmentImportType) && x.Status == "Queued")
-            .OrderBy(x => x.RequestedAtUtc)
-            .FirstOrDefaultAsync(cancellationToken);
+        while (true)
+        {
+            var candidate = await dbContext.SupplierConnectorImportRuns
+                .Where(x =>
+                    (x.ImportType == MasterImportType || x.ImportType == FitmentImportType || x.ImportType == Turn14ProductLoadsheetImportType || x.ImportType == Turn14FitmentImportType || x.ImportType == Turn14MediaEnrichmentImportType || x.ImportType == PartsUnlimitedBundleImportType || x.ImportType == PartsUnlimitedBrandImagesImportType || x.ImportType == PartsUnlimitedFitmentImportType) &&
+                    x.Status == "Queued" &&
+                    !dbContext.SupplierConnectorImportRuns.Any(r =>
+                        r.SupplierConnectorConfigurationId == x.SupplierConnectorConfigurationId &&
+                        r.ImportType == x.ImportType &&
+                        r.Status == "Running"))
+                .OrderBy(x => x.RequestedAtUtc)
+                .Select(x => new { x.Id })
+                .FirstOrDefaultAsync(cancellationToken);
 
-        return nextRun;
+            if (candidate is null)
+            {
+                return null;
+            }
+
+            var claimed = await dbContext.SupplierConnectorImportRuns
+                .Where(x =>
+                    x.Id == candidate.Id &&
+                    x.Status == "Queued" &&
+                    !dbContext.SupplierConnectorImportRuns.Any(r =>
+                        r.SupplierConnectorConfigurationId == x.SupplierConnectorConfigurationId &&
+                        r.ImportType == x.ImportType &&
+                        r.Status == "Running"))
+                .ExecuteUpdateAsync(
+                    updates => updates
+                        .SetProperty(x => x.Status, "Running")
+                        .SetProperty(x => x.StartedAtUtc, claimedAtUtc),
+                    cancellationToken);
+            if (claimed == 0)
+            {
+                continue;
+            }
+
+            if (dbContext is DbContext efDbContext)
+            {
+                efDbContext.ChangeTracker.Clear();
+            }
+
+            return await dbContext.SupplierConnectorImportRuns
+                .SingleAsync(x => x.Id == candidate.Id, cancellationToken);
+        }
     }
 
-    private static async Task<CompanySupplierConnectorImportRun?> NextQueuedCompanyRunAsync(IApplicationDbContext dbContext, CancellationToken cancellationToken)
+    private static async Task<CompanySupplierConnectorImportRun?> ClaimNextQueuedCompanyRunAsync(IApplicationDbContext dbContext, DateTimeOffset claimedAtUtc, CancellationToken cancellationToken)
     {
-        var nextRun = await dbContext.CompanySupplierConnectorImportRuns
-            .IgnoreQueryFilters()
-            .Where(x => (x.ImportType == DealerPricingImportType || x.ImportType == PartsUnlimitedDealerPricingImportType || x.ImportType == Turn14DealerPricingImportType) && x.Status == "Queued")
-            .OrderBy(x => x.RequestedAtUtc)
-            .FirstOrDefaultAsync(cancellationToken);
+        while (true)
+        {
+            var candidate = await dbContext.CompanySupplierConnectorImportRuns
+                .IgnoreQueryFilters()
+                .Where(x =>
+                    (x.ImportType == DealerPricingImportType || x.ImportType == PartsUnlimitedDealerPricingImportType || x.ImportType == Turn14DealerPricingImportType) &&
+                    x.Status == "Queued" &&
+                    !dbContext.CompanySupplierConnectorImportRuns.IgnoreQueryFilters().Any(r =>
+                        r.OrganizationId == x.OrganizationId &&
+                        r.CompanySupplierConnectorConfigurationId == x.CompanySupplierConnectorConfigurationId &&
+                        r.ImportType == x.ImportType &&
+                        r.Status == "Running"))
+                .OrderBy(x => x.RequestedAtUtc)
+                .Select(x => new { x.Id })
+                .FirstOrDefaultAsync(cancellationToken);
 
-        return nextRun;
+            if (candidate is null)
+            {
+                return null;
+            }
+
+            var claimed = await dbContext.CompanySupplierConnectorImportRuns
+                .IgnoreQueryFilters()
+                .Where(x =>
+                    x.Id == candidate.Id &&
+                    x.Status == "Queued" &&
+                    !dbContext.CompanySupplierConnectorImportRuns.IgnoreQueryFilters().Any(r =>
+                        r.OrganizationId == x.OrganizationId &&
+                        r.CompanySupplierConnectorConfigurationId == x.CompanySupplierConnectorConfigurationId &&
+                        r.ImportType == x.ImportType &&
+                        r.Status == "Running"))
+                .ExecuteUpdateAsync(
+                    updates => updates
+                        .SetProperty(x => x.Status, "Running")
+                        .SetProperty(x => x.StartedAtUtc, claimedAtUtc),
+                    cancellationToken);
+            if (claimed == 0)
+            {
+                continue;
+            }
+
+            if (dbContext is DbContext efDbContext)
+            {
+                efDbContext.ChangeTracker.Clear();
+            }
+
+            return await dbContext.CompanySupplierConnectorImportRuns
+                .IgnoreQueryFilters()
+                .SingleAsync(x => x.Id == candidate.Id, cancellationToken);
+        }
     }
 
     private async Task ProcessMasterRunAsync(IServiceProvider serviceProvider, IApplicationDbContext dbContext, SupplierConnectorImportRun nextRun, CancellationToken cancellationToken)

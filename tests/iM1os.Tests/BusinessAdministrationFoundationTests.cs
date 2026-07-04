@@ -112,7 +112,7 @@ public sealed class BusinessAdministrationFoundationTests
             AuthMode = "API Key",
             IsEnabled = true,
             SyncDealerPricingOnSchedule = true,
-            DealerPricingScheduleIntervalMinutes = 120
+            DealerPricingScheduleIntervalMinutes = 2880
         };
         dbContext.Suppliers.Add(supplier);
         dbContext.CompanySupplierConnectorConfigurations.Add(configuration);
@@ -130,7 +130,7 @@ public sealed class BusinessAdministrationFoundationTests
 
         Assert.Equal("Ready", wps.Status);
         Assert.True(wps.IsEnabled);
-        Assert.Equal("2 hr", wps.SyncCadence);
+        Assert.Equal("2 day", wps.SyncCadence);
         Assert.NotNull(wps.WpsConfiguration);
         Assert.Equal("D12345", wps.WpsConfiguration.DealerNumber);
         Assert.Equal("wps-api-user", wps.WpsConfiguration.Username);

@@ -792,6 +792,8 @@ public sealed class ApplicationDbContext(
             entity.HasIndex(x => new { x.SupplierId, x.SourceSupplierProductId });
             entity.HasIndex(x => x.GlobalProductId);
             entity.HasIndex(x => x.SupplierPartNumber);
+            entity.HasIndex(x => new { x.SupplierId, x.SupplierPartNumber });
+            entity.HasIndex(x => new { x.SupplierId, x.ManufacturerPartNumber });
             entity.HasIndex(x => new { x.SupplierId, x.NormalizedManufacturerPartNumber });
             entity.HasIndex(x => x.NormalizedManufacturerPartNumber);
             entity.Property(x => x.SupplierSku).HasMaxLength(120).IsRequired();
