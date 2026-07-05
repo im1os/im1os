@@ -10,6 +10,16 @@ public interface IPlatformSupplierConnectorService
 
     Task<GlobalSchedulerPage> GetGlobalSchedulerAsync(CancellationToken cancellationToken);
 
+    Task<GlobalSchedulerPage> SaveGlobalCatalogParserBackfillSchedulerAsync(GlobalCatalogParserBackfillSettingsRequest request, string? platformUserId, CancellationToken cancellationToken);
+
+    Task<GlobalSchedulerPage> QueueGlobalCatalogParserBackfillAsync(GlobalCatalogParserBackfillRunRequest request, string? platformUserId, CancellationToken cancellationToken);
+
+    Task<GlobalSchedulerPage> SaveGlobalCatalogNormalizationSchedulerAsync(GlobalCatalogNormalizationSettingsRequest request, string? platformUserId, CancellationToken cancellationToken);
+
+    Task<GlobalSchedulerPage> QueueGlobalCatalogNormalizationAsync(GlobalCatalogNormalizationRunRequest request, string? platformUserId, CancellationToken cancellationToken);
+
+    Task<GlobalSchedulerPage> ResetGlobalCanonicalCatalogAsync(string? platformUserId, CancellationToken cancellationToken);
+
     Task<WpsConnectorPage> SaveWpsConnectorAsync(WpsConnectorSettingsRequest request, string? platformUserId, CancellationToken cancellationToken);
 
     Task<WpsConnectorPage> TestWpsConnectionAsync(string? platformUserId, CancellationToken cancellationToken);

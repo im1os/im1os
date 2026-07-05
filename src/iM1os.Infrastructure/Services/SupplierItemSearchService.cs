@@ -16,6 +16,40 @@ public sealed class SupplierItemSearchService(
     ILogger<SupplierItemSearchService> logger) : ISupplierItemSearchService
 {
     private static readonly TimeSpan YmmFacetCacheDuration = TimeSpan.FromHours(6);
+    private static readonly IReadOnlyDictionary<string, string> MakerAliases = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+    {
+        ["ALLBALLSRACING"] = "ALLBALLS",
+        ["MAXIMARACINGOIL"] = "MAXIMA"
+    };
+    private static readonly IReadOnlyDictionary<string, IReadOnlyDictionary<string, string>> SupplierWarehouseNames =
+        new Dictionary<string, IReadOnlyDictionary<string, string>>(StringComparer.OrdinalIgnoreCase)
+        {
+            ["WPS"] = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+            {
+                ["CA"] = "CA",
+                ["GA"] = "GA",
+                ["ID"] = "ID",
+                ["IN"] = "IN",
+                ["PA"] = "PA",
+                ["PA2"] = "PA2",
+                ["TX"] = "TX"
+            },
+            ["TURN14"] = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+            {
+                ["01"] = "Turn14 East",
+                ["02"] = "Turn14 West",
+                ["03"] = "Turn14 Midwest",
+                ["59"] = "Turn14 Central"
+            },
+            ["PU"] = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+            {
+                ["NC"] = "NC",
+                ["NV"] = "NV",
+                ["NY"] = "NY",
+                ["TX"] = "TX",
+                ["WI"] = "WI"
+            }
+        };
 
     public async Task<SupplierItemSearchPage> SearchAsync(string? query, int limit, CancellationToken cancellationToken)
     {
@@ -119,37 +153,80 @@ public sealed class SupplierItemSearchService(
         var cleanVehicleType = Clean(request.VehicleType);
         var cleanMake = Clean(request.Make);
         var cleanModel = Clean(request.Model);
+        var cleanCategory = Clean(request.Category);
+        if (!IsUsableCatalogCategory(cleanCategory))
+        {
+            cleanCategory = null;
+        }
+        var cleanBrand = Clean(request.Brand);
+        var cleanTireBrand = Clean(request.TireBrand);
+        var cleanTireModelLine = Clean(request.TireModelLine)?.ToUpperInvariant();
+        var cleanTirePosition = Clean(request.TirePosition)?.ToLowerInvariant();
         var selectedYear = request.Year;
         var normalizedPartQuery = ProductMatchingService.NormalizeManufacturerPartNumber(cleanQuery);
         var lowerQuery = cleanQuery?.ToLowerInvariant();
         var likeQuery = cleanQuery is null ? null : $"%{cleanQuery}%";
         var prefixLikeQuery = cleanQuery is null ? null : $"{cleanQuery}%";
+        var searchTokens = SearchTokens(cleanQuery);
+        var numericSearchTokens = searchTokens.Where(IsNumericSearchToken).Take(3).ToArray();
+        var textSearchTokens = searchTokens.Where(x => !IsNumericSearchToken(x)).ToArray();
+        var textSearchTokenGroups = textSearchTokens.Select(SingularPluralVariants).ToArray();
+        var searchTokenGroups = searchTokens
+            .Select(token => IsNumericSearchToken(token) ? [token] : SingularPluralVariants(token))
+            .ToArray();
+        var textSearchTsQuery = textSearchTokenGroups.Length == 0 ? null : BuildPrefixTsQuery(textSearchTokenGroups);
+        var searchToken0a = TokenVariantAt(searchTokenGroups, 0, 0);
+        var searchToken0b = TokenVariantAt(searchTokenGroups, 0, 1);
+        var searchToken1a = TokenVariantAt(searchTokenGroups, 1, 0);
+        var searchToken1b = TokenVariantAt(searchTokenGroups, 1, 1);
+        var searchToken2a = TokenVariantAt(searchTokenGroups, 2, 0);
+        var searchToken2b = TokenVariantAt(searchTokenGroups, 2, 1);
+        var searchToken3a = TokenVariantAt(searchTokenGroups, 3, 0);
+        var searchToken3b = TokenVariantAt(searchTokenGroups, 3, 1);
+        var searchToken4a = TokenVariantAt(searchTokenGroups, 4, 0);
+        var searchToken4b = TokenVariantAt(searchTokenGroups, 4, 1);
+        var numericLike0 = numericSearchTokens.ElementAtOrDefault(0) is { } numericToken0 ? $"%{numericToken0}%" : null;
+        var numericLike1 = numericSearchTokens.ElementAtOrDefault(1) is { } numericToken1 ? $"%{numericToken1}%" : null;
+        var numericLike2 = numericSearchTokens.ElementAtOrDefault(2) is { } numericToken2 ? $"%{numericToken2}%" : null;
         var cappedLimit = Math.Clamp(limit, 1, 100);
         var offset = Math.Max(0, request.Offset);
         var hasTextSearch = cleanQuery is not null;
         var isIdentifierSearch = IsLikelyCatalogIdentifier(cleanQuery);
         var hasYmmSearch = selectedYear is not null && cleanMake is not null && cleanModel is not null;
+        var hasTireSearch = cleanTireBrand is not null ||
+            cleanTireModelLine is not null ||
+            request.TireWidth is not null ||
+            request.TireAspectRatio is not null ||
+            request.TireRimDiameter is not null ||
+            cleanTirePosition is not null;
         var hasSupplierFilter = cleanSupplierCode is not null;
-        var isSearchExecuted = request.SearchExecuted || hasTextSearch || hasYmmSearch || hasSupplierFilter || offset > 0;
-        var hasSearchCriteria = hasTextSearch || hasYmmSearch || hasSupplierFilter;
-        var includeFacets = request.IncludeFacets && !hasTextSearch;
-        var includeYmmFacets = includeFacets;
+        var hasCategoryFilter = cleanCategory is not null;
+        var hasBrandFilter = cleanBrand is not null;
+        var isSearchExecuted = request.SearchExecuted || hasTextSearch || hasYmmSearch || hasTireSearch || hasSupplierFilter || hasCategoryFilter || hasBrandFilter || offset > 0;
+        var hasSearchCriteria = hasTextSearch || hasYmmSearch || hasTireSearch || hasSupplierFilter || hasCategoryFilter || hasBrandFilter;
+        var includeFacets = request.IncludeFacets;
+        var includeYmmFacets = includeFacets && !hasTextSearch;
         var usePostgresLike = dbContext is DbContext efDbContext &&
             efDbContext.Database.ProviderName?.Contains("Npgsql", StringComparison.OrdinalIgnoreCase) == true;
         var enabledCompanySupplierCodes = organizationId is null
             ? null
             : await TimedAsync("company-supplier-entitlements", () => tenantModuleEntitlements.GetEnabledSupplierConnectorCodesAsync(organizationId.Value, cancellationToken));
         var enabledCompanySupplierCodeList = enabledCompanySupplierCodes?.ToArray() ?? [];
+        var supplierPreferences = organizationId is null
+            ? SupplierPurchasePreferences.Empty
+            : await TimedAsync("company-supplier-preferences", () => GetSupplierPurchasePreferencesAsync(organizationId.Value, cancellationToken));
         var facetScopeCacheKey = organizationId is null
             ? "platform"
             : $"company:{organizationId.Value:N}:{string.Join("-", enabledCompanySupplierCodeList.Order(StringComparer.OrdinalIgnoreCase))}";
-        var facetCachePrefix = $"supplier-item-search:ymm-facets:v3:{facetScopeCacheKey}:supplier:{cleanSupplierCode ?? "*"}";
+        var facetCachePrefix = $"supplier-item-search:ymm-facets:v4:{facetScopeCacheKey}:supplier:{cleanSupplierCode ?? "*"}";
         var requestedDisabledCompanySupplier = organizationId is not null &&
             cleanSupplierCode is not null &&
             enabledCompanySupplierCodes is not null &&
             !enabledCompanySupplierCodes.Contains(cleanSupplierCode);
         IReadOnlyCollection<SupplierSearchOption> availableSuppliers = [];
         IReadOnlyCollection<SupplierSearchOption> configuredSuppliers = [];
+        IReadOnlyCollection<string> availableCategories = [];
+        IReadOnlyCollection<string> availableBrands = [];
         IReadOnlyCollection<string> availableVehicleTypes = [];
         IReadOnlyCollection<int> availableYears = [];
         IReadOnlyCollection<string> availableMakes = [];
@@ -201,6 +278,40 @@ public sealed class SupplierItemSearchService(
             availableSuppliers = organizationId is null && configuredSuppliers.Count > 0
                 ? configuredSuppliers
                 : productSuppliers;
+            availableCategories = await TimedCachedFacetAsync("facets-categories", $"{facetCachePrefix}:categories:brand:{cleanBrand ?? "*"}", () => (
+                    from supplierProduct in dbContext.SupplierProducts.AsNoTracking()
+                    join supplier in dbContext.Suppliers.AsNoTracking()
+                        on supplierProduct.SupplierId equals supplier.Id
+                    join globalProduct in dbContext.GlobalProducts.AsNoTracking()
+                        on supplierProduct.GlobalProductId equals globalProduct.Id
+                    where
+                        globalProduct.Category != null &&
+                        globalProduct.Category != string.Empty &&
+                        globalProduct.Category.Length > 1 &&
+                        (cleanBrand == null || globalProduct.Brand == cleanBrand) &&
+                        (organizationId == null || enabledCompanySupplierCodeList.Contains(supplier.Code)) &&
+                        (!hasSupplierFilter || supplier.Code == cleanSupplierCode)
+                    select globalProduct.Category!)
+                .Distinct()
+                .OrderBy(x => x)
+                .Take(300)
+                .ToListAsync(cancellationToken));
+            availableBrands = await TimedCachedFacetAsync("facets-brands", $"{facetCachePrefix}:brands:category:{cleanCategory ?? "*"}", () => (
+                    from supplierProduct in dbContext.SupplierProducts.AsNoTracking()
+                    join supplier in dbContext.Suppliers.AsNoTracking()
+                        on supplierProduct.SupplierId equals supplier.Id
+                    join globalProduct in dbContext.GlobalProducts.AsNoTracking()
+                        on supplierProduct.GlobalProductId equals globalProduct.Id
+                    where
+                        globalProduct.Brand != string.Empty &&
+                        (cleanCategory == null || globalProduct.Category == cleanCategory) &&
+                        (organizationId == null || enabledCompanySupplierCodeList.Contains(supplier.Code)) &&
+                        (!hasSupplierFilter || supplier.Code == cleanSupplierCode)
+                    select globalProduct.Brand)
+                .Distinct()
+                .OrderBy(x => x)
+                .Take(1200)
+                .ToListAsync(cancellationToken));
             availableVehicleTypes = includeYmmFacets
                 ? await TimedCachedFacetAsync("facets-vehicle-types", $"{facetCachePrefix}:vehicle-types", () => (
                     from fitment in dbContext.SupplierFitmentRecords.AsNoTracking()
@@ -273,8 +384,18 @@ public sealed class SupplierItemSearchService(
                 selectedYear,
                 cleanMake,
                 cleanModel,
+                cleanCategory,
+                cleanBrand,
+                cleanTireBrand,
+                cleanTireModelLine,
+                request.TireWidth,
+                request.TireAspectRatio,
+                request.TireRimDiameter,
+                cleanTirePosition,
                 availableSuppliers,
                 configuredSuppliers,
+                availableCategories,
+                availableBrands,
                 availableVehicleTypes,
                 availableYears,
                 availableMakes,
@@ -288,7 +409,7 @@ public sealed class SupplierItemSearchService(
         }
 
         var identifierCandidateIds = Array.Empty<Guid>();
-        if (isIdentifierSearch && hasTextSearch && !hasYmmSearch)
+        if (isIdentifierSearch && hasTextSearch && !hasYmmSearch && !hasTireSearch && !hasCategoryFilter && !hasBrandFilter)
         {
             var supplierFieldCandidateIds = await TimedAsync("identifier-supplier-field-candidates", () => (
                     from supplierProduct in dbContext.SupplierProducts.AsNoTracking()
@@ -377,14 +498,17 @@ public sealed class SupplierItemSearchService(
                 .ToArray();
         }
 
-        var rows = isIdentifierSearch && hasTextSearch && !hasYmmSearch
+        var rows = isIdentifierSearch && hasTextSearch && !hasYmmSearch && !hasTireSearch && !hasCategoryFilter && !hasBrandFilter
             ? await TimedAsync("identifier-item-query", () => (
                 from supplierProduct in dbContext.SupplierProducts.AsNoTracking()
                 join globalProduct in dbContext.GlobalProducts.AsNoTracking()
                     on supplierProduct.GlobalProductId equals globalProduct.Id
                 join supplier in dbContext.Suppliers.AsNoTracking()
                     on supplierProduct.SupplierId equals supplier.Id
-                let baseTitle = supplierProduct.SupplierDescription ?? globalProduct.Description
+                let baseTitle =
+                    supplier.Code == "TURN14" && globalProduct.LongDescription != null
+                        ? globalProduct.LongDescription
+                        : supplierProduct.SupplierDescription ?? globalProduct.Description
                 let maker = globalProduct.Manufacturer ?? globalProduct.Brand
                 let displayPartNumber = supplierProduct.ManufacturerPartNumber ?? globalProduct.ManufacturerPartNumber
                 where identifierCandidateIds.Contains(supplierProduct.Id)
@@ -423,6 +547,8 @@ public sealed class SupplierItemSearchService(
                     supplierProduct.SupplierDescription,
                     GlobalDescription = globalProduct.Description,
                     globalProduct.Category,
+                    globalProduct.LongDescription,
+                    globalProduct.SpecificationsJson,
                     Status = supplierProduct.SupplierStatus,
                     supplierProduct.WarehouseAvailability,
                     ImageJson = supplierProduct.SupplierImagesJson ?? globalProduct.ImagesJson
@@ -437,12 +563,40 @@ public sealed class SupplierItemSearchService(
                     on supplierProduct.GlobalProductId equals globalProduct.Id
                 join supplier in dbContext.Suppliers.AsNoTracking()
                     on supplierProduct.SupplierId equals supplier.Id
-                let baseTitle = supplierProduct.SupplierDescription ?? globalProduct.Description
+                let baseTitle =
+                    supplier.Code == "TURN14" && globalProduct.LongDescription != null
+                        ? globalProduct.LongDescription
+                        : supplierProduct.SupplierDescription ?? globalProduct.Description
                 let maker = globalProduct.Manufacturer ?? globalProduct.Brand
                 let displayPartNumber = supplierProduct.ManufacturerPartNumber ?? globalProduct.ManufacturerPartNumber
-                let formattedTitle = maker + " " + baseTitle + " - " + (displayPartNumber ?? string.Empty)
+                let formattedTitle =
+                    supplier.Code == "TURN14" && globalProduct.LongDescription != null
+                        ? baseTitle + " - " + (displayPartNumber ?? string.Empty)
+                        : maker + " " + baseTitle + " - " + (displayPartNumber ?? string.Empty)
+                let searchableText = (
+                    supplierProduct.SupplierSku + " " +
+                    (supplierProduct.SupplierPartNumber ?? string.Empty) + " " +
+                    (supplierProduct.ManufacturerPartNumber ?? string.Empty) + " " +
+                    (supplierProduct.SupplierDescription ?? string.Empty) + " " +
+                    baseTitle + " " +
+                    formattedTitle + " " +
+                    (globalProduct.ManufacturerPartNumber ?? string.Empty) + " " +
+                    (globalProduct.Manufacturer ?? string.Empty) + " " +
+                    globalProduct.Brand + " " +
+                    globalProduct.Description + " " +
+                    (globalProduct.Category ?? string.Empty) + " " +
+                    (globalProduct.LongDescription ?? string.Empty)).ToLower()
                 where
                     ymmCandidateIds.Contains(supplierProduct.Id) &&
+                    (cleanCategory == null || globalProduct.Category == cleanCategory) &&
+                    (cleanBrand == null || globalProduct.Brand == cleanBrand) &&
+                    (!hasTireSearch ||
+                        ((cleanTireBrand == null || (usePostgresLike ? EF.Functions.ILike(globalProduct.Brand, cleanTireBrand) : globalProduct.Brand.ToLower() == cleanTireBrand.ToLower())) &&
+                        (cleanTireModelLine == null || globalProduct.TireModelLine == cleanTireModelLine) &&
+                        (request.TireWidth == null || globalProduct.TireWidth == request.TireWidth) &&
+                        (request.TireAspectRatio == null || globalProduct.TireAspectRatio == request.TireAspectRatio) &&
+                        (request.TireRimDiameter == null || globalProduct.TireRimDiameter == request.TireRimDiameter) &&
+                        (cleanTirePosition == null || globalProduct.TirePosition == cleanTirePosition))) &&
                     (!hasTextSearch ||
                         (isIdentifierSearch &&
                             ((usePostgresLike ? EF.Functions.ILike(supplierProduct.SupplierSku, cleanQuery!) : supplierProduct.SupplierSku.ToLower() == lowerQuery!) ||
@@ -456,19 +610,37 @@ public sealed class SupplierItemSearchService(
                             (globalProduct.ManufacturerPartNumber != null && (usePostgresLike ? EF.Functions.ILike(globalProduct.ManufacturerPartNumber!, prefixLikeQuery!) : globalProduct.ManufacturerPartNumber!.ToLower().StartsWith(lowerQuery!))) ||
                             (globalProduct.NormalizedManufacturerPartNumber != null && normalizedPartQuery != null && globalProduct.NormalizedManufacturerPartNumber!.StartsWith(normalizedPartQuery)))) ||
                         (!isIdentifierSearch &&
-                            ((usePostgresLike && EF.Functions.ToTsVector(
-                                "english",
-                                (supplierProduct.SupplierSku ?? string.Empty) + " " +
-                                (supplierProduct.SupplierPartNumber ?? string.Empty) + " " +
-                                (supplierProduct.ManufacturerPartNumber ?? string.Empty) + " " +
-                                (supplierProduct.SupplierDescription ?? string.Empty) + " " +
-                                (globalProduct.ManufacturerPartNumber ?? string.Empty) + " " +
-                                (globalProduct.Manufacturer ?? string.Empty) + " " +
-                                globalProduct.Brand + " " +
-                                globalProduct.Description + " " +
-                                (globalProduct.Category ?? string.Empty) + " " +
-                                (globalProduct.LongDescription ?? string.Empty))
-                                .Matches(EF.Functions.PlainToTsQuery("english", cleanQuery!))) ||
+                            ((usePostgresLike &&
+                                (textSearchTsQuery == null ||
+                                    (EF.Functions.ToTsVector(
+                                    "simple",
+                                    supplierProduct.SupplierSku + " " +
+                                    (supplierProduct.SupplierPartNumber ?? string.Empty) + " " +
+                                    (supplierProduct.ManufacturerPartNumber ?? string.Empty) + " " +
+                                    (supplierProduct.SupplierDescription ?? string.Empty) + " " +
+                                    baseTitle + " " +
+                                    formattedTitle)
+                                    .Matches(EF.Functions.ToTsQuery("simple", textSearchTsQuery!)) ||
+                                    EF.Functions.ToTsVector(
+                                    "simple",
+                                    (globalProduct.ManufacturerPartNumber ?? string.Empty) + " " +
+                                    (globalProduct.Manufacturer ?? string.Empty) + " " +
+                                    globalProduct.Brand + " " +
+                                    globalProduct.Description + " " +
+                                    baseTitle + " " +
+                                    formattedTitle + " " +
+                                    (globalProduct.Category ?? string.Empty) + " " +
+                                    (globalProduct.LongDescription ?? string.Empty))
+                                        .Matches(EF.Functions.ToTsQuery("simple", textSearchTsQuery!)))) &&
+                                (numericLike0 == null || EF.Functions.ILike(searchableText, numericLike0)) &&
+                                (numericLike1 == null || EF.Functions.ILike(searchableText, numericLike1)) &&
+                                (numericLike2 == null || EF.Functions.ILike(searchableText, numericLike2))) ||
+                            (!usePostgresLike &&
+                                (searchToken0a == null || searchableText.Contains(searchToken0a) || (searchToken0b != null && searchableText.Contains(searchToken0b))) &&
+                                (searchToken1a == null || searchableText.Contains(searchToken1a) || (searchToken1b != null && searchableText.Contains(searchToken1b))) &&
+                                (searchToken2a == null || searchableText.Contains(searchToken2a) || (searchToken2b != null && searchableText.Contains(searchToken2b))) &&
+                                (searchToken3a == null || searchableText.Contains(searchToken3a) || (searchToken3b != null && searchableText.Contains(searchToken3b))) &&
+                                (searchToken4a == null || searchableText.Contains(searchToken4a) || (searchToken4b != null && searchableText.Contains(searchToken4b)))) ||
                             (usePostgresLike ? EF.Functions.ILike(supplierProduct.SupplierSku, likeQuery!) : supplierProduct.SupplierSku.ToLower().Contains(lowerQuery!)) ||
                             (supplierProduct.SupplierPartNumber != null && (usePostgresLike ? EF.Functions.ILike(supplierProduct.SupplierPartNumber!, likeQuery!) : supplierProduct.SupplierPartNumber!.ToLower().Contains(lowerQuery!))) ||
                             (supplierProduct.ManufacturerPartNumber != null && (usePostgresLike ? EF.Functions.ILike(supplierProduct.ManufacturerPartNumber!, likeQuery!) : supplierProduct.ManufacturerPartNumber!.ToLower().Contains(lowerQuery!))) ||
@@ -516,6 +688,8 @@ public sealed class SupplierItemSearchService(
                     supplierProduct.SupplierDescription,
                     GlobalDescription = globalProduct.Description,
                     globalProduct.Category,
+                    globalProduct.LongDescription,
+                    globalProduct.SpecificationsJson,
                     Status = supplierProduct.SupplierStatus,
                     supplierProduct.WarehouseAvailability,
                     ImageJson = supplierProduct.SupplierImagesJson ?? globalProduct.ImagesJson
@@ -529,13 +703,41 @@ public sealed class SupplierItemSearchService(
                     on supplierProduct.GlobalProductId equals globalProduct.Id
                 join supplier in dbContext.Suppliers.AsNoTracking()
                     on supplierProduct.SupplierId equals supplier.Id
-                let baseTitle = supplierProduct.SupplierDescription ?? globalProduct.Description
+                let baseTitle =
+                    supplier.Code == "TURN14" && globalProduct.LongDescription != null
+                        ? globalProduct.LongDescription
+                        : supplierProduct.SupplierDescription ?? globalProduct.Description
                 let maker = globalProduct.Manufacturer ?? globalProduct.Brand
                 let displayPartNumber = supplierProduct.ManufacturerPartNumber ?? globalProduct.ManufacturerPartNumber
-                let formattedTitle = maker + " " + baseTitle + " - " + (displayPartNumber ?? string.Empty)
+                let formattedTitle =
+                    supplier.Code == "TURN14" && globalProduct.LongDescription != null
+                        ? baseTitle + " - " + (displayPartNumber ?? string.Empty)
+                        : maker + " " + baseTitle + " - " + (displayPartNumber ?? string.Empty)
+                let searchableText = (
+                    supplierProduct.SupplierSku + " " +
+                    (supplierProduct.SupplierPartNumber ?? string.Empty) + " " +
+                    (supplierProduct.ManufacturerPartNumber ?? string.Empty) + " " +
+                    (supplierProduct.SupplierDescription ?? string.Empty) + " " +
+                    baseTitle + " " +
+                    formattedTitle + " " +
+                    (globalProduct.ManufacturerPartNumber ?? string.Empty) + " " +
+                    (globalProduct.Manufacturer ?? string.Empty) + " " +
+                    globalProduct.Brand + " " +
+                    globalProduct.Description + " " +
+                    (globalProduct.Category ?? string.Empty) + " " +
+                    (globalProduct.LongDescription ?? string.Empty)).ToLower()
                 where
                     (organizationId == null || enabledCompanySupplierCodeList.Contains(supplier.Code)) &&
                     (!hasSupplierFilter || supplier.Code == cleanSupplierCode) &&
+                    (cleanCategory == null || globalProduct.Category == cleanCategory) &&
+                    (cleanBrand == null || globalProduct.Brand == cleanBrand) &&
+                    (!hasTireSearch ||
+                        ((cleanTireBrand == null || (usePostgresLike ? EF.Functions.ILike(globalProduct.Brand, cleanTireBrand) : globalProduct.Brand.ToLower() == cleanTireBrand.ToLower())) &&
+                        (cleanTireModelLine == null || globalProduct.TireModelLine == cleanTireModelLine) &&
+                        (request.TireWidth == null || globalProduct.TireWidth == request.TireWidth) &&
+                        (request.TireAspectRatio == null || globalProduct.TireAspectRatio == request.TireAspectRatio) &&
+                        (request.TireRimDiameter == null || globalProduct.TireRimDiameter == request.TireRimDiameter) &&
+                        (cleanTirePosition == null || globalProduct.TirePosition == cleanTirePosition))) &&
                     (!hasTextSearch ||
                         (isIdentifierSearch &&
                             ((usePostgresLike ? EF.Functions.ILike(supplierProduct.SupplierSku, cleanQuery!) : supplierProduct.SupplierSku.ToLower() == lowerQuery!) ||
@@ -549,7 +751,38 @@ public sealed class SupplierItemSearchService(
                             (globalProduct.ManufacturerPartNumber != null && (usePostgresLike ? EF.Functions.ILike(globalProduct.ManufacturerPartNumber!, prefixLikeQuery!) : globalProduct.ManufacturerPartNumber!.ToLower().StartsWith(lowerQuery!))) ||
                             (globalProduct.NormalizedManufacturerPartNumber != null && normalizedPartQuery != null && globalProduct.NormalizedManufacturerPartNumber!.StartsWith(normalizedPartQuery)))) ||
                         (!isIdentifierSearch &&
-                            ((usePostgresLike ? EF.Functions.ILike(supplierProduct.SupplierSku, likeQuery!) : supplierProduct.SupplierSku.ToLower().Contains(lowerQuery!)) ||
+                            ((usePostgresLike &&
+                                (textSearchTsQuery == null ||
+                                    (EF.Functions.ToTsVector(
+                                    "simple",
+                                    supplierProduct.SupplierSku + " " +
+                                    (supplierProduct.SupplierPartNumber ?? string.Empty) + " " +
+                                    (supplierProduct.ManufacturerPartNumber ?? string.Empty) + " " +
+                                    (supplierProduct.SupplierDescription ?? string.Empty) + " " +
+                                    baseTitle + " " +
+                                    formattedTitle)
+                                    .Matches(EF.Functions.ToTsQuery("simple", textSearchTsQuery!)) ||
+                                    EF.Functions.ToTsVector(
+                                    "simple",
+                                    (globalProduct.ManufacturerPartNumber ?? string.Empty) + " " +
+                                    (globalProduct.Manufacturer ?? string.Empty) + " " +
+                                    globalProduct.Brand + " " +
+                                    globalProduct.Description + " " +
+                                    baseTitle + " " +
+                                    formattedTitle + " " +
+                                    (globalProduct.Category ?? string.Empty) + " " +
+                                    (globalProduct.LongDescription ?? string.Empty))
+                                        .Matches(EF.Functions.ToTsQuery("simple", textSearchTsQuery!)))) &&
+                                (numericLike0 == null || EF.Functions.ILike(searchableText, numericLike0)) &&
+                                (numericLike1 == null || EF.Functions.ILike(searchableText, numericLike1)) &&
+                                (numericLike2 == null || EF.Functions.ILike(searchableText, numericLike2))) ||
+                            (!usePostgresLike &&
+                                (searchToken0a == null || searchableText.Contains(searchToken0a) || (searchToken0b != null && searchableText.Contains(searchToken0b))) &&
+                                (searchToken1a == null || searchableText.Contains(searchToken1a) || (searchToken1b != null && searchableText.Contains(searchToken1b))) &&
+                                (searchToken2a == null || searchableText.Contains(searchToken2a) || (searchToken2b != null && searchableText.Contains(searchToken2b))) &&
+                                (searchToken3a == null || searchableText.Contains(searchToken3a) || (searchToken3b != null && searchableText.Contains(searchToken3b))) &&
+                                (searchToken4a == null || searchableText.Contains(searchToken4a) || (searchToken4b != null && searchableText.Contains(searchToken4b)))) ||
+                            (usePostgresLike ? EF.Functions.ILike(supplierProduct.SupplierSku, likeQuery!) : supplierProduct.SupplierSku.ToLower().Contains(lowerQuery!)) ||
                             (supplierProduct.SupplierPartNumber != null && (usePostgresLike ? EF.Functions.ILike(supplierProduct.SupplierPartNumber!, likeQuery!) : supplierProduct.SupplierPartNumber!.ToLower().Contains(lowerQuery!))) ||
                             (supplierProduct.ManufacturerPartNumber != null && (usePostgresLike ? EF.Functions.ILike(supplierProduct.ManufacturerPartNumber!, likeQuery!) : supplierProduct.ManufacturerPartNumber!.ToLower().Contains(lowerQuery!))) ||
                             (supplierProduct.NormalizedManufacturerPartNumber != null && normalizedPartQuery != null && supplierProduct.NormalizedManufacturerPartNumber!.Contains(normalizedPartQuery)) ||
@@ -603,6 +836,8 @@ public sealed class SupplierItemSearchService(
                     supplierProduct.SupplierDescription,
                     GlobalDescription = globalProduct.Description,
                     globalProduct.Category,
+                    globalProduct.LongDescription,
+                    globalProduct.SpecificationsJson,
                     Status = supplierProduct.SupplierStatus,
                     supplierProduct.WarehouseAvailability,
                     ImageJson = supplierProduct.SupplierImagesJson ?? globalProduct.ImagesJson
@@ -734,6 +969,8 @@ public sealed class SupplierItemSearchService(
                         supplierProduct.SupplierDescription,
                         globalProduct.Description,
                         globalProduct.Category,
+                        globalProduct.LongDescription,
+                        globalProduct.SpecificationsJson,
                         supplierProduct.WarehouseAvailability,
                         supplierProduct.SupplierImagesJson ?? globalProduct.ImagesJson,
                         supplierProduct.SupplierStatus))
@@ -783,7 +1020,7 @@ public sealed class SupplierItemSearchService(
                 prices.TryGetValue(row.SupplierProductId, out var price);
                 companyPrices.TryGetValue(row.SupplierProductId, out var actualCost);
                 return new OfferCandidate(
-                    GroupKey(row.NormalizedManufacturerPartNumber, row.ManufacturerPartNumber, row.GlobalProductId, row.SupplierProductId),
+                    GroupKey(row.Brand, row.Manufacturer, row.NormalizedManufacturerPartNumber, row.ManufacturerPartNumber, row.GlobalProductId, row.SupplierProductId),
                     index,
                     false,
                     new SupplierItemOfferResult(
@@ -796,12 +1033,16 @@ public sealed class SupplierItemSearchService(
                         row.Upc,
                         row.Brand,
                         BuildDisplayTitle(
+                            row.SupplierCode,
                             row.Manufacturer,
                             row.Brand,
                             row.SupplierDescription,
                             row.GlobalDescription,
+                            row.LongDescription,
                             row.ManufacturerPartNumber),
                         row.Category,
+                        row.LongDescription,
+                        ProductFeatures(row.SpecificationsJson),
                         row.Status,
                         fitmentRows
                             .Where(x => x.SupplierProductId == row.SupplierProductId || (x.SupplierId == row.SupplierId && x.SupplierSku == row.SupplierSku))
@@ -814,6 +1055,9 @@ public sealed class SupplierItemSearchService(
                         FirstImageUrl(row.ImageJson),
                         HasCachedInventory(row.WarehouseAvailability),
                         CachedInventoryTotal(row.WarehouseAvailability),
+                        supplierPreferences.IsPreferredSupplier(row.SupplierCode),
+                        supplierPreferences.PreferredWarehouseCode(row.SupplierCode),
+                        supplierPreferences.PreferredWarehouseName(row.SupplierCode),
                         false));
             })
             .ToList());
@@ -824,7 +1068,7 @@ public sealed class SupplierItemSearchService(
                 crossReferencePrices.TryGetValue(row.SupplierProductId, out var price);
                 crossReferenceCompanyPrices.TryGetValue(row.SupplierProductId, out var actualCost);
                 return new OfferCandidate(
-                    GroupKey(row.NormalizedManufacturerPartNumber, row.ManufacturerPartNumber, row.GlobalProductId, row.SupplierProductId),
+                    GroupKey(row.Brand, row.Manufacturer, row.NormalizedManufacturerPartNumber, row.ManufacturerPartNumber, row.GlobalProductId, row.SupplierProductId),
                     int.MaxValue,
                     true,
                     new SupplierItemOfferResult(
@@ -837,12 +1081,16 @@ public sealed class SupplierItemSearchService(
                         row.Upc,
                         row.Brand,
                         BuildDisplayTitle(
+                            row.SupplierCode,
                             row.Manufacturer,
                             row.Brand,
                             row.SupplierDescription,
                             row.GlobalDescription,
+                            row.LongDescription,
                             row.ManufacturerPartNumber),
                         row.Category,
+                        row.LongDescription,
+                        ProductFeatures(row.SpecificationsJson),
                         row.Status,
                         crossReferenceFitmentRows
                             .Where(x => x.SupplierProductId == row.SupplierProductId || (x.SupplierId == row.SupplierId && x.SupplierSku == row.SupplierSku))
@@ -855,6 +1103,9 @@ public sealed class SupplierItemSearchService(
                         FirstImageUrl(row.ImageJson),
                         HasCachedInventory(row.WarehouseAvailability),
                         CachedInventoryTotal(row.WarehouseAvailability),
+                        supplierPreferences.IsPreferredSupplier(row.SupplierCode),
+                        supplierPreferences.PreferredWarehouseCode(row.SupplierCode),
+                        supplierPreferences.PreferredWarehouseName(row.SupplierCode),
                         false));
             }));
             return 0;
@@ -871,7 +1122,7 @@ public sealed class SupplierItemSearchService(
                 var orderedOfferCandidates = group
                     .GroupBy(x => x.Offer.SupplierProductId)
                     .Select(x => x.First())
-                    .OrderByDescending(x => x.Offer.HasCachedInventory)
+                    .OrderBy(x => ServerPreferenceRank(x.Offer))
                     .ThenBy(x => x.Offer.ActualCost ?? x.Offer.DealerCost ?? decimal.MaxValue)
                     .ThenBy(x => x.IsCrossReference)
                     .ThenBy(x => x.SortIndex)
@@ -897,6 +1148,8 @@ public sealed class SupplierItemSearchService(
                     selected.Brand,
                     selected.Title,
                     selected.Category,
+                    selected.LongDescription,
+                    selected.ProductFeatures,
                     selected.Status,
                     consolidatedFitment.Count,
                     selected.Msrp,
@@ -918,8 +1171,18 @@ public sealed class SupplierItemSearchService(
             selectedYear,
             cleanMake,
             cleanModel,
+            cleanCategory,
+            cleanBrand,
+            cleanTireBrand,
+            cleanTireModelLine,
+            request.TireWidth,
+            request.TireAspectRatio,
+            request.TireRimDiameter,
+            cleanTirePosition,
             availableSuppliers,
             configuredSuppliers,
+            availableCategories,
+            availableBrands,
             availableVehicleTypes,
             availableYears,
             availableMakes,
@@ -978,6 +1241,45 @@ public sealed class SupplierItemSearchService(
         }
     }
 
+    private async Task<SupplierPurchasePreferences> GetSupplierPurchasePreferencesAsync(Guid organizationId, CancellationToken cancellationToken)
+    {
+        var json = await dbContext.BusinessConfigurations
+            .IgnoreQueryFilters()
+            .AsNoTracking()
+            .Where(x => x.OrganizationId == organizationId)
+            .Select(x => x.SupplierPreferencesJson)
+            .SingleOrDefaultAsync(cancellationToken);
+        if (string.IsNullOrWhiteSpace(json))
+        {
+            return SupplierPurchasePreferences.Empty;
+        }
+
+        try
+        {
+            var stored = JsonSerializer.Deserialize<StoredSupplierPurchasePreferences>(json, new JsonSerializerOptions(JsonSerializerDefaults.Web));
+            return SupplierPurchasePreferences.FromStored(stored);
+        }
+        catch (JsonException)
+        {
+            return SupplierPurchasePreferences.Empty;
+        }
+    }
+
+    private static int ServerPreferenceRank(SupplierItemOfferResult offer)
+    {
+        if (offer.IsPreferredSupplier && offer.HasCachedInventory)
+        {
+            return 0;
+        }
+
+        if (offer.HasCachedInventory)
+        {
+            return 1;
+        }
+
+        return offer.IsPreferredSupplier ? 2 : 3;
+    }
+
     private static string? FirstImageUrl(string? imageJson)
     {
         if (string.IsNullOrWhiteSpace(imageJson))
@@ -1014,17 +1316,33 @@ public sealed class SupplierItemSearchService(
         return null;
     }
 
-    private static string GroupKey(string? normalizedManufacturerPartNumber, string? manufacturerPartNumber, Guid globalProductId, Guid supplierProductId)
+    private static string GroupKey(string? brand, string? manufacturer, string? normalizedManufacturerPartNumber, string? manufacturerPartNumber, Guid globalProductId, Guid supplierProductId)
     {
         var normalized = Clean(normalizedManufacturerPartNumber) ?? ProductMatchingService.NormalizeManufacturerPartNumber(manufacturerPartNumber);
+        var maker = NormalizeGroupValue(Clean(manufacturer) ?? Clean(brand));
         if (normalized is not null)
         {
-            return $"mfg:{normalized}";
+            return maker is null
+                ? $"mfg:{normalized}"
+                : $"mfg:{maker}:{normalized}";
         }
 
         return globalProductId == Guid.Empty
             ? $"supplier:{supplierProductId:N}"
             : $"global:{globalProductId:N}";
+    }
+
+    private static string? NormalizeGroupValue(string? value)
+    {
+        if (Clean(value) is not { } clean)
+        {
+            return null;
+        }
+
+        var normalized = new string(clean.Where(char.IsLetterOrDigit).Select(char.ToUpperInvariant).ToArray());
+        return MakerAliases.TryGetValue(normalized, out var alias)
+            ? alias
+            : normalized;
     }
 
     private static bool HasCachedInventory(string? warehouseAvailability)
@@ -1207,6 +1525,151 @@ public sealed class SupplierItemSearchService(
         return string.IsNullOrWhiteSpace(value) ? null : value.Trim();
     }
 
+    private static bool IsUsableCatalogCategory(string? value)
+    {
+        return value is not null && !(value.Length == 1 && char.IsLetter(value[0]));
+    }
+
+    private static string? ProductFeatures(string? specificationsJson)
+    {
+        if (string.IsNullOrWhiteSpace(specificationsJson))
+        {
+            return null;
+        }
+
+        try
+        {
+            using var document = JsonDocument.Parse(specificationsJson);
+            return document.RootElement.ValueKind == JsonValueKind.Object &&
+                document.RootElement.TryGetProperty("productFeatures", out var features) &&
+                features.ValueKind == JsonValueKind.String
+                    ? Clean(features.GetString())
+                    : null;
+        }
+        catch (JsonException)
+        {
+            return null;
+        }
+    }
+
+    private static string[] SearchTokens(string? query)
+    {
+        if (Clean(query) is not { } clean)
+        {
+            return [];
+        }
+
+        var tokens = new List<string>();
+        var current = new List<char>();
+        foreach (var character in clean)
+        {
+            if (char.IsLetterOrDigit(character))
+            {
+                current.Add(char.ToLowerInvariant(character));
+                continue;
+            }
+
+            AddCurrentToken();
+        }
+
+        AddCurrentToken();
+
+        return tokens
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .Take(5)
+            .ToArray();
+
+        void AddCurrentToken()
+        {
+            if (current.Count == 0)
+            {
+                return;
+            }
+
+            var token = new string(current.ToArray());
+            current.Clear();
+            if (token.Length >= 2 || token.Any(char.IsDigit))
+            {
+                tokens.Add(token);
+            }
+        }
+    }
+
+    private static string? BuildPrefixTsQuery(IReadOnlyCollection<IReadOnlyCollection<string>> tokenGroups)
+    {
+        return tokenGroups.Count == 0
+            ? null
+            : string.Join(" & ", tokenGroups.Select(group =>
+                group.Count == 1
+                    ? $"{group.First()}:*"
+                    : $"({string.Join(" | ", group.Select(token => $"{token}:*"))})"));
+    }
+
+    private static string[] SingularPluralVariants(string token)
+    {
+        if (string.IsNullOrWhiteSpace(token) || token.Any(char.IsDigit))
+        {
+            return [token];
+        }
+
+        var variants = new List<string> { token };
+        if (token.EndsWith("ies", StringComparison.OrdinalIgnoreCase) && token.Length > 3)
+        {
+            variants.Add($"{token[..^3]}y");
+        }
+        else if (token.EndsWith('y') && token.Length > 1 && !IsVowel(token[^2]))
+        {
+            variants.Add($"{token[..^1]}ies");
+        }
+        else if (token.EndsWith("ches", StringComparison.OrdinalIgnoreCase) ||
+            token.EndsWith("shes", StringComparison.OrdinalIgnoreCase) ||
+            token.EndsWith("xes", StringComparison.OrdinalIgnoreCase) ||
+            token.EndsWith("zes", StringComparison.OrdinalIgnoreCase) ||
+            token.EndsWith("ses", StringComparison.OrdinalIgnoreCase))
+        {
+            variants.Add(token[..^2]);
+        }
+        else if (token.EndsWith('s') && !token.EndsWith("ss", StringComparison.OrdinalIgnoreCase) && token.Length > 2)
+        {
+            variants.Add(token[..^1]);
+        }
+        else if (token.EndsWith("ch", StringComparison.OrdinalIgnoreCase) ||
+            token.EndsWith("sh", StringComparison.OrdinalIgnoreCase) ||
+            token.EndsWith('x') ||
+            token.EndsWith('z') ||
+            token.EndsWith('s'))
+        {
+            variants.Add($"{token}es");
+        }
+        else
+        {
+            variants.Add($"{token}s");
+        }
+
+        return variants
+            .Where(value => value.Length >= 2)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .Take(2)
+            .ToArray();
+    }
+
+    private static string? TokenVariantAt(IReadOnlyList<string[]> tokenGroups, int groupIndex, int variantIndex)
+    {
+        return groupIndex < tokenGroups.Count && variantIndex < tokenGroups[groupIndex].Length
+            ? tokenGroups[groupIndex][variantIndex]
+            : null;
+    }
+
+    private static bool IsVowel(char value)
+    {
+        return value is 'a' or 'e' or 'i' or 'o' or 'u';
+    }
+
+    private static bool IsNumericSearchToken(string token)
+    {
+        return token.Length > 0 && token.All(char.IsDigit);
+    }
+
     private static bool IsLikelyCatalogIdentifier(string? query)
     {
         var clean = Clean(query);
@@ -1268,20 +1731,82 @@ public sealed class SupplierItemSearchService(
         string? SupplierDescription,
         string GlobalDescription,
         string? Category,
+        string? LongDescription,
+        string? SpecificationsJson,
         string? WarehouseAvailability,
         string? ImageJson,
         string Status);
 
+    private sealed record StoredSupplierPurchasePreferences(
+        string? PreferredSupplierCode,
+        IReadOnlyDictionary<string, string>? PreferredWarehouseCodes);
+
+    private sealed record SupplierPurchasePreferences(
+        string? PreferredSupplierCode,
+        IReadOnlyDictionary<string, string> PreferredWarehouseCodes)
+    {
+        public static SupplierPurchasePreferences Empty { get; } = new(null, new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase));
+
+        public static SupplierPurchasePreferences FromStored(StoredSupplierPurchasePreferences? stored)
+        {
+            var preferredSupplierCode = NormalizeSupplierCode(stored?.PreferredSupplierCode);
+            var warehouseCodes = stored?.PreferredWarehouseCodes is null
+                ? new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+                : stored.PreferredWarehouseCodes
+                    .Where(x => NormalizeSupplierCode(x.Key) is not null && Clean(x.Value) is not null)
+                    .ToDictionary(x => NormalizeSupplierCode(x.Key)!, x => Clean(x.Value)!, StringComparer.OrdinalIgnoreCase);
+            return new SupplierPurchasePreferences(preferredSupplierCode, warehouseCodes);
+        }
+
+        public bool IsPreferredSupplier(string supplierCode)
+        {
+            return PreferredSupplierCode is not null &&
+                string.Equals(PreferredSupplierCode, supplierCode, StringComparison.OrdinalIgnoreCase);
+        }
+
+        public string? PreferredWarehouseCode(string supplierCode)
+        {
+            return PreferredWarehouseCodes.TryGetValue(supplierCode, out var warehouseCode) ? warehouseCode : null;
+        }
+
+        public string? PreferredWarehouseName(string supplierCode)
+        {
+            var warehouseCode = PreferredWarehouseCode(supplierCode);
+            if (warehouseCode is null)
+            {
+                return null;
+            }
+
+            return SupplierWarehouseNames.TryGetValue(supplierCode, out var names) && names.TryGetValue(warehouseCode, out var name)
+                ? name
+                : warehouseCode;
+        }
+
+        private static string? NormalizeSupplierCode(string? value)
+        {
+            var clean = Clean(value)?.ToUpperInvariant();
+            return clean is "WPS" or "TURN14" or "PU" ? clean : null;
+        }
+    }
+
     private static string BuildDisplayTitle(
+        string supplierCode,
         string? manufacturer,
         string brand,
         string? supplierDescription,
         string globalDescription,
+        string? longDescription,
         string? manufacturerPartNumber)
     {
-        var title = Clean(supplierDescription) ?? Clean(globalDescription) ?? Clean(manufacturerPartNumber) ?? "Supplier item";
+        var turn14LongDescription = string.Equals(supplierCode, "TURN14", StringComparison.OrdinalIgnoreCase)
+            ? Clean(longDescription)
+            : null;
+        var title = turn14LongDescription is not null
+            ? turn14LongDescription
+            : Clean(supplierDescription) ?? Clean(globalDescription) ?? Clean(manufacturerPartNumber) ?? "Supplier item";
         var maker = Clean(manufacturer) ?? Clean(brand);
-        if (!string.IsNullOrWhiteSpace(maker) &&
+        if (turn14LongDescription is null &&
+            !string.IsNullOrWhiteSpace(maker) &&
             !title.StartsWith($"{maker} ", StringComparison.OrdinalIgnoreCase) &&
             !string.Equals(title, maker, StringComparison.OrdinalIgnoreCase))
         {

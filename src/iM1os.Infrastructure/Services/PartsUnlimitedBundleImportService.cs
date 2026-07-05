@@ -544,6 +544,14 @@ public sealed class PartsUnlimitedBundleImportService(
                 counters.UpdatedGlobalProducts++;
             }
 
+            CatalogTireParser.Apply(
+                globalProduct,
+                row.Brand,
+                row.Category,
+                row.Description,
+                FirstField(row.SourceRow, "Notes"),
+                SpecificationsJson(row.SourceRow));
+
             if (supplierProduct is null)
             {
                 supplierProduct = new SupplierProduct

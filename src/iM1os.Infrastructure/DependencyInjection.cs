@@ -1,4 +1,5 @@
 using iM1os.Application.Authentication;
+using System.Net;
 using iM1os.Application.BusinessAdministration;
 using iM1os.Application.Common;
 using iM1os.Application.CompanySuppliers;
@@ -6,6 +7,7 @@ using iM1os.Application.Configuration;
 using iM1os.Application.Customers;
 using iM1os.Application.Employees;
 using iM1os.Application.GlobalCatalog;
+using iM1os.Application.Inventory;
 using iM1os.Application.Marketing;
 using iM1os.Application.Platform;
 using iM1os.Application.Tenancy;
@@ -65,6 +67,8 @@ public static class DependencyInjection
         services.AddScoped<ITurn14MediaEnrichmentService, Turn14MediaEnrichmentService>();
         services.AddScoped<IPartsUnlimitedBundleImportService, PartsUnlimitedBundleImportService>();
         services.AddScoped<IPartsUnlimitedBrandImageImportService, PartsUnlimitedBundleImportService>();
+        services.AddScoped<ICatalogTireBackfillService, CatalogTireBackfillService>();
+        services.AddScoped<ICatalogNormalizationService, CatalogNormalizationService>();
         services.AddScoped<ISupplierItemSearchService, SupplierItemSearchService>();
         services.AddScoped<IWpsLiveInventoryService, WpsLiveInventoryService>();
         services.AddScoped<ITurn14LiveInventoryService, Turn14LiveInventoryService>();
@@ -76,6 +80,7 @@ public static class DependencyInjection
         services.AddScoped<ICustomerCrmService, CustomerCrmService>();
         services.AddScoped<IEmployeeService, EmployeeService>();
         services.AddScoped<IWorkOrderService, WorkOrderService>();
+        services.AddScoped<ICompanyInventoryService, CompanyInventoryService>();
         services.AddScoped<IMarketingCmsService, MarketingCmsService>();
         services.AddScoped<ITenantProfileService, TenantProfileService>();
         services.AddScoped<IWelcomeEmailSender, NoOpWelcomeEmailSender>();
@@ -91,6 +96,10 @@ public static class DependencyInjection
         {
             client.Timeout = TimeSpan.FromSeconds(60);
             client.DefaultRequestHeaders.UserAgent.ParseAdd("iM1os-Fitment-Importer/1.0");
+        })
+        .ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler
+        {
+            AutomaticDecompression = DecompressionMethods.GZip | DecompressionMethods.Deflate | DecompressionMethods.Brotli
         });
         services.AddHttpClient("Turn14Api", client =>
         {

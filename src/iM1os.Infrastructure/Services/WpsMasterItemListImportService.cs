@@ -332,6 +332,16 @@ public sealed class WpsMasterItemListImportService(
                 counters.UpdatedGlobalProducts++;
             }
 
+            CatalogTireParser.Apply(
+                globalProduct,
+                item.Brand,
+                item.ProductType,
+                item.Name,
+                item.ProductName,
+                item.ProductDescription,
+                item.CatalogGroupDescription,
+                item.SpecificationsJson);
+
             if (supplierProduct is null)
             {
                 supplierProduct = new SupplierProduct

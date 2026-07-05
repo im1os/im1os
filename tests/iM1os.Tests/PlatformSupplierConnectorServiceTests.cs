@@ -270,7 +270,15 @@ public sealed class PlatformSupplierConnectorServiceTests
 
         var page = await service.GetGlobalSchedulerAsync(CancellationToken.None);
 
-        Assert.Equal(2, page.Events.Count);
+        Assert.Equal(4, page.Events.Count);
+        var catalog = page.Events.Single(x => x.EventType == "GlobalCatalogTireBackfill");
+        Assert.False(catalog.IsEnabled);
+        Assert.Equal("Platform", catalog.ConfiguratorController);
+        Assert.Equal("Scheduler", catalog.ConfiguratorAction);
+        var normalization = page.Events.Single(x => x.EventType == "GlobalCatalogNormalization");
+        Assert.False(normalization.IsEnabled);
+        Assert.Equal("Platform", normalization.ConfiguratorController);
+        Assert.Equal("Scheduler", normalization.ConfiguratorAction);
         var master = page.Events.Single(x => x.EventType == "WpsMasterFile");
         Assert.True(master.IsEnabled);
         Assert.Equal("Platform", master.ConfiguratorController);
@@ -418,7 +426,13 @@ public sealed class PlatformSupplierConnectorServiceTests
 
         var page = await service.GetGlobalSchedulerAsync(CancellationToken.None);
 
-        Assert.Equal(3, page.Events.Count);
+        Assert.Equal(5, page.Events.Count);
+        var catalog = page.Events.Single(x => x.EventType == "GlobalCatalogTireBackfill");
+        Assert.False(catalog.IsEnabled);
+        Assert.Equal("Scheduler", catalog.ConfiguratorAction);
+        var normalization = page.Events.Single(x => x.EventType == "GlobalCatalogNormalization");
+        Assert.False(normalization.IsEnabled);
+        Assert.Equal("Scheduler", normalization.ConfiguratorAction);
         var loadsheet = page.Events.Single(x => x.EventType == "Turn14ProductLoadsheet");
         Assert.Equal("Turn14ProductLoadsheet", loadsheet.EventType);
         Assert.True(loadsheet.IsEnabled);

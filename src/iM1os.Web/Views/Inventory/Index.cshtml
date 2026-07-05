@@ -1,0 +1,168 @@
+@model iM1os.Application.Inventory.CompanyInventoryWorkspace
+@{
+    ViewData["Title"] = "Inventory Management";
+    var organizationId = ViewBag.OrganizationId as Guid?;
+
+    static string Money(decimal? value) => value is null ? "-" : value.Value.ToString("C2");
+    static string Qty(decimal value) => value == decimal.Truncate(value) ? value.ToString("N0") : value.ToString("N2");
+}
+
+@{
+    var hero = new IM1WorkspaceHeroModel(
+        "Inventory Management",
+        "Company Inventory",
+        "Search can be blank. The grid lists company inventory across all locations.",
+        new[]
+        {
+            new IM1WorkspaceStatModel("Items", Model.TotalItems.ToString("N0"), "Active inventory records"),
+            new IM1WorkspaceStatModel("Low Stock", Model.LowStockItems.ToString("N0"), "At or below reorder point"),
+            new IM1WorkspaceStatModel("On Hand", Qty(Model.TotalOnHand), "All locations"),
+            new IM1WorkspaceStatModel("Value", Model.TotalInventoryValue.ToString("C0"), "On hand at average cost")
+        },
+        new[]
+        {
+            new IM1ActionModel("Add / Import", Url.Action("Add", "Inventory", new { organizationId }), "primary"),
+            new IM1ActionModel("Scanner", Url.Action("Scanner", "Inventory", new { organizationId }), "secondary")
+        },
+        "Location-aware stock");
+}
+
+@await Html.PartialAsync("IM1WorkspaceHero", hero)
+
+@if (TempData["InventoryStatus"] is string status)
+{
+    <div class="im1-alert im1-alert-success">@status</div>
+}
+@if (TempData["InventoryError"] is string error)
+{
+    <div class="im1-alert im1-alert-error">@error</div>
+}
+
+<section class="im1-inventory-management">
+    <form class="im1-inventory-filter-bar" method="get" asp-controller="Inventory" asp-action="Index">
+        @if (organizationId is not null)
+        {
+            <input type="hidden" name="organizationId" value="@organizationId" />
+        }
+        <label>
+            Search
+            <input name="query" value="@Model.Query" placeholder="Blank search lists all items" />
+        </label>
+        <label>
+            Location
+            <select name="locationId">
+                <option value="">All locations</option>
+                @foreach (var location in Model.Locations)
+                {
+                    <option value="@location.Id" selected="@(Model.LocationId == location.Id)">@location.Name (@location.Code)</option>
+                }
+            </select>
+        </label>
+        <label class="checkbox">
+            <input type="checkbox" name="lowStockOnly" value="true" checked="@Model.LowStockOnly" />
+            Low stock
+        </label>
+        <label class="checkbox">
+            <input type="checkbox" name="stockedOnly" value="true" checked="@Model.StockedOnly" />
+            Stock in store
+        </label>
+        <button class="im1-button im1-button-primary" type="submit">Search</button>
+        <a class="im1-button im1-button-secondary" asp-controller="Inventory" asp-action="Index" asp-route-organizationId="@organizationId">Reset</a>
+    </form>
+
+    <div class="im1-table-compact im1-inventory-grid-wrap">
+        <table class="im1-inventory-grid">
+            <thead>
+            <tr>
+                <th>Item</th>
+                <th>Inventory SKU</th>
+                <th>MFG Part#</th>
+                <th>UPC</th>
+                <th>Category</th>
+                <th>On Hand</th>
+                <th>Available</th>
+                <th>Retail</th>
+                <th>Sale</th>
+                <th>Cost</th>
+                <th>Status</th>
+            </tr>
+            </thead>
+            <tbody>
+            @if (Model.Items.Count == 0)
+            {
+                <tr>
+                    <td colspan="11">No inventory items matched this search.</td>
+                </tr>
+            }
+            @foreach (var item in Model.Items)
+            {
+                var scannerLookup = !string.IsNullOrWhiteSpace(item.Sku)
+                    ? item.Sku
+                    : !string.IsNullOrWhiteSpace(item.Upc)
+                        ? item.Upc
+                        : item.ManufacturerPartNumber;
+                var scannerUrl = Url.Action("Scanner", "Inventory", new { organizationId, lookupValue = scannerLookup, supplierCode = item.SourceSupplierCode });
+                <tr class="im1-inventory-click-row @(item.IsLowStock ? "im1-inventory-row-low" : null)" data-scanner-url="@scannerUrl">
+                    <td>
+                        <div class="im1-inventory-grid-item">
+                            <span class="im1-inventory-grid-thumb">
+                                @if (!string.IsNullOrWhiteSpace(item.ImageUrl))
+                                {
+                                    <img src="@item.ImageUrl" alt="" loading="lazy" referrerpolicy="no-referrer" />
+                                }
+                                else
+                                {
+                                    <span>No Image</span>
+                                }
+                            </span>
+                            <span>
+                                <strong>@item.Title</strong>
+                                <em>
+                                    Inventory item @(!string.IsNullOrWhiteSpace(item.Brand) ? $"| {item.Brand}" : "")
+                                    @if (!string.IsNullOrWhiteSpace(item.ReplacementSupplierCode))
+                                    {
+                                        <span class="im1-inventory-reorder-source">Reorder source: @item.ReplacementSupplierCode @(!string.IsNullOrWhiteSpace(item.ReplacementSupplierSku) ? $"| {item.ReplacementSupplierSku}" : "")</span>
+                                    }
+                                </em>
+                            </span>
+                        </div>
+                    </td>
+                    <td>
+                        @if (!string.IsNullOrWhiteSpace(item.Sku))
+                        {
+                            <a class="im1-inventory-sku-link" href="@scannerUrl">@item.Sku</a>
+                        }
+                        else
+                        {
+                            <span>-</span>
+                        }
+                    </td>
+                    <td>@(item.ManufacturerPartNumber ?? "-")</td>
+                    <td>@(item.Upc ?? "-")</td>
+                    <td>@(item.Category ?? "-")</td>
+                    <td>@Qty(item.TotalOnHand)</td>
+                    <td>@Qty(item.TotalAvailable)</td>
+                    <td>@Money(item.RetailPrice)</td>
+                    <td>@Money(item.SalePrice)</td>
+                    <td>@Money(item.AverageCost)</td>
+                    <td><span class="im1-inventory-status @(item.IsLowStock ? "is-low" : null)">@(item.IsLowStock ? "Low stock" : item.Status)</span></td>
+                </tr>
+            }
+            </tbody>
+        </table>
+    </div>
+</section>
+
+@section Scripts {
+    <script>
+        (() => {
+            document.querySelectorAll("[data-scanner-url]").forEach(row => {
+                row.addEventListener("dblclick", event => {
+                    if (event.target.closest("a, button, input, select, textarea")) return;
+                    const url = row.dataset.scannerUrl;
+                    if (url) window.location.href = url;
+                });
+            });
+        })();
+    </script>
+}

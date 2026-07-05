@@ -26,6 +26,10 @@ public sealed class WpsMasterItemListImportWorker(
     private const string PartsUnlimitedBundleImportType = "PartsUnlimitedBundle";
     private const string PartsUnlimitedBrandImagesImportType = "PartsUnlimitedBrandImages";
     private const string PartsUnlimitedFitmentImportType = "PartsUnlimitedFitment";
+    private const string CatalogConnectorKey = "CATALOG";
+    private const string CatalogSupplierCode = "CATALOG";
+    private const string CatalogTireBackfillImportType = "GlobalCatalogTireBackfill";
+    private const string CatalogNormalizationImportType = "GlobalCatalogNormalization";
     private const string DealerPricingImportType = "WpsDealerPricing";
     private const string PartsUnlimitedDealerPricingImportType = "PartsUnlimitedDealerPricing";
     private const string Turn14DealerPricingImportType = "Turn14DealerPricing";
@@ -192,6 +196,18 @@ public sealed class WpsMasterItemListImportWorker(
             return true;
         }
 
+        if (string.Equals(nextRun.ImportType, CatalogTireBackfillImportType, StringComparison.OrdinalIgnoreCase))
+        {
+            await ProcessCatalogTireBackfillRunAsync(scope.ServiceProvider, dbContext, nextRun, cancellationToken);
+            return true;
+        }
+
+        if (string.Equals(nextRun.ImportType, CatalogNormalizationImportType, StringComparison.OrdinalIgnoreCase))
+        {
+            await ProcessCatalogNormalizationRunAsync(scope.ServiceProvider, dbContext, nextRun, cancellationToken);
+            return true;
+        }
+
         if (string.Equals(nextRun.ImportType, FitmentImportType, StringComparison.OrdinalIgnoreCase) ||
             string.Equals(nextRun.ImportType, Turn14FitmentImportType, StringComparison.OrdinalIgnoreCase) ||
             string.Equals(nextRun.ImportType, PartsUnlimitedFitmentImportType, StringComparison.OrdinalIgnoreCase))
@@ -207,7 +223,7 @@ public sealed class WpsMasterItemListImportWorker(
     {
         var interruptedRuns = await dbContext.SupplierConnectorImportRuns
             .Where(x =>
-                (x.ImportType == MasterImportType || x.ImportType == FitmentImportType || x.ImportType == Turn14ProductLoadsheetImportType || x.ImportType == Turn14FitmentImportType || x.ImportType == Turn14MediaEnrichmentImportType || x.ImportType == PartsUnlimitedBundleImportType || x.ImportType == PartsUnlimitedBrandImagesImportType || x.ImportType == PartsUnlimitedFitmentImportType) &&
+                (x.ImportType == MasterImportType || x.ImportType == FitmentImportType || x.ImportType == Turn14ProductLoadsheetImportType || x.ImportType == Turn14FitmentImportType || x.ImportType == Turn14MediaEnrichmentImportType || x.ImportType == PartsUnlimitedBundleImportType || x.ImportType == PartsUnlimitedBrandImagesImportType || x.ImportType == PartsUnlimitedFitmentImportType || x.ImportType == CatalogTireBackfillImportType || x.ImportType == CatalogNormalizationImportType) &&
                 x.Status == "Running" &&
                 x.StartedAtUtc != null &&
                 x.StartedAtUtc < workerStartedAtUtc)
@@ -553,6 +569,69 @@ public sealed class WpsMasterItemListImportWorker(
             changed = true;
         }
 
+        var catalogConfiguration = await (
+            from connector in dbContext.SupplierConnectorConfigurations
+            join supplier in dbContext.Suppliers on connector.SupplierId equals supplier.Id
+            where supplier.Code == CatalogSupplierCode && connector.ConnectorKey == CatalogConnectorKey
+            select connector)
+            .SingleOrDefaultAsync(cancellationToken);
+
+        if (catalogConfiguration is not null &&
+            catalogConfiguration.IsEnabled &&
+            catalogConfiguration.ImportMasterFileOnSchedule &&
+            IsDue(now, catalogConfiguration.LastMasterFileScheduledAtUtc, catalogConfiguration.MasterFileScheduleCadenceMinutes) &&
+            !await HasOpenRunAsync(dbContext, catalogConfiguration.Id, CatalogTireBackfillImportType, cancellationToken))
+        {
+            dbContext.SupplierConnectorImportRuns.Add(new()
+            {
+                SupplierConnectorConfigurationId = catalogConfiguration.Id,
+                ImportType = CatalogTireBackfillImportType,
+                Status = "Queued",
+                RequestedAtUtc = now,
+                Source = "platform.global_products",
+                ProgressProcessed = 0,
+                ProgressTotal = catalogConfiguration.MasterFileScheduleMaxItems,
+                ParametersJson = JsonSerializer.Serialize(new
+                {
+                    ImportMode = "Scheduled",
+                    MaxItems = catalogConfiguration.MasterFileScheduleMaxItems
+                }),
+                Message = catalogConfiguration.MasterFileScheduleMaxItems is null
+                    ? "Scheduled catalog tire parser backfill queued."
+                    : $"Scheduled catalog tire parser backfill queued for first {catalogConfiguration.MasterFileScheduleMaxItems.Value:N0} candidate products."
+            });
+            catalogConfiguration.LastMasterFileScheduledAtUtc = now;
+            changed = true;
+        }
+
+        if (catalogConfiguration is not null &&
+            catalogConfiguration.IsEnabled &&
+            catalogConfiguration.ImportMediaOnSchedule &&
+            IsDue(now, catalogConfiguration.LastMediaScheduledAtUtc, catalogConfiguration.MediaScheduleCadenceMinutes) &&
+            !await HasOpenRunAsync(dbContext, catalogConfiguration.Id, CatalogNormalizationImportType, cancellationToken))
+        {
+            dbContext.SupplierConnectorImportRuns.Add(new()
+            {
+                SupplierConnectorConfigurationId = catalogConfiguration.Id,
+                ImportType = CatalogNormalizationImportType,
+                Status = "Queued",
+                RequestedAtUtc = now,
+                Source = "platform.supplier_products",
+                ProgressProcessed = 0,
+                ProgressTotal = catalogConfiguration.MediaScheduleMaxItems,
+                ParametersJson = JsonSerializer.Serialize(new
+                {
+                    ImportMode = "Scheduled",
+                    MaxItems = catalogConfiguration.MediaScheduleMaxItems
+                }),
+                Message = catalogConfiguration.MediaScheduleMaxItems is null
+                    ? "Scheduled catalog normalization queued."
+                    : $"Scheduled catalog normalization queued for first {catalogConfiguration.MediaScheduleMaxItems.Value:N0} supplier products."
+            });
+            catalogConfiguration.LastMediaScheduledAtUtc = now;
+            changed = true;
+        }
+
         if (changed)
         {
             await dbContext.SaveChangesAsync(cancellationToken);
@@ -619,7 +698,7 @@ public sealed class WpsMasterItemListImportWorker(
         {
             var candidate = await dbContext.SupplierConnectorImportRuns
                 .Where(x =>
-                    (x.ImportType == MasterImportType || x.ImportType == FitmentImportType || x.ImportType == Turn14ProductLoadsheetImportType || x.ImportType == Turn14FitmentImportType || x.ImportType == Turn14MediaEnrichmentImportType || x.ImportType == PartsUnlimitedBundleImportType || x.ImportType == PartsUnlimitedBrandImagesImportType || x.ImportType == PartsUnlimitedFitmentImportType) &&
+                    (x.ImportType == MasterImportType || x.ImportType == FitmentImportType || x.ImportType == Turn14ProductLoadsheetImportType || x.ImportType == Turn14FitmentImportType || x.ImportType == Turn14MediaEnrichmentImportType || x.ImportType == PartsUnlimitedBundleImportType || x.ImportType == PartsUnlimitedBrandImagesImportType || x.ImportType == PartsUnlimitedFitmentImportType || x.ImportType == CatalogTireBackfillImportType || x.ImportType == CatalogNormalizationImportType) &&
                     x.Status == "Queued" &&
                     !dbContext.SupplierConnectorImportRuns.Any(r =>
                         r.SupplierConnectorConfigurationId == x.SupplierConnectorConfigurationId &&
@@ -833,6 +912,83 @@ public sealed class WpsMasterItemListImportWorker(
         }
     }
 
+    private async Task ProcessCatalogTireBackfillRunAsync(IServiceProvider serviceProvider, IApplicationDbContext dbContext, SupplierConnectorImportRun nextRun, CancellationToken cancellationToken)
+    {
+        try
+        {
+            nextRun.Status = "Running";
+            nextRun.StartedAtUtc = DateTimeOffset.UtcNow;
+            nextRun.ProgressProcessed = 0;
+            nextRun.ProgressTotal = ReadMaxItems(nextRun.ParametersJson);
+            nextRun.Message = "Catalog tire parser backfill started.";
+            await dbContext.SaveChangesAsync(cancellationToken);
+
+            var importService = serviceProvider.GetRequiredService<ICatalogTireBackfillService>();
+            var maxItems = ReadMaxItems(nextRun.ParametersJson);
+            logger.LogInformation("Starting catalog tire parser backfill run {ImportRunId} with MaxItems={MaxItems}.", nextRun.Id, maxItems);
+            var result = await importService.BackfillAsync(new CatalogTireBackfillRequest(nextRun.Id, maxItems), cancellationToken);
+
+            nextRun.Status = result.Failed == 0 ? "Completed" : "CompletedWithErrors";
+            nextRun.CompletedAtUtc = DateTimeOffset.UtcNow;
+            nextRun.ProgressProcessed = result.Processed;
+            nextRun.ProgressTotal ??= result.Processed;
+            nextRun.Message = $"Catalog tire parser backfill completed. Processed {result.Processed:N0}, updated {result.Updated:N0}, detected tire data on {result.TireProductsDetected:N0}, no tire detected {result.NoTireDetected:N0}, failed {result.Failed:N0}.";
+            await dbContext.SaveChangesAsync(cancellationToken);
+            logger.LogInformation(
+                "Completed catalog tire parser backfill run {ImportRunId}. Processed={Processed}, Updated={Updated}, TireProductsDetected={TireProductsDetected}, Failed={Failed}.",
+                nextRun.Id,
+                result.Processed,
+                result.Updated,
+                result.TireProductsDetected,
+                result.Failed);
+        }
+        catch (Exception exception)
+        {
+            logger.LogError(exception, "Catalog tire parser backfill run {ImportRunId} failed.", nextRun.Id);
+            await MarkSupplierRunFailedAsync(dbContext, nextRun.Id, FailureMessage(exception), cancellationToken);
+        }
+    }
+
+    private async Task ProcessCatalogNormalizationRunAsync(IServiceProvider serviceProvider, IApplicationDbContext dbContext, SupplierConnectorImportRun nextRun, CancellationToken cancellationToken)
+    {
+        try
+        {
+            nextRun.Status = "Running";
+            nextRun.StartedAtUtc = DateTimeOffset.UtcNow;
+            nextRun.ProgressProcessed = 0;
+            nextRun.ProgressTotal = ReadMaxItems(nextRun.ParametersJson);
+            nextRun.Message = "Catalog normalization started.";
+            await dbContext.SaveChangesAsync(cancellationToken);
+
+            var importService = serviceProvider.GetRequiredService<ICatalogNormalizationService>();
+            var maxItems = ReadMaxItems(nextRun.ParametersJson);
+            logger.LogInformation("Starting catalog normalization run {ImportRunId} with MaxItems={MaxItems}.", nextRun.Id, maxItems);
+            var result = await importService.NormalizeAsync(new CatalogNormalizationRequest(nextRun.Id, maxItems), cancellationToken);
+
+            nextRun.Status = result.Failed == 0 ? "Completed" : "CompletedWithErrors";
+            nextRun.CompletedAtUtc = DateTimeOffset.UtcNow;
+            nextRun.ProgressProcessed = result.ProcessedSupplierProducts;
+            nextRun.ProgressTotal ??= result.ProcessedSupplierProducts;
+            nextRun.Message = $"Catalog normalization completed. Processed {result.ProcessedSupplierProducts:N0} supplier products, created {result.CreatedCanonicalItems:N0} canonical items, updated {result.UpdatedCanonicalItems:N0}, upserted {result.UpsertedSupplierOffers:N0} supplier offers, added {result.AddedIdentifiers:N0} identifiers, {result.AddedSources:N0} sources, {result.AddedFitments:N0} fitments, failed {result.Failed:N0}.";
+            await dbContext.SaveChangesAsync(cancellationToken);
+            logger.LogInformation(
+                "Completed catalog normalization run {ImportRunId}. Processed={Processed}, CreatedCanonicalItems={CreatedCanonicalItems}, Offers={Offers}, Identifiers={Identifiers}, Sources={Sources}, Fitments={Fitments}, Failed={Failed}.",
+                nextRun.Id,
+                result.ProcessedSupplierProducts,
+                result.CreatedCanonicalItems,
+                result.UpsertedSupplierOffers,
+                result.AddedIdentifiers,
+                result.AddedSources,
+                result.AddedFitments,
+                result.Failed);
+        }
+        catch (Exception exception)
+        {
+            logger.LogError(exception, "Catalog normalization run {ImportRunId} failed.", nextRun.Id);
+            await MarkSupplierRunFailedAsync(dbContext, nextRun.Id, FailureMessage(exception), cancellationToken);
+        }
+    }
+
     private async Task ProcessFitmentRunAsync(IServiceProvider serviceProvider, IApplicationDbContext dbContext, SupplierConnectorImportRun nextRun, CancellationToken cancellationToken)
     {
         try
@@ -926,9 +1082,10 @@ public sealed class WpsMasterItemListImportWorker(
     private static string FailureMessage(Exception exception)
     {
         var baseException = exception.GetBaseException();
-        return ReferenceEquals(baseException, exception)
+        var message = ReferenceEquals(baseException, exception)
             ? exception.Message
             : $"{exception.Message} Inner: {baseException.Message}";
+        return Limit(message, 1000);
     }
 
     private static async Task MarkSupplierRunFailedAsync(IApplicationDbContext dbContext, Guid importRunId, string message, CancellationToken cancellationToken)
@@ -947,7 +1104,7 @@ public sealed class WpsMasterItemListImportWorker(
 
         run.Status = "Failed";
         run.CompletedAtUtc = DateTimeOffset.UtcNow;
-        run.Message = message;
+        run.Message = Limit(message, 1000);
         await dbContext.SaveChangesAsync(cancellationToken);
     }
 
@@ -967,8 +1124,18 @@ public sealed class WpsMasterItemListImportWorker(
 
         run.Status = "Failed";
         run.CompletedAtUtc = DateTimeOffset.UtcNow;
-        run.Message = message;
+        run.Message = Limit(message, 1000);
         await dbContext.SaveChangesAsync(cancellationToken);
+    }
+
+    private static string Limit(string value, int maxLength)
+    {
+        if (value.Length <= maxLength)
+        {
+            return value;
+        }
+
+        return value[..maxLength];
     }
 
     private static async Task<SupplierDealerPricingImportResult> RunCompanyDealerPricingImportAsync(IServiceProvider serviceProvider, CompanySupplierConnectorImportRun nextRun, CancellationToken cancellationToken)

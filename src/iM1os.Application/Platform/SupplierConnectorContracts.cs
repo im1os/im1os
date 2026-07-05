@@ -26,7 +26,13 @@ public sealed record SupplierConnectorDatabaseMetrics(
     long FitmentRecordCount);
 
 public sealed record GlobalSchedulerPage(
-    IReadOnlyCollection<GlobalSchedulerEventRow> Events);
+    IReadOnlyCollection<GlobalSchedulerEventRow> Events,
+    GlobalCatalogParserBackfillSettingsRequest ParserBackfillSettings,
+    GlobalCatalogParserBackfillStats ParserBackfillStats,
+    IReadOnlyCollection<SupplierConnectorImportRunRow> ParserBackfillRuns,
+    GlobalCatalogNormalizationSettingsRequest NormalizationSettings,
+    GlobalCatalogNormalizationStats NormalizationStats,
+    IReadOnlyCollection<SupplierConnectorImportRunRow> NormalizationRuns);
 
 public sealed record GlobalSchedulerEventRow(
     string SchedulerKey,
@@ -41,6 +47,43 @@ public sealed record GlobalSchedulerEventRow(
     DateTimeOffset? LastRunCompletedAtUtc,
     string ConfiguratorController,
     string ConfiguratorAction);
+
+public sealed record GlobalCatalogParserBackfillSettingsRequest(
+    bool IsEnabled,
+    int ScheduleIntervalDays,
+    int? ScheduleMaxItems);
+
+public sealed record GlobalCatalogParserBackfillStats(
+    long TotalProducts,
+    long CandidateProducts,
+    long ProductsWithTireSize,
+    long ProductsWithTireModelLine,
+    long ProductsWithTireType,
+    long MissingTireSize,
+    DateTimeOffset? LastCompletedAtUtc,
+    string? LastCompletedMessage);
+
+public sealed record GlobalCatalogParserBackfillRunRequest(
+    string ImportMode,
+    int? MaxItems);
+
+public sealed record GlobalCatalogNormalizationSettingsRequest(
+    bool IsEnabled,
+    int ScheduleIntervalDays,
+    int? ScheduleMaxItems);
+
+public sealed record GlobalCatalogNormalizationStats(
+    long CanonicalItems,
+    long SupplierOffers,
+    long Identifiers,
+    long Fitments,
+    long Sources,
+    DateTimeOffset? LastCompletedAtUtc,
+    string? LastCompletedMessage);
+
+public sealed record GlobalCatalogNormalizationRunRequest(
+    string ImportMode,
+    int? MaxItems);
 
 public sealed record WpsConnectorSettingsRequest(
     bool IsEnabled,

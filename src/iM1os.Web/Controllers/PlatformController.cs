@@ -154,6 +154,72 @@ public sealed class PlatformController(
     }
 
     [Authorize(Roles = "Platform Administrator")]
+    [HttpPost]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> SaveCatalogParserBackfillScheduler(GlobalCatalogParserBackfillSettingsRequest request, CancellationToken cancellationToken)
+    {
+        try
+        {
+            await platformSupplierConnectorService.SaveGlobalCatalogParserBackfillSchedulerAsync(request, PlatformUserId(), cancellationToken);
+            TempData["PlatformMessage"] = "Catalog parser backfill scheduler saved.";
+        }
+        catch (ArgumentException exception)
+        {
+            TempData["PlatformMessage"] = exception.Message;
+        }
+
+        return RedirectToAction(nameof(Scheduler));
+    }
+
+    [Authorize(Roles = "Platform Administrator")]
+    [HttpPost]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> QueueCatalogParserBackfill(GlobalCatalogParserBackfillRunRequest request, CancellationToken cancellationToken)
+    {
+        var page = await platformSupplierConnectorService.QueueGlobalCatalogParserBackfillAsync(request, PlatformUserId(), cancellationToken);
+        TempData["PlatformMessage"] = page.ParserBackfillRuns.FirstOrDefault()?.Message;
+        return RedirectToAction(nameof(Scheduler));
+    }
+
+    [Authorize(Roles = "Platform Administrator")]
+    [HttpPost]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> SaveCatalogNormalizationScheduler(GlobalCatalogNormalizationSettingsRequest request, CancellationToken cancellationToken)
+    {
+        try
+        {
+            await platformSupplierConnectorService.SaveGlobalCatalogNormalizationSchedulerAsync(request, PlatformUserId(), cancellationToken);
+            TempData["PlatformMessage"] = "Catalog normalization scheduler saved.";
+        }
+        catch (ArgumentException exception)
+        {
+            TempData["PlatformMessage"] = exception.Message;
+        }
+
+        return RedirectToAction(nameof(Scheduler));
+    }
+
+    [Authorize(Roles = "Platform Administrator")]
+    [HttpPost]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> QueueCatalogNormalization(GlobalCatalogNormalizationRunRequest request, CancellationToken cancellationToken)
+    {
+        var page = await platformSupplierConnectorService.QueueGlobalCatalogNormalizationAsync(request, PlatformUserId(), cancellationToken);
+        TempData["PlatformMessage"] = page.NormalizationRuns.FirstOrDefault()?.Message;
+        return RedirectToAction(nameof(Scheduler));
+    }
+
+    [Authorize(Roles = "Platform Administrator")]
+    [HttpPost]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> ResetCanonicalCatalog(CancellationToken cancellationToken)
+    {
+        await platformSupplierConnectorService.ResetGlobalCanonicalCatalogAsync(PlatformUserId(), cancellationToken);
+        TempData["PlatformMessage"] = "Canonical catalog read model reset. Supplier source data and company data were not deleted.";
+        return RedirectToAction(nameof(Scheduler));
+    }
+
+    [Authorize(Roles = "Platform Administrator")]
     [HttpGet]
     public async Task<IActionResult> Operations(CancellationToken cancellationToken)
     {
@@ -162,17 +228,20 @@ public sealed class PlatformController(
 
     [Authorize(Roles = "Platform Administrator")]
     [HttpGet]
-    public async Task<IActionResult> ItemSearch(string? query, string? supplierCode, string? vehicleType, int? year, string? make, string? model, bool searchExecuted, CancellationToken cancellationToken)
+    public async Task<IActionResult> ItemSearch(string? query, string? supplierCode, string? category, string? brand, string? vehicleType, int? year, string? make, string? model, string? tireBrand, string? tireModelLine, int? tireWidth, int? tireAspectRatio, int? tireRimDiameter, string? tirePosition, bool searchExecuted, CancellationToken cancellationToken)
     {
-        return View(await supplierItemSearchService.SearchAsync(new SupplierItemSearchRequest(query, supplierCode, vehicleType, year, make, model, SearchExecuted: searchExecuted), SupplierItemSearchPageSize, cancellationToken));
+        return View(await supplierItemSearchService.SearchAsync(
+            new SupplierItemSearchRequest(query, supplierCode, vehicleType, year, make, model, SearchExecuted: searchExecuted, Category: category, Brand: brand, TireBrand: tireBrand, TireModelLine: tireModelLine, TireWidth: tireWidth, TireAspectRatio: tireAspectRatio, TireRimDiameter: tireRimDiameter, TirePosition: tirePosition),
+            SupplierItemSearchPageSize,
+            cancellationToken));
     }
 
     [Authorize(Roles = "Platform Administrator")]
     [HttpGet]
-    public async Task<IActionResult> ItemSearchResults(string? query, string? supplierCode, string? vehicleType, int? year, string? make, string? model, bool searchExecuted, int offset, CancellationToken cancellationToken)
+    public async Task<IActionResult> ItemSearchResults(string? query, string? supplierCode, string? category, string? brand, string? vehicleType, int? year, string? make, string? model, string? tireBrand, string? tireModelLine, int? tireWidth, int? tireAspectRatio, int? tireRimDiameter, string? tirePosition, bool searchExecuted, int offset, CancellationToken cancellationToken)
     {
         var page = await supplierItemSearchService.SearchAsync(
-            new SupplierItemSearchRequest(query, supplierCode, vehicleType, year, make, model, offset, searchExecuted, IncludeFacets: false),
+            new SupplierItemSearchRequest(query, supplierCode, vehicleType, year, make, model, offset, searchExecuted, IncludeFacets: false, Category: category, Brand: brand, TireBrand: tireBrand, TireModelLine: tireModelLine, TireWidth: tireWidth, TireAspectRatio: tireAspectRatio, TireRimDiameter: tireRimDiameter, TirePosition: tirePosition),
             SupplierItemSearchPageSize,
             cancellationToken);
         return Json(new
@@ -194,6 +263,8 @@ public sealed class PlatformController(
                 x.Brand,
                 x.Title,
                 x.Category,
+                x.LongDescription,
+                x.ProductFeatures,
                 x.Status,
                 x.FitmentRecordCount,
                 x.Msrp,
@@ -214,6 +285,8 @@ public sealed class PlatformController(
                     offer.Brand,
                     offer.Title,
                     offer.Category,
+                    offer.LongDescription,
+                    offer.ProductFeatures,
                     offer.Status,
                     offer.FitmentRecordCount,
                     offer.Msrp,

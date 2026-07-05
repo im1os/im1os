@@ -103,6 +103,18 @@ public sealed class ApplicationDbContext(
 
     public DbSet<GlobalProduct> GlobalProducts => Set<GlobalProduct>();
 
+    public DbSet<CanonicalItem> CanonicalItems => Set<CanonicalItem>();
+
+    public DbSet<CanonicalBrandAlias> CanonicalBrandAliases => Set<CanonicalBrandAlias>();
+
+    public DbSet<CanonicalItemIdentifier> CanonicalItemIdentifiers => Set<CanonicalItemIdentifier>();
+
+    public DbSet<CanonicalItemSupplierOffer> CanonicalItemSupplierOffers => Set<CanonicalItemSupplierOffer>();
+
+    public DbSet<CanonicalFitment> CanonicalFitments => Set<CanonicalFitment>();
+
+    public DbSet<CanonicalItemSource> CanonicalItemSources => Set<CanonicalItemSource>();
+
     public DbSet<GlobalVehicle> GlobalVehicles => Set<GlobalVehicle>();
 
     public DbSet<Supplier> Suppliers => Set<Supplier>();
@@ -136,6 +148,12 @@ public sealed class ApplicationDbContext(
     public DbSet<SupplierListing> SupplierListings => Set<SupplierListing>();
 
     public DbSet<InventoryItem> InventoryItems => Set<InventoryItem>();
+
+    public DbSet<CompanyInventoryItem> CompanyInventoryItems => Set<CompanyInventoryItem>();
+
+    public DbSet<CompanyInventoryLocationStock> CompanyInventoryLocationStocks => Set<CompanyInventoryLocationStock>();
+
+    public DbSet<CompanyInventoryMovement> CompanyInventoryMovements => Set<CompanyInventoryMovement>();
 
     public DbSet<PlatformUser> PlatformUsers => Set<PlatformUser>();
 
@@ -451,6 +469,7 @@ public sealed class ApplicationDbContext(
             entity.Property(x => x.NotificationPreferencesJson).HasColumnType("jsonb").IsRequired();
             entity.Property(x => x.DepartmentsJson).HasColumnType("jsonb").IsRequired();
             entity.Property(x => x.ConnectorPlaceholdersJson).HasColumnType("jsonb").IsRequired();
+            entity.Property(x => x.SupplierPreferencesJson).HasColumnType("jsonb").IsRequired();
             entity.HasQueryFilter(x => tenantProvider.CurrentOrganizationId == null || x.OrganizationId == tenantProvider.CurrentOrganizationId);
         });
 
@@ -751,6 +770,12 @@ public sealed class ApplicationDbContext(
             entity.Property(x => x.LongDescription).HasMaxLength(4000);
             entity.Property(x => x.Category).HasMaxLength(160);
             entity.Property(x => x.Upc).HasMaxLength(80);
+            entity.Property(x => x.TirePosition).HasMaxLength(24);
+            entity.Property(x => x.TireConstruction).HasMaxLength(24);
+            entity.Property(x => x.TireType).HasMaxLength(40);
+            entity.Property(x => x.TireModelLine).HasMaxLength(80);
+            entity.HasIndex(x => new { x.TireRimDiameter, x.TireWidth, x.TireAspectRatio });
+            entity.HasIndex(x => x.TireModelLine);
             entity.Property(x => x.Length).HasPrecision(12, 3);
             entity.Property(x => x.Width).HasPrecision(12, 3);
             entity.Property(x => x.Height).HasPrecision(12, 3);
@@ -758,6 +783,115 @@ public sealed class ApplicationDbContext(
             entity.Property(x => x.ImagesJson).HasColumnType("jsonb");
             entity.Property(x => x.SpecificationsJson).HasColumnType("jsonb");
             entity.Property(x => x.Status).HasMaxLength(80).IsRequired();
+        });
+
+        modelBuilder.Entity<CanonicalItem>(entity =>
+        {
+            entity.ToTable("canonical_items");
+            entity.HasIndex(x => new { x.NormalizedManufacturerPartNumber, x.Brand });
+            entity.HasIndex(x => x.PrimaryUpc);
+            entity.HasIndex(x => x.Category);
+            entity.HasIndex(x => x.Status);
+            entity.HasIndex(x => x.IsActive);
+            entity.Property(x => x.Brand).HasMaxLength(120);
+            entity.Property(x => x.Manufacturer).HasMaxLength(160);
+            entity.Property(x => x.ManufacturerPartNumber).HasMaxLength(120);
+            entity.Property(x => x.NormalizedManufacturerPartNumber).HasMaxLength(120);
+            entity.Property(x => x.Title).HasMaxLength(300).IsRequired();
+            entity.Property(x => x.Category).HasMaxLength(160);
+            entity.Property(x => x.Subcategory).HasMaxLength(160);
+            entity.Property(x => x.PrimaryUpc).HasMaxLength(80);
+            entity.Property(x => x.PrimaryImageUrl).HasMaxLength(1000);
+            entity.Property(x => x.SearchText);
+            entity.Property(x => x.Status).HasMaxLength(80).IsRequired();
+        });
+
+        modelBuilder.Entity<CanonicalBrandAlias>(entity =>
+        {
+            entity.ToTable("canonical_brand_aliases");
+            entity.HasIndex(x => x.NormalizedBrand).IsUnique();
+            entity.HasIndex(x => new { x.CanonicalBrand, x.IsActive });
+            entity.Property(x => x.Brand).HasMaxLength(160).IsRequired();
+            entity.Property(x => x.NormalizedBrand).HasMaxLength(160).IsRequired();
+            entity.Property(x => x.CanonicalBrand).HasMaxLength(160).IsRequired();
+            entity.Property(x => x.Notes).HasMaxLength(500);
+        });
+
+        modelBuilder.Entity<CanonicalItemIdentifier>(entity =>
+        {
+            entity.ToTable("canonical_item_identifiers");
+            entity.HasIndex(x => x.CanonicalItemId);
+            entity.HasIndex(x => new { x.CanonicalItemId, x.IdentifierType, x.NormalizedValue, x.SupplierProductId }).IsUnique();
+            entity.HasIndex(x => new { x.IdentifierType, x.NormalizedValue });
+            entity.HasIndex(x => new { x.SupplierId, x.IdentifierType, x.NormalizedValue });
+            entity.HasIndex(x => x.SupplierProductId);
+            entity.Property(x => x.IdentifierType).HasMaxLength(80).IsRequired();
+            entity.Property(x => x.IdentifierValue).HasMaxLength(200).IsRequired();
+            entity.Property(x => x.NormalizedValue).HasMaxLength(200).IsRequired();
+            entity.Property(x => x.SupplierCode).HasMaxLength(80);
+            entity.Property(x => x.Source).HasMaxLength(120);
+            entity.HasOne<CanonicalItem>().WithMany().HasForeignKey(x => x.CanonicalItemId).OnDelete(DeleteBehavior.Cascade);
+            entity.HasOne<Supplier>().WithMany().HasForeignKey(x => x.SupplierId);
+            entity.HasOne<SupplierProduct>().WithMany().HasForeignKey(x => x.SupplierProductId);
+        });
+
+        modelBuilder.Entity<CanonicalItemSupplierOffer>(entity =>
+        {
+            entity.ToTable("canonical_item_supplier_offers");
+            entity.HasIndex(x => x.CanonicalItemId);
+            entity.HasIndex(x => new { x.CanonicalItemId, x.SupplierCode });
+            entity.HasIndex(x => x.SupplierProductId).IsUnique();
+            entity.HasIndex(x => new { x.SupplierId, x.SupplierSku });
+            entity.Property(x => x.SupplierCode).HasMaxLength(80).IsRequired();
+            entity.Property(x => x.SupplierSku).HasMaxLength(120).IsRequired();
+            entity.Property(x => x.SupplierPartNumber).HasMaxLength(120);
+            entity.Property(x => x.SupplierTitle).HasMaxLength(500);
+            entity.Property(x => x.ListPrice).HasPrecision(12, 2);
+            entity.Property(x => x.DealerCost).HasPrecision(12, 2);
+            entity.Property(x => x.WarehouseAvailability).HasColumnType("jsonb");
+            entity.Property(x => x.ImageUrl).HasMaxLength(1000);
+            entity.Property(x => x.Status).HasMaxLength(80).IsRequired();
+            entity.HasOne<CanonicalItem>().WithMany().HasForeignKey(x => x.CanonicalItemId).OnDelete(DeleteBehavior.Cascade);
+            entity.HasOne<Supplier>().WithMany().HasForeignKey(x => x.SupplierId);
+            entity.HasOne<SupplierProduct>().WithMany().HasForeignKey(x => x.SupplierProductId);
+        });
+
+        modelBuilder.Entity<CanonicalFitment>(entity =>
+        {
+            entity.ToTable("canonical_fitments");
+            entity.HasIndex(x => x.CanonicalItemId);
+            entity.HasIndex(x => new { x.Year, x.MakeKey, x.ModelKey });
+            entity.HasIndex(x => new { x.CanonicalItemId, x.Year, x.MakeKey, x.ModelKey, x.SubmodelKey, x.EngineKey }).IsUnique();
+            entity.HasIndex(x => x.VehicleType);
+            entity.Property(x => x.Make).HasMaxLength(120).IsRequired();
+            entity.Property(x => x.MakeKey).HasMaxLength(120).IsRequired();
+            entity.Property(x => x.Model).HasMaxLength(160).IsRequired();
+            entity.Property(x => x.ModelKey).HasMaxLength(160).IsRequired();
+            entity.Property(x => x.VehicleType).HasMaxLength(120);
+            entity.Property(x => x.Submodel).HasMaxLength(160);
+            entity.Property(x => x.SubmodelKey).HasMaxLength(160).IsRequired();
+            entity.Property(x => x.Engine).HasMaxLength(160);
+            entity.Property(x => x.EngineKey).HasMaxLength(160).IsRequired();
+            entity.Property(x => x.Notes).HasMaxLength(1000);
+            entity.HasOne<CanonicalItem>().WithMany().HasForeignKey(x => x.CanonicalItemId).OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<CanonicalItemSource>(entity =>
+        {
+            entity.ToTable("canonical_item_sources");
+            entity.HasIndex(x => x.CanonicalItemId);
+            entity.HasIndex(x => x.GlobalProductId);
+            entity.HasIndex(x => x.SupplierProductId);
+            entity.HasIndex(x => new { x.SourceTable, x.SourceKey }).IsUnique();
+            entity.Property(x => x.SupplierCode).HasMaxLength(80);
+            entity.Property(x => x.SourceTable).HasMaxLength(120).IsRequired();
+            entity.Property(x => x.SourceKey).HasMaxLength(200).IsRequired();
+            entity.Property(x => x.MatchMethod).HasMaxLength(120).IsRequired();
+            entity.Property(x => x.MatchConfidence).HasPrecision(5, 4);
+            entity.HasOne<CanonicalItem>().WithMany().HasForeignKey(x => x.CanonicalItemId).OnDelete(DeleteBehavior.Cascade);
+            entity.HasOne<GlobalProduct>().WithMany().HasForeignKey(x => x.GlobalProductId);
+            entity.HasOne<Supplier>().WithMany().HasForeignKey(x => x.SupplierId);
+            entity.HasOne<SupplierProduct>().WithMany().HasForeignKey(x => x.SupplierProductId);
         });
 
         modelBuilder.Entity<GlobalVehicle>(entity =>
@@ -791,6 +925,7 @@ public sealed class ApplicationDbContext(
             entity.HasIndex(x => new { x.SupplierId, x.SupplierSku }).IsUnique();
             entity.HasIndex(x => new { x.SupplierId, x.SourceSupplierProductId });
             entity.HasIndex(x => x.GlobalProductId);
+            entity.HasIndex(x => x.CanonicalItemId);
             entity.HasIndex(x => x.SupplierPartNumber);
             entity.HasIndex(x => new { x.SupplierId, x.SupplierPartNumber });
             entity.HasIndex(x => new { x.SupplierId, x.ManufacturerPartNumber });
@@ -809,6 +944,7 @@ public sealed class ApplicationDbContext(
             entity.Property(x => x.SourceDataJson).HasColumnType("jsonb");
             entity.HasOne<Supplier>().WithMany().HasForeignKey(x => x.SupplierId);
             entity.HasOne<GlobalProduct>().WithMany().HasForeignKey(x => x.GlobalProductId);
+            entity.HasOne<CanonicalItem>().WithMany().HasForeignKey(x => x.CanonicalItemId);
         });
 
         modelBuilder.Entity<SupplierPrice>(entity =>
@@ -1036,6 +1172,84 @@ public sealed class ApplicationDbContext(
             entity.Property(x => x.AverageCost).HasPrecision(12, 2);
             entity.Property(x => x.LastCost).HasPrecision(12, 2);
             entity.HasOne<ManufacturerPart>().WithMany().HasForeignKey(x => x.ManufacturerPartId);
+            entity.HasQueryFilter(x => tenantProvider.CurrentOrganizationId == null || x.OrganizationId == tenantProvider.CurrentOrganizationId);
+        });
+
+        modelBuilder.Entity<CompanyInventoryItem>(entity =>
+        {
+            entity.ToTable("company_inventory_items");
+            entity.HasIndex(x => new { x.OrganizationId, x.Sku });
+            entity.HasIndex(x => new { x.OrganizationId, x.ManufacturerPartNumber });
+            entity.HasIndex(x => new { x.OrganizationId, x.NormalizedManufacturerPartNumber });
+            entity.HasIndex(x => new { x.OrganizationId, x.Upc });
+            entity.HasIndex(x => new { x.OrganizationId, x.Brand });
+            entity.HasIndex(x => new { x.OrganizationId, x.Category });
+            entity.HasIndex(x => new { x.OrganizationId, x.SupplierProductId });
+            entity.HasIndex(x => new { x.OrganizationId, x.Status });
+            entity.Property(x => x.SourceType).HasMaxLength(40).IsRequired();
+            entity.Property(x => x.SourceSupplierCode).HasMaxLength(40);
+            entity.Property(x => x.SourceSupplierName).HasMaxLength(160);
+            entity.Property(x => x.SourceSupplierSku).HasMaxLength(120);
+            entity.Property(x => x.SourceSupplierProductId).HasMaxLength(120);
+            entity.Property(x => x.Sku).HasMaxLength(120);
+            entity.Property(x => x.ManufacturerPartNumber).HasMaxLength(120);
+            entity.Property(x => x.NormalizedManufacturerPartNumber).HasMaxLength(120);
+            entity.Property(x => x.Upc).HasMaxLength(80);
+            entity.Property(x => x.Brand).HasMaxLength(120);
+            entity.Property(x => x.Title).HasMaxLength(300).IsRequired();
+            entity.Property(x => x.Description).HasMaxLength(2000);
+            entity.Property(x => x.Category).HasMaxLength(160);
+            entity.Property(x => x.Subcategory).HasMaxLength(160);
+            entity.Property(x => x.ImageUrl).HasMaxLength(1000);
+            entity.Property(x => x.RetailPrice).HasPrecision(12, 2);
+            entity.Property(x => x.SalePrice).HasPrecision(12, 2);
+            entity.Property(x => x.DefaultCost).HasPrecision(12, 2);
+            entity.Property(x => x.AverageCost).HasPrecision(12, 2);
+            entity.Property(x => x.LastCost).HasPrecision(12, 2);
+            entity.Property(x => x.Status).HasMaxLength(80).IsRequired();
+            entity.Property(x => x.Notes).HasMaxLength(1000);
+            entity.HasOne<GlobalProduct>().WithMany().HasForeignKey(x => x.GlobalProductId);
+            entity.HasOne<SupplierProduct>().WithMany().HasForeignKey(x => x.SupplierProductId);
+            entity.HasQueryFilter(x => tenantProvider.CurrentOrganizationId == null || x.OrganizationId == tenantProvider.CurrentOrganizationId);
+        });
+
+        modelBuilder.Entity<CompanyInventoryLocationStock>(entity =>
+        {
+            entity.ToTable("company_inventory_location_stocks");
+            entity.HasIndex(x => new { x.OrganizationId, x.CompanyInventoryItemId, x.LocationId }).IsUnique();
+            entity.HasIndex(x => new { x.OrganizationId, x.LocationId });
+            entity.HasIndex(x => new { x.OrganizationId, x.StockInStore });
+            entity.Property(x => x.LocationNameSnapshot).HasMaxLength(200);
+            entity.Property(x => x.BinLocation).HasMaxLength(120);
+            entity.Property(x => x.QuantityOnHand).HasPrecision(12, 2);
+            entity.Property(x => x.QuantityAllocated).HasPrecision(12, 2);
+            entity.Property(x => x.QuantityAvailable).HasPrecision(12, 2);
+            entity.Property(x => x.QuantityOnOrder).HasPrecision(12, 2);
+            entity.Property(x => x.QuantityBackordered).HasPrecision(12, 2);
+            entity.Property(x => x.MinQuantity).HasPrecision(12, 2);
+            entity.Property(x => x.MaxQuantity).HasPrecision(12, 2);
+            entity.Property(x => x.ReorderPoint).HasPrecision(12, 2);
+            entity.Property(x => x.ReorderQuantity).HasPrecision(12, 2);
+            entity.HasOne<CompanyInventoryItem>().WithMany().HasForeignKey(x => x.CompanyInventoryItemId);
+            entity.HasOne<Location>().WithMany().HasForeignKey(x => x.LocationId);
+            entity.HasQueryFilter(x => tenantProvider.CurrentOrganizationId == null || x.OrganizationId == tenantProvider.CurrentOrganizationId);
+        });
+
+        modelBuilder.Entity<CompanyInventoryMovement>(entity =>
+        {
+            entity.ToTable("company_inventory_movements");
+            entity.HasIndex(x => new { x.OrganizationId, x.CompanyInventoryItemId, x.CreatedAtUtc });
+            entity.HasIndex(x => new { x.OrganizationId, x.LocationId, x.CreatedAtUtc });
+            entity.Property(x => x.MovementType).HasMaxLength(80).IsRequired();
+            entity.Property(x => x.QuantityDelta).HasPrecision(12, 2);
+            entity.Property(x => x.QuantityAfter).HasPrecision(12, 2);
+            entity.Property(x => x.UnitCost).HasPrecision(12, 2);
+            entity.Property(x => x.ReferenceType).HasMaxLength(80);
+            entity.Property(x => x.ReferenceId).HasMaxLength(120);
+            entity.Property(x => x.Reason).HasMaxLength(160);
+            entity.Property(x => x.Notes).HasMaxLength(1000);
+            entity.HasOne<CompanyInventoryItem>().WithMany().HasForeignKey(x => x.CompanyInventoryItemId);
+            entity.HasOne<Location>().WithMany().HasForeignKey(x => x.LocationId);
             entity.HasQueryFilter(x => tenantProvider.CurrentOrganizationId == null || x.OrganizationId == tenantProvider.CurrentOrganizationId);
         });
 

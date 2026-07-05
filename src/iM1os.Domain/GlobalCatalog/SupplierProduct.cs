@@ -8,6 +8,8 @@ public sealed class SupplierProduct : AuditableEntity
 
     public Guid GlobalProductId { get; set; }
 
+    public Guid? CanonicalItemId { get; set; }
+
     public required string SupplierSku { get; set; }
 
     public string? SourceSupplierProductId { get; set; }

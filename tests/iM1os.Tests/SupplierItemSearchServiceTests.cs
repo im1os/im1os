@@ -2,6 +2,7 @@ using iM1os.Application.Common;
 using iM1os.Application.GlobalCatalog;
 using iM1os.Domain.GlobalCatalog;
 using iM1os.Domain.Platform;
+using iM1os.Domain.Tenancy;
 using iM1os.Infrastructure.Persistence;
 using iM1os.Infrastructure.Services;
 using Microsoft.EntityFrameworkCore;
@@ -127,6 +128,188 @@ public sealed class SupplierItemSearchServiceTests
     }
 
     [Fact]
+    public async Task Search_matches_multi_token_catalog_terms_across_brand_and_title()
+    {
+        await using var dbContext = CreateContext();
+        var supplier = new Supplier { Name = "Parts Unlimited", Code = "PU", ConnectorKey = "PU" };
+        var matchingProduct = new GlobalProduct
+        {
+            Brand = "DUNLOP",
+            Manufacturer = "DUNLOP",
+            ManufacturerPartNumber = "45273513",
+            NormalizedManufacturerPartNumber = "45273513",
+            Description = "TIRE GEOMAX MX34 REAR 110/100-18 64M BIAS TT",
+            Status = "Active"
+        };
+        var unrelatedProduct = new GlobalProduct
+        {
+            Brand = "DUNLOP",
+            Manufacturer = "DUNLOP",
+            ManufacturerPartNumber = "45273599",
+            NormalizedManufacturerPartNumber = "45273599",
+            Description = "TIRE GEOMAX MX53 REAR 110/100-18 64M BIAS TT",
+            Status = "Active"
+        };
+        var matchingSupplierProduct = new SupplierProduct
+        {
+            SupplierId = supplier.Id,
+            GlobalProductId = matchingProduct.Id,
+            SupplierSku = "873-0790",
+            SupplierDescription = "TIRE GEOMAX MX34 REAR 110/100-18 64M BIAS TT",
+            SupplierPartNumber = "873-0790",
+            ManufacturerPartNumber = "45273513",
+            NormalizedManufacturerPartNumber = "45273513",
+            SupplierStatus = "Active"
+        };
+        var unrelatedSupplierProduct = new SupplierProduct
+        {
+            SupplierId = supplier.Id,
+            GlobalProductId = unrelatedProduct.Id,
+            SupplierSku = "873-0799",
+            SupplierDescription = "TIRE GEOMAX MX53 REAR 110/100-18 64M BIAS TT",
+            SupplierPartNumber = "873-0799",
+            ManufacturerPartNumber = "45273599",
+            NormalizedManufacturerPartNumber = "45273599",
+            SupplierStatus = "Active"
+        };
+
+        dbContext.Suppliers.Add(supplier);
+        dbContext.GlobalProducts.AddRange(matchingProduct, unrelatedProduct);
+        dbContext.SupplierProducts.AddRange(matchingSupplierProduct, unrelatedSupplierProduct);
+        await dbContext.SaveChangesAsync();
+
+        var service = CreateService(dbContext);
+
+        var brandAndModelPage = await service.SearchAsync("Dunlop MX34 18", 10, CancellationToken.None);
+        var modelAndSizePage = await service.SearchAsync("MX34 18", 10, CancellationToken.None);
+
+        var brandAndModelItem = Assert.Single(brandAndModelPage.Results);
+        var modelAndSizeItem = Assert.Single(modelAndSizePage.Results);
+        Assert.Equal("873-0790", brandAndModelItem.SupplierSku);
+        Assert.Equal("873-0790", modelAndSizeItem.SupplierSku);
+    }
+
+    [Fact]
+    public async Task Search_expands_singular_and_plural_text_tokens()
+    {
+        await using var dbContext = CreateContext();
+        var supplier = new Supplier { Name = "Western Power Sports", Code = "WPS", ConnectorKey = "WPS" };
+        var product = new GlobalProduct
+        {
+            Brand = "ALL BALLS",
+            Manufacturer = "ALL BALLS",
+            ManufacturerPartNumber = "25-1234",
+            Description = "Wheel Bearing Kit",
+            Category = "Bearings",
+            Status = "Active"
+        };
+        var supplierProduct = new SupplierProduct
+        {
+            SupplierId = supplier.Id,
+            GlobalProductId = product.Id,
+            SupplierSku = "22-1234",
+            SupplierDescription = "WHEEL BEARING KIT",
+            SupplierPartNumber = "22-1234",
+            ManufacturerPartNumber = "25-1234",
+            SupplierStatus = "Active"
+        };
+
+        dbContext.Suppliers.Add(supplier);
+        dbContext.GlobalProducts.Add(product);
+        dbContext.SupplierProducts.Add(supplierProduct);
+        await dbContext.SaveChangesAsync();
+
+        var service = CreateService(dbContext);
+
+        var page = await service.SearchAsync("wheel bearings", 10, CancellationToken.None);
+
+        var item = Assert.Single(page.Results);
+        Assert.Equal("22-1234", item.SupplierSku);
+    }
+
+    [Fact]
+    public async Task Search_filters_by_structured_tire_fields()
+    {
+        await using var dbContext = CreateContext();
+        var supplier = new Supplier { Name = "Turn 14 Distribution", Code = "TURN14", ConnectorKey = "TURN14" };
+        var matchingProduct = new GlobalProduct
+        {
+            Brand = "Dunlop",
+            Manufacturer = "Dunlop",
+            ManufacturerPartNumber = "45273518",
+            Description = "Dunlop Geomax MX34 Rear Tire - 90/100-18 M/C 54M TT",
+            TireWidth = 90,
+            TireAspectRatio = 100,
+            TireRimDiameter = 18,
+            TirePosition = "rear",
+            TireConstruction = "bias",
+            TireType = "MX/offroad",
+            TireModelLine = "MX34",
+            Status = "Active"
+        };
+        var unrelatedProduct = new GlobalProduct
+        {
+            Brand = "Dunlop",
+            Manufacturer = "Dunlop",
+            ManufacturerPartNumber = "45273506",
+            Description = "Dunlop Geomax MX34 Front Tire - 70/100-14 M/C 37M TT",
+            TireWidth = 70,
+            TireAspectRatio = 100,
+            TireRimDiameter = 14,
+            TirePosition = "front",
+            TireConstruction = "bias",
+            TireType = "MX/offroad",
+            TireModelLine = "MX34",
+            Status = "Active"
+        };
+
+        dbContext.Suppliers.Add(supplier);
+        dbContext.GlobalProducts.AddRange(matchingProduct, unrelatedProduct);
+        dbContext.SupplierProducts.AddRange(
+            new SupplierProduct
+            {
+                SupplierId = supplier.Id,
+                GlobalProductId = matchingProduct.Id,
+                SupplierSku = "dun45273518",
+                SupplierDescription = matchingProduct.Description,
+                SupplierPartNumber = "dun45273518",
+                ManufacturerPartNumber = "45273518",
+                SupplierStatus = "Active"
+            },
+            new SupplierProduct
+            {
+                SupplierId = supplier.Id,
+                GlobalProductId = unrelatedProduct.Id,
+                SupplierSku = "dun45273506",
+                SupplierDescription = unrelatedProduct.Description,
+                SupplierPartNumber = "dun45273506",
+                ManufacturerPartNumber = "45273506",
+                SupplierStatus = "Active"
+            });
+        await dbContext.SaveChangesAsync();
+
+        var service = CreateService(dbContext);
+
+        var page = await service.SearchAsync(
+            new SupplierItemSearchRequest(
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                TireBrand: "Dunlop",
+                TireModelLine: "MX34",
+                TireRimDiameter: 18,
+                TirePosition: "rear"),
+            10,
+            CancellationToken.None);
+
+        var item = Assert.Single(page.Results);
+        Assert.Equal("dun45273518", item.SupplierSku);
+    }
+
+    [Fact]
     public async Task Search_sorts_exact_matches_before_partial_matches()
     {
         await using var dbContext = CreateContext();
@@ -238,6 +421,208 @@ public sealed class SupplierItemSearchServiceTests
         Assert.Equal(2, page.Results.Count);
         Assert.Equal("BEL-RAY", page.Results.First().Brand);
         Assert.Equal("MAXIMA", page.Results.Last().Brand);
+    }
+
+    [Fact]
+    public async Task Search_groups_known_brand_aliases_when_mfg_part_matches()
+    {
+        await using var dbContext = CreateContext();
+        var wps = new Supplier { Name = "Western Power Sports", Code = "WPS", ConnectorKey = "WPS" };
+        var turn14 = new Supplier { Name = "Turn 14 Distribution", Code = "TURN14", ConnectorKey = "TURN14" };
+        var wpsProduct = new GlobalProduct
+        {
+            Brand = "ALL BALLS",
+            Manufacturer = "ALL BALLS",
+            ManufacturerPartNumber = "57-105",
+            NormalizedManufacturerPartNumber = "57105",
+            Description = "Fork Dust Seal Kit",
+            Status = "Active"
+        };
+        var turn14Product = new GlobalProduct
+        {
+            Brand = "All Balls Racing",
+            Manufacturer = "All Balls Racing",
+            ManufacturerPartNumber = "57-105",
+            NormalizedManufacturerPartNumber = "57105",
+            Description = "Fork Dust Seal Kit",
+            Status = "Active"
+        };
+        var wpsSupplierProduct = new SupplierProduct
+        {
+            SupplierId = wps.Id,
+            GlobalProductId = wpsProduct.Id,
+            SupplierSku = "22-57105",
+            SupplierDescription = "ALL BALLS FORK DUST SEAL KIT",
+            SupplierPartNumber = "22-57105",
+            ManufacturerPartNumber = "57-105",
+            NormalizedManufacturerPartNumber = "57105",
+            SupplierStatus = "Active"
+        };
+        var turn14SupplierProduct = new SupplierProduct
+        {
+            SupplierId = turn14.Id,
+            GlobalProductId = turn14Product.Id,
+            SupplierSku = "abr57-105",
+            SupplierDescription = "ALL BALLS RACING FORK DUST SEAL KIT",
+            SupplierPartNumber = "abr57-105",
+            ManufacturerPartNumber = "57-105",
+            NormalizedManufacturerPartNumber = "57105",
+            SupplierStatus = "Active"
+        };
+
+        dbContext.Suppliers.AddRange(wps, turn14);
+        dbContext.GlobalProducts.AddRange(wpsProduct, turn14Product);
+        dbContext.SupplierProducts.AddRange(wpsSupplierProduct, turn14SupplierProduct);
+        await dbContext.SaveChangesAsync();
+
+        var service = CreateService(dbContext);
+
+        var page = await service.SearchAsync("57-105", 10, CancellationToken.None);
+
+        var item = Assert.Single(page.Results);
+        Assert.NotNull(item.Offers);
+        Assert.Equal(2, item.Offers!.Count);
+        Assert.Contains(item.Offers, offer => offer.SupplierCode == "WPS" && offer.SupplierSku == "22-57105");
+        Assert.Contains(item.Offers, offer => offer.SupplierCode == "TURN14" && offer.SupplierSku == "abr57-105");
+    }
+
+    [Fact]
+    public async Task Search_groups_maxima_racing_oil_alias_when_normalized_mfg_part_matches()
+    {
+        await using var dbContext = CreateContext();
+        var wps = new Supplier { Name = "Western Power Sports", Code = "WPS", ConnectorKey = "WPS" };
+        var pu = new Supplier { Name = "Parts Unlimited", Code = "PU", ConnectorKey = "PU" };
+        var wpsProduct = new GlobalProduct
+        {
+            Brand = "MAXIMA",
+            Manufacturer = "MAXIMA",
+            ManufacturerPartNumber = "30-02901",
+            NormalizedManufacturerPartNumber = "3002901",
+            Description = "Pro Plus Oil",
+            Status = "Active"
+        };
+        var puProduct = new GlobalProduct
+        {
+            Brand = "MAXIMA RACING OIL",
+            Manufacturer = "MAXIMA RACING OIL",
+            ManufacturerPartNumber = "3002901",
+            NormalizedManufacturerPartNumber = "3002901",
+            Description = "Oil 4T Pro Plus",
+            Status = "Active"
+        };
+        var wpsSupplierProduct = new SupplierProduct
+        {
+            SupplierId = wps.Id,
+            GlobalProductId = wpsProduct.Id,
+            SupplierSku = "78-98686",
+            SupplierDescription = "MAXIMA PRO PLUS OIL",
+            SupplierPartNumber = "78-98686",
+            ManufacturerPartNumber = "30-02901",
+            NormalizedManufacturerPartNumber = "3002901",
+            SupplierStatus = "Active"
+        };
+        var puSupplierProduct = new SupplierProduct
+        {
+            SupplierId = pu.Id,
+            GlobalProductId = puProduct.Id,
+            SupplierSku = "36010269",
+            SupplierDescription = "OIL 4T PRO PLUS+ 10W40 L",
+            SupplierPartNumber = "36010269",
+            ManufacturerPartNumber = "3002901",
+            NormalizedManufacturerPartNumber = "3002901",
+            SupplierStatus = "Active"
+        };
+
+        dbContext.Suppliers.AddRange(wps, pu);
+        dbContext.GlobalProducts.AddRange(wpsProduct, puProduct);
+        dbContext.SupplierProducts.AddRange(wpsSupplierProduct, puSupplierProduct);
+        await dbContext.SaveChangesAsync();
+
+        var service = CreateService(dbContext);
+
+        var page = await service.SearchAsync("30-02901", 10, CancellationToken.None);
+
+        var item = Assert.Single(page.Results);
+        Assert.NotNull(item.Offers);
+        Assert.Equal(2, item.Offers!.Count);
+        Assert.Contains(item.Offers, offer => offer.SupplierCode == "WPS" && offer.ManufacturerPartNumber == "30-02901");
+        Assert.Contains(item.Offers, offer => offer.SupplierCode == "PU" && offer.ManufacturerPartNumber == "3002901");
+    }
+
+    [Fact]
+    public async Task Company_search_prefers_configured_supplier_when_available()
+    {
+        await using var dbContext = CreateContext();
+        var organizationId = Guid.NewGuid();
+        var wps = new Supplier { Name = "Western Power Sports", Code = "WPS", ConnectorKey = "WPS" };
+        var turn14 = new Supplier { Name = "Turn 14 Distribution", Code = "TURN14", ConnectorKey = "TURN14" };
+        var wpsProduct = new GlobalProduct
+        {
+            Brand = "ACERBIS",
+            Manufacturer = "ACERBIS",
+            ManufacturerPartNumber = "2113770001",
+            NormalizedManufacturerPartNumber = "2113770001",
+            Description = "Fork Guard Black",
+            Status = "Active"
+        };
+        var turn14Product = new GlobalProduct
+        {
+            Brand = "ACERBIS",
+            Manufacturer = "ACERBIS",
+            ManufacturerPartNumber = "2113770001",
+            NormalizedManufacturerPartNumber = "2113770001",
+            Description = "Fork Guard Black",
+            Status = "Active"
+        };
+        var wpsSupplierProduct = new SupplierProduct
+        {
+            SupplierId = wps.Id,
+            GlobalProductId = wpsProduct.Id,
+            SupplierSku = "21137-70001",
+            SupplierDescription = "ACERBIS FORK GUARD BLACK",
+            ManufacturerPartNumber = "2113770001",
+            NormalizedManufacturerPartNumber = "2113770001",
+            WarehouseAvailability = """{"CA":4}""",
+            SupplierStatus = "Active"
+        };
+        var turn14SupplierProduct = new SupplierProduct
+        {
+            SupplierId = turn14.Id,
+            GlobalProductId = turn14Product.Id,
+            SupplierSku = "acb2113770001",
+            SupplierDescription = "ACERBIS FORK GUARD BLACK",
+            ManufacturerPartNumber = "2113770001",
+            NormalizedManufacturerPartNumber = "2113770001",
+            WarehouseAvailability = """{"01":2}""",
+            SupplierStatus = "Active"
+        };
+
+        dbContext.Suppliers.AddRange(wps, turn14);
+        dbContext.GlobalProducts.AddRange(wpsProduct, turn14Product);
+        dbContext.SupplierProducts.AddRange(wpsSupplierProduct, turn14SupplierProduct);
+        dbContext.SupplierPrices.AddRange(
+            new SupplierPrice { SupplierProductId = wpsSupplierProduct.Id, Msrp = 39.95m, DealerCost = 20.77m },
+            new SupplierPrice { SupplierProductId = turn14SupplierProduct.Id, Msrp = 39.95m, DealerCost = 25.97m });
+        dbContext.TenantModuleEntitlements.AddRange(
+            new TenantModuleEntitlement { OrganizationId = organizationId, ModuleKey = "SupplierConnector:WPS", IsEnabled = true },
+            new TenantModuleEntitlement { OrganizationId = organizationId, ModuleKey = "SupplierConnector:TURN14", IsEnabled = true });
+        dbContext.BusinessConfigurations.Add(new BusinessConfiguration
+        {
+            OrganizationId = organizationId,
+            SupplierPreferencesJson = """{"preferredSupplierCode":"TURN14","preferredWarehouseCodes":{"TURN14":"01","WPS":"CA"}}"""
+        });
+        await dbContext.SaveChangesAsync();
+
+        var service = CreateService(dbContext);
+
+        var page = await service.SearchForCompanyAsync(organizationId, new SupplierItemSearchRequest("2113770001", null, null, null, null, null, SearchExecuted: true), 10, CancellationToken.None);
+
+        var item = Assert.Single(page.Results);
+        Assert.Equal("TURN14", item.SupplierCode);
+        Assert.Equal("acb2113770001", item.SupplierSku);
+        Assert.NotNull(item.Offers);
+        Assert.Contains(item.Offers!, offer => offer.SupplierCode == "TURN14" && offer.IsDefaultOffer && offer.IsPreferredSupplier && offer.PreferredWarehouseCode == "01");
+        Assert.Contains(item.Offers!, offer => offer.SupplierCode == "WPS" && !offer.IsDefaultOffer && offer.ActualCost is null);
     }
 
     [Fact]

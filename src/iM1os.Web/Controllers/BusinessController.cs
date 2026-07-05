@@ -61,7 +61,7 @@ public sealed class BusinessController(
     }
 
     [HttpGet]
-    public async Task<IActionResult> SupplierItemSearch(string? query, string? supplierCode, string? vehicleType, int? year, string? make, string? model, bool searchExecuted, CancellationToken cancellationToken)
+    public async Task<IActionResult> SupplierItemSearch(string? query, string? supplierCode, string? category, string? brand, string? vehicleType, int? year, string? make, string? model, string? tireBrand, string? tireModelLine, int? tireWidth, int? tireAspectRatio, int? tireRimDiameter, string? tirePosition, bool searchExecuted, CancellationToken cancellationToken)
     {
         if (!TryOrganizationId(out var organizationId))
         {
@@ -72,13 +72,13 @@ public sealed class BusinessController(
         await SetCompanySupplierConnectorCodesAsync(organizationId, cancellationToken);
         return View(await supplierItemSearchService.SearchForCompanyAsync(
             organizationId,
-            new SupplierItemSearchRequest(query, supplierCode, vehicleType, year, make, model, SearchExecuted: searchExecuted),
+            new SupplierItemSearchRequest(query, supplierCode, vehicleType, year, make, model, SearchExecuted: searchExecuted, Category: category, Brand: brand, TireBrand: tireBrand, TireModelLine: tireModelLine, TireWidth: tireWidth, TireAspectRatio: tireAspectRatio, TireRimDiameter: tireRimDiameter, TirePosition: tirePosition),
             SupplierItemSearchPageSize,
             cancellationToken));
     }
 
     [HttpGet]
-    public async Task<IActionResult> SupplierItemSearchResults(string? query, string? supplierCode, string? vehicleType, int? year, string? make, string? model, bool searchExecuted, int offset, CancellationToken cancellationToken)
+    public async Task<IActionResult> SupplierItemSearchResults(string? query, string? supplierCode, string? category, string? brand, string? vehicleType, int? year, string? make, string? model, string? tireBrand, string? tireModelLine, int? tireWidth, int? tireAspectRatio, int? tireRimDiameter, string? tirePosition, bool searchExecuted, int offset, CancellationToken cancellationToken)
     {
         if (!TryOrganizationId(out var organizationId))
         {
@@ -87,7 +87,7 @@ public sealed class BusinessController(
 
         var page = await supplierItemSearchService.SearchForCompanyAsync(
             organizationId,
-            new SupplierItemSearchRequest(query, supplierCode, vehicleType, year, make, model, offset, searchExecuted, IncludeFacets: false),
+            new SupplierItemSearchRequest(query, supplierCode, vehicleType, year, make, model, offset, searchExecuted, IncludeFacets: false, Category: category, Brand: brand, TireBrand: tireBrand, TireModelLine: tireModelLine, TireWidth: tireWidth, TireAspectRatio: tireAspectRatio, TireRimDiameter: tireRimDiameter, TirePosition: tirePosition),
             SupplierItemSearchPageSize,
             cancellationToken);
         return Json(new
@@ -109,6 +109,8 @@ public sealed class BusinessController(
                 x.Brand,
                 x.Title,
                 x.Category,
+                x.LongDescription,
+                x.ProductFeatures,
                 x.Status,
                 x.FitmentRecordCount,
                 x.Msrp,
@@ -130,6 +132,8 @@ public sealed class BusinessController(
                     offer.Brand,
                     offer.Title,
                     offer.Category,
+                    offer.LongDescription,
+                    offer.ProductFeatures,
                     offer.Status,
                     offer.FitmentRecordCount,
                     offer.Msrp,
@@ -138,6 +142,9 @@ public sealed class BusinessController(
                     offer.ImageUrl,
                     offer.HasCachedInventory,
                     offer.CachedInventoryTotal,
+                    offer.IsPreferredSupplier,
+                    offer.PreferredWarehouseCode,
+                    offer.PreferredWarehouseName,
                     offer.IsDefaultOffer,
                     FetchFitmentUrl = Url.Action(nameof(SupplierFetchItemFitment), new { offer.SupplierProductId, organizationId }),
                     InventoryUrl = offer.SupplierCode == "WPS"
@@ -320,9 +327,17 @@ public sealed class BusinessController(
     public async Task<IActionResult> Location(UpsertLocationRequest request, CancellationToken cancellationToken)
     {
         var organizationId = OrganizationId();
-        if (!await RunOwnerActionAsync(() => businessAdministrationService.UpsertLocationAsync(organizationId, UserId(), request, cancellationToken)))
+        try
         {
-            return View("AccessDenied");
+            if (!await RunOwnerActionAsync(() => businessAdministrationService.UpsertLocationAsync(organizationId, UserId(), request, cancellationToken)))
+            {
+                return View("AccessDenied");
+            }
+        }
+        catch (InvalidOperationException ex)
+        {
+            TempData["CompanyAdminError"] = ex.Message;
+            return RedirectToAdministration(organizationId);
         }
 
         TempData["CompanyAdminStatus"] = "Company location saved.";
@@ -382,6 +397,20 @@ public sealed class BusinessController(
         }
 
         TempData["CompanyAdminStatus"] = "Notification preferences saved.";
+        return RedirectToAdministration(organizationId);
+    }
+
+    [HttpPost]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> SupplierPreferences(SupplierPreferencesRequest request, CancellationToken cancellationToken)
+    {
+        var organizationId = OrganizationId();
+        if (!await RunOwnerActionAsync(() => businessAdministrationService.SaveSupplierPreferencesAsync(organizationId, UserId(), request, cancellationToken)))
+        {
+            return View("AccessDenied");
+        }
+
+        TempData["CompanyAdminStatus"] = "Supplier preferences saved.";
         return RedirectToAdministration(organizationId);
     }
 

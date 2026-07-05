@@ -32,6 +32,46 @@
             ? value.Value.ToString("N0", System.Globalization.CultureInfo.InvariantCulture)
             : hasInventory ? "Available" : "-";
     }
+
+    static string? SupplierIconSrc(string? supplierCode, string? supplierName)
+    {
+        var value = $"{supplierCode} {supplierName}".ToLowerInvariant();
+        if (value.Contains("turn14") || value.Contains("turn 14"))
+        {
+            return "/images/suppliers/turn14.png";
+        }
+
+        if (string.Equals(supplierCode, "PU", StringComparison.OrdinalIgnoreCase) || value.Contains("parts unlimited") || value.Contains("partsunlimited"))
+        {
+            return "/images/suppliers/parts-unlimited.png";
+        }
+
+        if (value.Contains("wps") || value.Contains("western power sports") || value.Contains("westernpowersports"))
+        {
+            return "/images/suppliers/wps.png";
+        }
+
+        return null;
+    }
+
+    var initialResultsJson = System.Text.Json.JsonSerializer.Serialize(
+        Model.Results,
+        new System.Text.Json.JsonSerializerOptions(System.Text.Json.JsonSerializerDefaults.Web));
+    var tireWidths = new[] { 60, 70, 80, 90, 100, 110, 120, 130, 140, 150, 160, 170, 180, 190 };
+    var tireRatios = new[] { 25, 30, 35, 40, 50, 55, 60, 65, 70, 80, 90, 100 };
+    var tireRims = new[] { 8, 10, 11, 12, 14, 15, 16, 17, 18, 19, 21 };
+    var hasActiveSearch = Model.IsSearchExecuted &&
+        (!string.IsNullOrWhiteSpace(Model.Query) ||
+            !string.IsNullOrWhiteSpace(Model.SupplierCode) ||
+            !string.IsNullOrWhiteSpace(Model.Category) ||
+            !string.IsNullOrWhiteSpace(Model.Brand) ||
+            Model.TireWidth is not null ||
+            Model.TireAspectRatio is not null ||
+            Model.TireRimDiameter is not null ||
+            !string.IsNullOrWhiteSpace(Model.VehicleType) ||
+            Model.Year is not null ||
+            !string.IsNullOrWhiteSpace(Model.Make) ||
+            !string.IsNullOrWhiteSpace(Model.Model));
 }
 
 <nav class="im1-breadcrumbs" aria-label="Breadcrumb">
@@ -49,7 +89,7 @@
             <p>Find supplier catalog rows by supplier SKU, MFG part number, UPC, title, or year/make/model fitment.</p>
         </div>
     </header>
-    <div class="im1-inline-action-bar">
+    <div class="im1-inline-action-bar im1-configured-suppliers-bar">
         <strong>Configured suppliers</strong>
         @if (Model.ConfiguredSuppliers.Count == 0)
         {
@@ -59,69 +99,149 @@
         {
             @foreach (var supplier in Model.ConfiguredSuppliers)
             {
-                <span class="im1-status-pill">@supplier.Code - @(supplier.IsEnabled ? "Enabled" : "Disabled")</span>
+                <span class="im1-connector-status @(supplier.IsConfigured && supplier.IsEnabled ? "im1-connector-status-configured" : "im1-connector-status-unconfigured")">
+                    <span aria-hidden="true">@(supplier.IsConfigured && supplier.IsEnabled ? Html.Raw("&#10003;") : Html.Raw("&#10005;"))</span>
+                    <span>@supplier.Code - @(supplier.IsEnabled ? "Enabled" : "Disabled")</span>
+                </span>
             }
         }
     </div>
+    @if (hasActiveSearch)
+    {
+        <div class="im1-search-active-indicator">
+            <span class="im1-status-pill im1-status-success">Search active</span>
+            <span>@Model.TotalResults.ToString("N0") results matching the current filters</span>
+        </div>
+    }
 
-    <form class="im1-item-search-form im1-item-search-form-ymm" asp-action="ItemSearch" method="get">
+    <form class="im1-item-search-layout im1-item-search-form-ymm" asp-action="ItemSearch" method="get">
         <input type="hidden" name="searchExecuted" value="true" />
-        <label class="im1-field im1-field-wide">
-            <span>Search</span>
-            <input name="query" value="@Model.Query" placeholder="SKU, MFG Part#, title, or UPC" autocomplete="off" />
-        </label>
-        <label class="im1-field">
-            <span>Supplier</span>
-            <select name="supplierCode">
-                <option value="">All suppliers</option>
-                @foreach (var supplier in Model.AvailableSuppliers)
-                {
-                    <option value="@supplier.Code" selected="@(string.Equals(Model.SupplierCode, supplier.Code, StringComparison.OrdinalIgnoreCase))">@supplier.Name</option>
-                }
-            </select>
-        </label>
-        <label class="im1-field">
-            <span>Type</span>
-            <select name="vehicleType" data-ymm-parent>
-                <option value="">Any type</option>
-                @foreach (var vehicleType in Model.AvailableVehicleTypes)
-                {
-                    <option value="@vehicleType" selected="@(string.Equals(Model.VehicleType, vehicleType, StringComparison.OrdinalIgnoreCase))">@vehicleType</option>
-                }
-            </select>
-        </label>
-        <label class="im1-field">
-            <span>Year</span>
-            <select name="year" data-ymm-parent>
-                <option value="">Any year</option>
-                @foreach (var year in Model.AvailableYears)
-                {
-                    <option value="@year" selected="@(Model.Year == year)">@year</option>
-                }
-            </select>
-        </label>
-        <label class="im1-field">
-            <span>Make</span>
-            <select name="make" data-ymm-parent disabled="@(Model.Year is null)">
-                <option value="">Any make</option>
-                @foreach (var make in Model.AvailableMakes)
-                {
-                    <option value="@make" selected="@(string.Equals(Model.Make, make, StringComparison.OrdinalIgnoreCase))">@make</option>
-                }
-            </select>
-        </label>
-        <label class="im1-field">
-            <span>Model</span>
-            <select name="model" disabled="@(Model.Year is null || string.IsNullOrWhiteSpace(Model.Make))">
-                <option value="">Any model</option>
-                @foreach (var vehicleModel in Model.AvailableModels)
-                {
-                    <option value="@vehicleModel" selected="@(string.Equals(Model.Model, vehicleModel, StringComparison.OrdinalIgnoreCase))">@vehicleModel</option>
-                }
-            </select>
-        </label>
-        <button class="im1-button im1-button-primary" type="submit">Search</button>
-        <a class="im1-button im1-button-secondary" asp-action="ItemSearch">Reset</a>
+        <aside class="im1-item-filter-panel" aria-label="Item filters">
+            <div class="im1-item-filter-group">
+                <h3>Category</h3>
+                <label class="im1-field">
+                    <span>Category</span>
+                    <select name="category">
+                        <option value="">All categories</option>
+                        @if (!string.IsNullOrWhiteSpace(Model.Category) && !Model.AvailableCategories.Any(x => string.Equals(x, Model.Category, StringComparison.OrdinalIgnoreCase)))
+                        {
+                            <option value="@Model.Category" selected="selected">@Model.Category</option>
+                        }
+                        @foreach (var category in Model.AvailableCategories)
+                        {
+                            <option value="@category" selected="@(string.Equals(Model.Category, category, StringComparison.OrdinalIgnoreCase))">@category</option>
+                        }
+                    </select>
+                </label>
+                <label class="im1-field">
+                    <span>Brand</span>
+                    <select name="brand">
+                        <option value="">All brands</option>
+                        @if (!string.IsNullOrWhiteSpace(Model.Brand) && !Model.AvailableBrands.Any(x => string.Equals(x, Model.Brand, StringComparison.OrdinalIgnoreCase)))
+                        {
+                            <option value="@Model.Brand" selected="selected">@Model.Brand</option>
+                        }
+                        @foreach (var brand in Model.AvailableBrands)
+                        {
+                            <option value="@brand" selected="@(string.Equals(Model.Brand, brand, StringComparison.OrdinalIgnoreCase))">@brand</option>
+                        }
+                    </select>
+                </label>
+            </div>
+            <div class="im1-item-filter-group">
+                <h3>Attributes</h3>
+                <label class="im1-field">
+                    <span>Width</span>
+                    <select name="tireWidth">
+                        <option value="">Any width</option>
+                        @foreach (var width in tireWidths)
+                        {
+                            <option value="@width" selected="@(Model.TireWidth == width)">@width</option>
+                        }
+                    </select>
+                </label>
+                <label class="im1-field">
+                    <span>Ratio</span>
+                    <select name="tireAspectRatio">
+                        <option value="">Any ratio</option>
+                        @foreach (var ratio in tireRatios)
+                        {
+                            <option value="@ratio" selected="@(Model.TireAspectRatio == ratio)">@ratio</option>
+                        }
+                    </select>
+                </label>
+                <label class="im1-field">
+                    <span>Rim</span>
+                    <select name="tireRimDiameter">
+                        <option value="">Any rim</option>
+                        @foreach (var rim in tireRims)
+                        {
+                            <option value="@rim" selected="@(Model.TireRimDiameter == rim)">@rim</option>
+                        }
+                    </select>
+                </label>
+            </div>
+        </aside>
+        <div class="im1-item-search-main">
+            <div class="im1-item-search-form im1-item-search-main-controls">
+                <label class="im1-field im1-field-wide">
+                    <span>Search</span>
+                    <input name="query" value="@Model.Query" placeholder="SKU, MFG Part#, title, or UPC" autocomplete="off" />
+                </label>
+                <label class="im1-field">
+                    <span>Supplier</span>
+                    <select name="supplierCode">
+                        <option value="">All suppliers</option>
+                        @foreach (var supplier in Model.AvailableSuppliers)
+                        {
+                            <option value="@supplier.Code" selected="@(string.Equals(Model.SupplierCode, supplier.Code, StringComparison.OrdinalIgnoreCase))">@supplier.Name</option>
+                        }
+                    </select>
+                </label>
+                <label class="im1-field">
+                    <span>Type</span>
+                    <select name="vehicleType" data-ymm-parent>
+                        <option value="">Any type</option>
+                        @foreach (var vehicleType in Model.AvailableVehicleTypes)
+                        {
+                            <option value="@vehicleType" selected="@(string.Equals(Model.VehicleType, vehicleType, StringComparison.OrdinalIgnoreCase))">@vehicleType</option>
+                        }
+                    </select>
+                </label>
+                <label class="im1-field">
+                    <span>Year</span>
+                    <select name="year" data-ymm-parent>
+                        <option value="">Any year</option>
+                        @foreach (var year in Model.AvailableYears)
+                        {
+                            <option value="@year" selected="@(Model.Year == year)">@year</option>
+                        }
+                    </select>
+                </label>
+                <label class="im1-field">
+                    <span>Make</span>
+                    <select name="make" data-ymm-parent disabled="@(Model.Year is null)">
+                        <option value="">Any make</option>
+                        @foreach (var make in Model.AvailableMakes)
+                        {
+                            <option value="@make" selected="@(string.Equals(Model.Make, make, StringComparison.OrdinalIgnoreCase))">@make</option>
+                        }
+                    </select>
+                </label>
+                <label class="im1-field">
+                    <span>Model</span>
+                    <select name="model" disabled="@(Model.Year is null || string.IsNullOrWhiteSpace(Model.Make))">
+                        <option value="">Any model</option>
+                        @foreach (var vehicleModel in Model.AvailableModels)
+                        {
+                            <option value="@vehicleModel" selected="@(string.Equals(Model.Model, vehicleModel, StringComparison.OrdinalIgnoreCase))">@vehicleModel</option>
+                        }
+                    </select>
+                </label>
+                <button class="im1-button im1-button-primary" type="submit">Search</button>
+                <a class="im1-button im1-button-secondary" asp-action="ItemSearch">Reset</a>
+            </div>
+        </div>
     </form>
 </section>
 
@@ -147,6 +267,11 @@
         <div class="im1-item-result-list"
              data-item-results
              data-results-url="@Url.Action("ItemSearchResults")"
+             data-wps-inventory-template="@Url.Action("WpsInventory", new { supplierProductId = "SUPPLIER_PRODUCT_ID" })"
+             data-turn14-inventory-template="@Url.Action("Turn14Inventory", new { supplierProductId = "SUPPLIER_PRODUCT_ID" })"
+             data-pu-inventory-url="@Url.Action("PartsUnlimitedInventory")"
+             data-fitment-template="@Url.Action("FetchItemFitment", new { supplierProductId = "SUPPLIER_PRODUCT_ID" })"
+             data-platform-catalog="true"
              data-next-offset="@Model.TotalResults"
              data-has-more="@Model.HasMore.ToString().ToLowerInvariant()">
             @foreach (var item in Model.Results)
@@ -268,14 +393,34 @@
                         @if ((item.Offers?.Count ?? 0) > 0)
                         {
                             <details class="im1-supplier-offers">
-                                <summary>Supplier options (@item.Offers!.Count.ToString("N0"))</summary>
+                                <summary>Supplier Inventory (@item.Offers!.Count.ToString("N0"))</summary>
                                 <div class="im1-supplier-offer-grid">
                                     @foreach (var offer in item.Offers!)
                                     {
+                                        var supplierIconSrc = SupplierIconSrc(offer.SupplierCode, offer.SupplierName);
                                         <article class="im1-supplier-offer @(offer.IsDefaultOffer ? "im1-supplier-offer-selected" : string.Empty)" data-offer-row data-offer-supplier-product-id="@offer.SupplierProductId" data-offer-cost="@(offer.ActualCost ?? offer.DealerCost ?? decimal.MaxValue)" data-has-inventory="@offer.HasCachedInventory.ToString().ToLowerInvariant()">
+                                            <div class="im1-supplier-offer-media">
+                                                @if (!string.IsNullOrWhiteSpace(offer.ImageUrl))
+                                                {
+                                                    <img src="@offer.ImageUrl" alt="" loading="lazy" referrerpolicy="no-referrer" />
+                                                }
+                                                else if (!string.IsNullOrWhiteSpace(supplierIconSrc))
+                                                {
+                                                    <span class="im1-supplier-code-icon"><img src="@supplierIconSrc" alt="@offer.SupplierName" /></span>
+                                                }
+                                                else
+                                                {
+                                                    <span>@offer.SupplierCode</span>
+                                                }
+                                            </div>
                                             <header>
-                                                <strong>@offer.SupplierName</strong>
-                                                <span>@(offer.IsDefaultOffer ? "Selected" : "Option")</span>
+                                                <strong>
+                                                    @if (!string.IsNullOrWhiteSpace(supplierIconSrc))
+                                                    {
+                                                        <span class="im1-supplier-code-icon"><img src="@supplierIconSrc" alt="@offer.SupplierName" /></span>
+                                                    }
+                                                    @offer.SupplierName
+                                                </strong>
                                             </header>
                                             <dl>
                                                 <div><dt>SKU</dt><dd>@offer.SupplierSku</dd></div>
@@ -315,8 +460,21 @@
         <div class="im1-infinite-scroll-status" data-scroll-status>
             @(Model.HasMore ? "Load more items" : "All loaded items are shown.")
         </div>
+        <script type="application/json" id="initial-supplier-item-results">@Html.Raw(initialResultsJson)</script>
     }
 </section>
+
+<dialog class="im1-image-popout-dialog" data-image-popout>
+    <div class="im1-image-popout-inner">
+        <header>
+            <strong data-image-popout-title>Product image</strong>
+            <button class="im1-icon-button" type="button" data-close-image-popout aria-label="Close">x</button>
+        </header>
+        <div class="im1-image-popout-frame">
+            <img data-image-popout-img alt="" />
+        </div>
+    </div>
+</dialog>
 
 @section Scripts {
     <script>
@@ -351,6 +509,116 @@
                 return `${amount < 0 ? "-$" : "$"}${Math.abs(amount).toFixed(2)}`;
             };
             const valueOrDash = (value) => value === null || value === undefined || value === "" ? "-" : value;
+            const canCopyValue = value => value !== null && value !== undefined && value !== "";
+            const writeClipboardText = async value => {
+                if (navigator.clipboard?.writeText && window.isSecureContext) {
+                    await navigator.clipboard.writeText(value);
+                    return;
+                }
+
+                const input = document.createElement("textarea");
+                input.value = value;
+                input.setAttribute("readonly", "");
+                input.style.position = "fixed";
+                input.style.opacity = "0";
+                document.body.append(input);
+                input.select();
+                document.execCommand("copy");
+                input.remove();
+            };
+            const createCopyButton = (value, label) => {
+                if (!canCopyValue(value)) {
+                    return null;
+                }
+
+                const button = document.createElement("button");
+                button.type = "button";
+                button.className = "im1-copy-button";
+                button.title = `Copy ${label}`;
+                button.setAttribute("aria-label", `Copy ${label}`);
+                button.addEventListener("click", async event => {
+                    event.stopPropagation();
+                    const previous = button.title;
+                    try {
+                        await writeClipboardText(String(value));
+                        button.classList.add("im1-copy-button-copied");
+                        button.title = "Copied";
+                        setTimeout(() => {
+                            button.classList.remove("im1-copy-button-copied");
+                            button.title = previous;
+                        }, 900);
+                    } catch {
+                        button.title = "Copy failed";
+                        setTimeout(() => {
+                            button.title = previous;
+                        }, 900);
+                    }
+                });
+                return button;
+            };
+            const createCopyableValue = (value, label) => {
+                const wrapper = document.createElement("span");
+                wrapper.className = "im1-copyable-value";
+                const text = document.createElement("span");
+                text.textContent = valueOrDash(value);
+                wrapper.append(text);
+                const copy = createCopyButton(value, label);
+                if (copy) {
+                    wrapper.append(copy);
+                }
+                return wrapper;
+            };
+            const appendSupplierMetaPart = (container, value, label) => {
+                if (!canCopyValue(value)) {
+                    return;
+                }
+
+                if (container.dataset.hasMetaPart === "true") {
+                    container.append(document.createTextNode(" | "));
+                }
+
+                container.append(label === "SKU" || label === "MFG Part#"
+                    ? createCopyableValue(value, label)
+                    : document.createTextNode(value));
+                container.dataset.hasMetaPart = "true";
+            };
+            const supplierIconAssets = {
+                "turn14": { src: "/images/suppliers/turn14.png", label: "Turn 14 Distribution" },
+                "parts-unlimited": { src: "/images/suppliers/parts-unlimited.png", label: "Parts Unlimited" },
+                "wps": { src: "/images/suppliers/wps.png", label: "WPS" }
+            };
+            const supplierIconKey = (...values) => {
+                const clean = values.filter(Boolean).join(" ").toLowerCase().replace(/[^a-z0-9]/g, "");
+                if (!clean) return null;
+                if (clean.includes("turn14") || clean.includes("turnfourteen")) return "turn14";
+                if (clean.includes("partsunlimited") || clean === "pu" || clean.includes("partsunltd")) return "parts-unlimited";
+                if (clean.includes("wps") || clean.includes("westernpowersports")) return "wps";
+                return null;
+            };
+            const createSupplierIcon = (supplierCode, supplierName) => {
+                const key = supplierIconKey(supplierCode, supplierName);
+                if (!key) return null;
+                const icon = document.createElement("span");
+                icon.className = "im1-supplier-code-icon";
+                icon.title = supplierIconAssets[key].label;
+                const image = document.createElement("img");
+                image.src = supplierIconAssets[key].src;
+                image.alt = supplierIconAssets[key].label;
+                icon.append(image);
+                return icon;
+            };
+            const renderSupplierMeta = (container, item) => {
+                container.replaceChildren();
+                delete container.dataset.hasMetaPart;
+                const metaIcon = createSupplierIcon(item.supplierCode, item.supplierName);
+                if (metaIcon) {
+                    container.append(metaIcon);
+                }
+                appendSupplierMetaPart(container, item.supplierCode, "Supplier");
+                appendSupplierMetaPart(container, item.supplierSku, "SKU");
+                appendSupplierMetaPart(container, item.brand, "Brand");
+                appendSupplierMetaPart(container, item.manufacturerPartNumber, "MFG Part#");
+            };
             const formatInventoryTotal = (offer) => offer?.cachedInventoryTotal !== null && offer?.cachedInventoryTotal !== undefined
                 ? Number(offer.cachedInventoryTotal).toLocaleString()
                 : offer?.hasCachedInventory ? "Available" : "-";
@@ -410,7 +678,7 @@
                 rows.forEach((row) => {
                     const isSelected = row === selected;
                     row.classList.toggle("im1-supplier-offer-selected", isSelected);
-                    const status = row.querySelector("header span");
+                    const status = row.querySelector("[data-offer-status]");
                     if (status) status.textContent = isSelected ? "Lowest in stock" : "Option";
                 });
             };
@@ -418,9 +686,12 @@
                 const supplierProductId = source.dataset.supplierProductId;
                 const item = source.closest("[data-item-result]");
                 if (!supplierProductId || !item || !result?.isAvailable) return;
+                item._inventoryResultsBySupplierProductId ??= new Map();
+                item._inventoryResultsBySupplierProductId.set(supplierProductId, result.warehouses || []);
                 const row = item.querySelector(`[data-offer-supplier-product-id="${supplierProductId}"]`);
                 if (!row) return;
                 row.dataset.hasInventory = hasInventoryFromWarehouses(result.warehouses || []) ? "true" : "false";
+                updateTopActualStock(item, supplierProductId, result.warehouses || []);
                 selectLeastCostInStockOffer(item);
             };
             const updateInventorySummary = (panel, warehouses) => {
@@ -685,6 +956,46 @@
                     });
                 });
             };
+            const warehouseHasInventory = warehouse => {
+                if (!warehouse) return false;
+                if (Number.isFinite(Number(warehouse.quantity))) {
+                    return Number(warehouse.quantity) > 0;
+                }
+
+                const display = warehouse.quantityDisplay || "";
+                const match = display.match(/\d+/);
+                if (match) return Number(match[0]) > 0;
+                return /available|in stock/i.test(display);
+            };
+            const warehouseMatchesPreference = (warehouse, preferredWarehouseCode) => {
+                if (!warehouse || !preferredWarehouseCode) return false;
+                const preferred = String(preferredWarehouseCode).toLowerCase();
+                return [warehouse.warehouseCode, warehouse.warehouseName]
+                    .filter(Boolean)
+                    .some(value => String(value).toLowerCase().includes(preferred));
+            };
+            const selectedDisplayWarehouse = (warehouses, preferredWarehouseCode) => {
+                const rows = warehouses || [];
+                const preferred = preferredWarehouseCode
+                    ? rows.find(warehouse => warehouseMatchesPreference(warehouse, preferredWarehouseCode))
+                    : null;
+                if (preferred && warehouseHasInventory(preferred)) {
+                    return preferred;
+                }
+
+                return rows.find(warehouseHasInventory) || preferred || null;
+            };
+            const preferredWarehouseStockText = (warehouses, preferredWarehouseCode) => {
+                const warehouse = selectedDisplayWarehouse(warehouses, preferredWarehouseCode);
+                return warehouse ? `${cleanWarehouseName(warehouse)}: ${warehouse.quantityDisplay || "-"}` : "";
+            };
+            const updateTopActualStock = (item, supplierProductId, warehouses) => {
+                if (!item || !supplierProductId) return;
+                const tile = item.querySelector(`[data-actual-supplier-product-id="${supplierProductId}"]`);
+                const stock = tile?.querySelector("[data-actual-stock]");
+                if (!stock) return;
+                stock.textContent = preferredWarehouseStockText(warehouses || [], tile.dataset.preferredWarehouseCode);
+            };
             const createMetric = (label, value) => {
                 const wrapper = document.createElement("div");
                 const term = document.createElement("dt");
@@ -720,13 +1031,123 @@
                 }
                 return wrapper;
             };
+            const decodeHtmlEntities = value => {
+                const decoder = document.createElement("textarea");
+                decoder.innerHTML = value || "";
+                return decoder.value;
+            };
+            const cleanProductText = value => {
+                let text = decodeHtmlEntities(value);
+                text = text
+                    .replace(/<\s*br\s*\/?>/gi, "\n")
+                    .replace(/<\s*\/li\s*>/gi, "\n")
+                    .replace(/<\s*li[^>]*>/gi, "")
+                    .replace(/<\s*\/p\s*>/gi, "\n")
+                    .replace(/<[^>]+>/g, " ");
+                return decodeHtmlEntities(text)
+                    .replace(/\u00a0/g, " ")
+                    .replace(/[ \t]+/g, " ")
+                    .replace(/[ \t]*\n[ \t]*/g, "\n")
+                    .replace(/\n{3,}/g, "\n\n")
+                    .trim();
+            };
+            const splitProductFeatures = value => cleanProductText(value)
+                .split(/\r?\n|(?:\s*;\s*)|(?:\s*\u2022\s*)/)
+                .map(feature => feature.trim())
+                .filter(Boolean);
+            const createProductDetailPopout = (item) => {
+                const sourceRows = (item.offers || []).length ? item.offers : [item];
+                const detailRows = sourceRows
+                    .map(row => ({
+                        supplierCode: row.supplierCode,
+                        supplierName: row.supplierName,
+                        supplierSku: row.supplierSku,
+                        manufacturerPartNumber: row.manufacturerPartNumber,
+                        title: row.title,
+                        imageUrl: row.imageUrl,
+                        longDescription: cleanProductText(row.longDescription),
+                        productFeatures: cleanProductText(row.productFeatures)
+                    }))
+                    .filter(row => row.longDescription || row.productFeatures);
+
+                if (!detailRows.length) return null;
+
+                const details = document.createElement("details");
+                details.className = "im1-product-detail-popout im1-workorder-product-detail-popout";
+                const summary = document.createElement("summary");
+                summary.textContent = `Product Detail (${detailRows.length.toLocaleString()})`;
+                const grid = document.createElement("div");
+                grid.className = "im1-product-detail-grid";
+                detailRows.forEach(row => {
+                    const article = document.createElement("article");
+                    article.className = "im1-product-detail-card";
+                    if (!row.imageUrl) article.classList.add("im1-product-detail-card-no-image");
+                    const header = document.createElement("header");
+                    const title = document.createElement("strong");
+                    const icon = createSupplierIcon(row.supplierCode, row.supplierName);
+                    if (icon) title.append(icon);
+                    appendSupplierMetaPart(title, row.supplierName || row.supplierCode || "Supplier detail", "Supplier");
+                    appendSupplierMetaPart(title, row.supplierSku, "SKU");
+                    appendSupplierMetaPart(title, row.manufacturerPartNumber, "MFG Part#");
+                    header.append(title);
+                    article.append(header);
+                    if (row.imageUrl) {
+                        const imageButton = document.createElement("button");
+                        imageButton.type = "button";
+                        imageButton.className = "im1-product-detail-image-button";
+                        imageButton.setAttribute("aria-label", "Open supplier product image");
+                        const image = document.createElement("img");
+                        image.src = row.imageUrl;
+                        image.alt = "";
+                        image.loading = "lazy";
+                        image.referrerPolicy = "no-referrer";
+                        imageButton.append(image);
+                        imageButton.addEventListener("click", () => openImagePopout(row.imageUrl, row.title || row.supplierSku || "Supplier product image"));
+                        article.append(imageButton);
+                    }
+                    if (row.longDescription) {
+                        const block = document.createElement("section");
+                        const label = document.createElement("h4");
+                        const text = document.createElement("p");
+                        label.textContent = "Description";
+                        text.textContent = row.longDescription;
+                        block.append(label, text);
+                        article.append(block);
+                    }
+                    const features = splitProductFeatures(row.productFeatures);
+                    if (features.length) {
+                        const block = document.createElement("section");
+                        const label = document.createElement("h4");
+                        label.textContent = "Features";
+                        if (features.length === 1) {
+                            const text = document.createElement("p");
+                            text.textContent = features[0];
+                            block.append(label, text);
+                        } else {
+                            const list = document.createElement("ul");
+                            features.forEach(feature => {
+                                const li = document.createElement("li");
+                                li.textContent = feature;
+                                list.append(li);
+                            });
+                            block.append(label, list);
+                        }
+                        article.append(block);
+                    }
+                    grid.append(article);
+                });
+                details.append(summary, grid);
+                return details;
+            };
             const createFitmentPopout = (item) => {
                 const fitmentRows = item.fitment || [];
                 if (!fitmentRows.length) return null;
                 const details = document.createElement("details");
-                details.className = "im1-fitment-popout";
+                details.className = "im1-fitment-popout im1-workorder-fitment-popout";
                 const summary = document.createElement("summary");
                 summary.textContent = `Fitment (${fitmentRows.length.toLocaleString()})`;
+                const controls = document.createElement("div");
+                controls.className = "im1-fitment-filter";
                 const wrapper = document.createElement("div");
                 wrapper.className = "im1-fitment-grid-wrap";
                 const table = document.createElement("table");
@@ -740,8 +1161,49 @@
                 });
                 thead.append(headerRow);
                 const tbody = document.createElement("tbody");
+                const uniqueOptions = (rows, selector) => [...new Set(rows
+                    .map(selector)
+                    .filter(value => value !== null && value !== undefined && value !== "")
+                    .map(value => String(value)))]
+                    .sort((a, b) => a.localeCompare(b, undefined, { numeric: true, sensitivity: "base" }));
+                const setSelectOptions = (select, values) => {
+                    const selected = select.value;
+                    select.replaceChildren();
+                    const any = document.createElement("option");
+                    any.value = "";
+                    any.textContent = "All";
+                    select.append(any);
+                    values.forEach(value => {
+                        const option = document.createElement("option");
+                        option.value = value;
+                        option.textContent = value;
+                        select.append(option);
+                    });
+                    select.value = values.includes(selected) ? selected : "";
+                };
+                const createFilter = label => {
+                    const field = document.createElement("label");
+                    const text = document.createElement("span");
+                    const select = document.createElement("select");
+                    text.textContent = label;
+                    select.dataset.fitmentFilter = label.toLowerCase();
+                    field.append(text, select);
+                    return field;
+                };
+                const yearFilter = createFilter("Year");
+                const makeFilter = createFilter("Make");
+                const modelFilter = createFilter("Model");
+                const count = document.createElement("span");
+                count.className = "im1-fitment-filter-count";
+                controls.append(yearFilter, makeFilter, modelFilter, count);
+                const yearSelect = yearFilter.querySelector("select");
+                const makeSelect = makeFilter.querySelector("select");
+                const modelSelect = modelFilter.querySelector("select");
                 fitmentRows.forEach((fitment) => {
                     const row = document.createElement("tr");
+                    row.dataset.year = fitment.year === null || fitment.year === undefined ? "" : String(fitment.year);
+                    row.dataset.make = fitment.make || "";
+                    row.dataset.model = fitment.model || "";
                     [
                         fitment.year,
                         fitment.make,
@@ -753,9 +1215,49 @@
                     });
                     tbody.append(row);
                 });
+                const refreshDependentOptions = () => {
+                    const selectedYear = yearSelect.value;
+                    const yearRows = selectedYear
+                        ? fitmentRows.filter(fitment => String(fitment.year ?? "") === selectedYear)
+                        : fitmentRows;
+                    setSelectOptions(makeSelect, uniqueOptions(yearRows, fitment => fitment.make));
+                    const makeRows = makeSelect.value
+                        ? yearRows.filter(fitment => (fitment.make || "") === makeSelect.value)
+                        : yearRows;
+                    setSelectOptions(modelSelect, uniqueOptions(makeRows, fitment => fitment.model));
+                };
+                const applyFilter = () => {
+                    const selectedYear = yearSelect.value;
+                    const selectedMake = makeSelect.value;
+                    const selectedModel = modelSelect.value;
+                    let visibleCount = 0;
+                    [...tbody.rows].forEach(row => {
+                        const visible = (!selectedYear || row.dataset.year === selectedYear) &&
+                            (!selectedMake || row.dataset.make === selectedMake) &&
+                            (!selectedModel || row.dataset.model === selectedModel);
+                        row.hidden = !visible;
+                        if (visible) visibleCount++;
+                    });
+                    count.textContent = `${visibleCount.toLocaleString()} shown`;
+                };
+                setSelectOptions(yearSelect, uniqueOptions(fitmentRows, fitment => fitment.year).sort((a, b) => Number(b) - Number(a)));
+                refreshDependentOptions();
+                yearSelect.addEventListener("change", () => {
+                    makeSelect.value = "";
+                    modelSelect.value = "";
+                    refreshDependentOptions();
+                    applyFilter();
+                });
+                makeSelect.addEventListener("change", () => {
+                    modelSelect.value = "";
+                    refreshDependentOptions();
+                    applyFilter();
+                });
+                modelSelect.addEventListener("change", applyFilter);
+                applyFilter();
                 table.append(thead, tbody);
                 wrapper.append(table);
-                details.append(summary, wrapper);
+                details.append(summary, controls, wrapper);
                 return details;
             };
             const createInventoryPanel = (item) => {
@@ -799,13 +1301,65 @@
                 });
                 return summary;
             };
+            const routeFromTemplate = (template, supplierProductId) => {
+                if (!template || !supplierProductId) return null;
+                return template.replace("SUPPLIER_PRODUCT_ID", encodeURIComponent(supplierProductId));
+            };
+            const withCatalogRoutes = (item) => {
+                const resultList = document.querySelector("[data-item-results]");
+                if (!resultList || !item) return item;
+                const routeOffer = (offer) => {
+                    if (!offer) return offer;
+                    const code = (offer.supplierCode || "").toUpperCase();
+                    return {
+                        ...offer,
+                        inventoryUrl: offer.inventoryUrl || (code === "WPS"
+                            ? routeFromTemplate(resultList.dataset.wpsInventoryTemplate, offer.supplierProductId)
+                            : code === "TURN14"
+                                ? routeFromTemplate(resultList.dataset.turn14InventoryTemplate, offer.supplierProductId)
+                                : null),
+                        inventoryBatchUrl: offer.inventoryBatchUrl || (code === "PU" ? resultList.dataset.puInventoryUrl : null),
+                        inventoryLabel: offer.inventoryLabel || (code === "WPS"
+                            ? "WPS Warehouse Inventory"
+                            : code === "TURN14"
+                                ? "Turn14 Warehouse Inventory"
+                                : code === "PU"
+                                    ? "Parts Unlimited Warehouse Inventory"
+                                    : null),
+                        fetchFitmentUrl: offer.fetchFitmentUrl || routeFromTemplate(resultList.dataset.fitmentTemplate, offer.supplierProductId)
+                    };
+                };
+                const offers = (item.offers || []).map(routeOffer);
+                const primary = routeOffer(item);
+                return {
+                    ...primary,
+                    offers,
+                    fetchFitmentUrl: item.fetchFitmentUrl || routeFromTemplate(resultList.dataset.fitmentTemplate, item.supplierProductId)
+                };
+            };
+            const imagePopout = document.querySelector("[data-image-popout]");
+            const openImagePopout = (imageUrl, title) => {
+                if (!imagePopout || !imageUrl) return;
+                const image = imagePopout.querySelector("[data-image-popout-img]");
+                const titleElement = imagePopout.querySelector("[data-image-popout-title]");
+                image.src = imageUrl;
+                titleElement.textContent = title || "Product image";
+                imagePopout.showModal();
+            };
+            document.querySelector("[data-close-image-popout]")?.addEventListener("click", () => imagePopout?.close());
+            imagePopout?.addEventListener("click", event => {
+                if (event.target === imagePopout) {
+                    imagePopout.close();
+                }
+            });
             const createSupplierOffers = (item) => {
                 const offers = item.offers || [];
                 if (offers.length === 0) return null;
+                const isPlatformCatalog = document.querySelector("[data-item-results]")?.dataset.platformCatalog === "true";
                 const details = document.createElement("details");
                 details.className = "im1-supplier-offers";
                 const summary = document.createElement("summary");
-                summary.textContent = `Supplier options (${offers.length.toLocaleString()})`;
+                summary.textContent = `Supplier Inventory (${offers.length.toLocaleString()})`;
                 const grid = document.createElement("div");
                 grid.className = "im1-supplier-offer-grid";
                 offers.forEach((offer) => {
@@ -815,18 +1369,48 @@
                     row.dataset.offerSupplierProductId = offer.supplierProductId || "";
                     row.dataset.offerCost = String(offer.actualCost ?? offer.dealerCost ?? Number.MAX_VALUE);
                     row.dataset.hasInventory = offer.hasCachedInventory ? "true" : "false";
+                    row.dataset.isPreferredSupplier = offer.isPreferredSupplier ? "true" : "false";
+                    row.dataset.preferredWarehouseCode = offer.preferredWarehouseCode || "";
+                    const media = document.createElement("div");
+                    media.className = "im1-supplier-offer-media";
+                    if (offer.imageUrl) {
+                        const button = document.createElement("button");
+                        button.type = "button";
+                        button.className = "im1-supplier-offer-image-button";
+                        button.setAttribute("aria-label", "Open supplier product image");
+                        const img = document.createElement("img");
+                        img.src = offer.imageUrl;
+                        img.alt = "";
+                        img.loading = "lazy";
+                        img.referrerPolicy = "no-referrer";
+                        button.append(img);
+                        button.addEventListener("click", () => openImagePopout(offer.imageUrl, offer.title || offer.supplierSku || "Supplier product image"));
+                        media.append(button);
+                    } else {
+                        const mediaIcon = createSupplierIcon(offer.supplierCode, offer.supplierName);
+                        if (mediaIcon) {
+                            media.append(mediaIcon);
+                        } else {
+                            media.textContent = offer.supplierCode || "";
+                        }
+                    }
                     const header = document.createElement("header");
                     const supplier = document.createElement("strong");
-                    const status = document.createElement("span");
-                    supplier.textContent = offer.supplierName || offer.supplierCode || "-";
-                    status.textContent = offer.isDefaultOffer ? "Selected" : "Option";
-                    header.append(supplier, status);
+                    const icon = createSupplierIcon(offer.supplierCode, offer.supplierName);
+                    if (icon) supplier.append(icon);
+                    supplier.append(document.createTextNode(offer.supplierName || offer.supplierCode || "-"));
+                    header.append(supplier);
                     const metrics = document.createElement("dl");
-                    metrics.append(
-                        createMetric("SKU", offer.supplierSku || "-"),
-                        createMetric("MFG Part#", valueOrDash(offer.manufacturerPartNumber)),
-                        createMetric("Retail", formatCurrency(offer.msrp)));
-                    row.append(header, metrics);
+                    const metricRows = [
+                        createMetric("SKU", createCopyableValue(offer.supplierSku, "SKU")),
+                        createMetric("MFG Part#", createCopyableValue(offer.manufacturerPartNumber, "MFG Part#")),
+                        createMetric("Retail", formatCurrency(offer.msrp))
+                    ];
+                    if (!isPlatformCatalog) {
+                        metricRows.push(createMetric("Actual", formatCurrency(offer.actualCost)));
+                    }
+                    metrics.append(...metricRows);
+                    row.append(media, header, metrics);
                     const inventory = createInventoryPanel(offer);
                     if (inventory) row.append(inventory);
                     grid.append(row);
@@ -835,6 +1419,99 @@
                 return details;
             };
             const createItemResult = (item) => {
+                item = withCatalogRoutes(item);
+                const article = document.createElement("article");
+                article.className = "im1-workorder-item-result im1-catalog-item-result";
+                article.dataset.itemResult = "";
+
+                const media = document.createElement("div");
+                media.className = "im1-workorder-item-media";
+                const image = document.createElement("div");
+                image.className = "im1-workorder-item-image";
+                if (item.imageUrl) {
+                    const button = document.createElement("button");
+                    button.type = "button";
+                    button.className = "im1-workorder-item-image-button";
+                    button.setAttribute("aria-label", "Open product image");
+                    const img = document.createElement("img");
+                    img.src = item.imageUrl;
+                    img.alt = "";
+                    img.loading = "lazy";
+                    img.referrerPolicy = "no-referrer";
+                    button.append(img);
+                    button.addEventListener("click", () => openImagePopout(item.imageUrl, item.title || item.supplierSku || "Product image"));
+                    image.append(button);
+                } else {
+                    const placeholder = document.createElement("span");
+                    placeholder.textContent = "No Image";
+                    image.append(placeholder);
+                }
+                media.append(image);
+
+                const body = document.createElement("div");
+                body.className = "im1-workorder-item-result-body";
+                const title = document.createElement("strong");
+                title.className = "im1-workorder-item-title";
+                title.textContent = item.title || "-";
+                const meta = document.createElement("span");
+                meta.className = "im1-workorder-item-meta";
+                renderSupplierMeta(meta, item);
+
+                const metrics = document.createElement("dl");
+                const offers = item.offers || [];
+                const offerFor = supplierCode => offers.find(candidate => (candidate.supplierCode || "").toUpperCase() === supplierCode);
+                const isPlatformCatalog = document.querySelector("[data-item-results]")?.dataset.platformCatalog === "true";
+                const metricRows = isPlatformCatalog
+                    ? [
+                        { label: "Retail", value: formatCurrency(item.msrp) },
+                        { label: "Status", value: valueOrDash(item.status) },
+                        { label: "Category", value: valueOrDash(item.category) }
+                    ]
+                    : [
+                        { label: "Retail", value: formatCurrency(item.msrp) },
+                        { label: "WPS Actual", supplierCode: "WPS" },
+                        { label: "Turn14 Actual", supplierCode: "TURN14" },
+                        { label: "Parts Unlimited Actual", supplierCode: "PU" }
+                    ];
+                metricRows.forEach(metric => {
+                    const offer = metric.supplierCode ? offerFor(metric.supplierCode) : null;
+                    const wrapper = document.createElement("div");
+                    const term = document.createElement("dt");
+                    const detail = document.createElement("dd");
+                    term.textContent = metric.label;
+                    if (offer) {
+                        wrapper.className = "im1-supplier-actual-tile";
+                        wrapper.dataset.actualSupplierProductId = offer.supplierProductId || "";
+                        wrapper.dataset.preferredWarehouseCode = offer.preferredWarehouseCode || "";
+                        if ((offer.supplierCode || "").toUpperCase() === (item.supplierCode || "").toUpperCase()) {
+                            wrapper.classList.add("im1-supplier-actual-tile-selected");
+                        }
+                        const price = document.createElement("span");
+                        price.textContent = formatCurrency(offer.actualCost);
+                        const stock = document.createElement("span");
+                        stock.className = "im1-top-actual-stock";
+                        stock.dataset.actualStock = "";
+                        detail.append(price, stock);
+                    } else {
+                        detail.textContent = metric.value || "-";
+                    }
+                    wrapper.append(term, detail);
+                    metrics.append(wrapper);
+                });
+                body.append(title, meta, metrics);
+                const supplierOffers = createSupplierOffers(item);
+                if (supplierOffers) body.append(supplierOffers);
+                const productDetailPopout = createProductDetailPopout(item);
+                if (productDetailPopout) body.append(productDetailPopout);
+                const fitmentPopout = createFitmentPopout(item);
+                if (fitmentPopout) body.append(fitmentPopout);
+                const inventorySummary = createInventorySummary(offers);
+                if (inventorySummary) media.append(inventorySummary);
+                article.append(media, body);
+                selectLeastCostInStockOffer(article);
+                return article;
+            };
+            const createLegacyItemResult = (item) => {
                 const article = document.createElement("article");
                 article.className = "im1-item-result";
                 article.dataset.itemResult = "";
@@ -876,6 +1553,7 @@
                     createMetric("Status", valueOrDash(item.status)),
                     createMetric("Fitment", createFitmentValue(item)),
                     createMetric("MSRP", formatCurrency(item.msrp)),
+                    createMetric("Actual Cost", formatCurrency(item.actualCost)),
                     createMetric("Category", valueOrDash(item.category)));
                 const offers = item.offers || [];
                 const inventorySummary = createInventorySummary(offers);
@@ -890,6 +1568,18 @@
             };
             const resultList = document.querySelector("[data-item-results]");
             const scrollStatus = document.querySelector("[data-scroll-status]");
+            const initialResultsScript = document.getElementById("initial-supplier-item-results");
+            if (resultList && initialResultsScript?.textContent?.trim()) {
+                try {
+                    const initialResults = JSON.parse(initialResultsScript.textContent);
+                    if (Array.isArray(initialResults)) {
+                        const fragment = document.createDocumentFragment();
+                        initialResults.forEach((item) => fragment.append(createItemResult(item)));
+                        resultList.replaceChildren(fragment);
+                    }
+                } catch {
+                }
+            }
             let loadingResults = false;
             const loadMoreResults = async () => {
                 if (!resultList || loadingResults || resultList.dataset.hasMore !== "true") return;

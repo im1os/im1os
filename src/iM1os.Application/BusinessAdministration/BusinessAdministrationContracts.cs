@@ -118,6 +118,24 @@ public sealed record NotificationPreferencesRequest(
     bool CustomerNotificationsEnabled,
     bool TechnicianNotificationsEnabled);
 
+public sealed record SupplierPreferencesRequest(
+    string? PreferredSupplierCode,
+    string? WpsPreferredWarehouseCode,
+    string? Turn14PreferredWarehouseCode,
+    string? PartsUnlimitedPreferredWarehouseCode);
+
+public sealed record SupplierPreferencesDto(
+    string? PreferredSupplierCode,
+    IReadOnlyCollection<SupplierWarehousePreferenceDto> Warehouses);
+
+public sealed record SupplierWarehousePreferenceDto(
+    string SupplierCode,
+    string SupplierName,
+    string? PreferredWarehouseCode,
+    IReadOnlyCollection<SupplierWarehouseOptionDto> WarehouseOptions);
+
+public sealed record SupplierWarehouseOptionDto(string Code, string Name);
+
 public sealed record BusinessConfigurationDto(
     decimal DefaultLaborRate,
     decimal DiagnosticRate,
@@ -130,7 +148,8 @@ public sealed record BusinessConfigurationDto(
     string RegionalTaxOverridesJson,
     string NumberSequencesJson,
     string NotificationPreferencesJson,
-    string DepartmentsJson);
+    string DepartmentsJson,
+    SupplierPreferencesDto SupplierPreferences);
 
 public sealed record ConnectorDto(
     string Key,

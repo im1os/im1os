@@ -31,4 +31,6 @@ public sealed class BusinessConfiguration : AuditableEntity, IOrganizationOwned
     public string DepartmentsJson { get; set; } = "[]";
 
     public string ConnectorPlaceholdersJson { get; set; } = "[]";
+
+    public string SupplierPreferencesJson { get; set; } = "{}";
 }

@@ -196,6 +196,15 @@ public static class IM1ShellNavigation
                     new("Turn14", "Business", "SupplierTurn14Connector", "T14")
                 ]),
             new(
+                "Inventory",
+                Icon: "IV",
+                Children:
+                [
+                    new("Inventory Management", "Inventory", "Index", "IM"),
+                    new("Add / Import", "Inventory", "Add", "AI"),
+                    new("Scanner", "Inventory", "Scanner", "SC")
+                ]),
+            new(
                 "CRM",
                 Icon: "CR",
                 Children:

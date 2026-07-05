@@ -96,6 +96,18 @@ public interface IApplicationDbContext
 
     DbSet<GlobalProduct> GlobalProducts { get; }
 
+    DbSet<CanonicalItem> CanonicalItems { get; }
+
+    DbSet<CanonicalBrandAlias> CanonicalBrandAliases { get; }
+
+    DbSet<CanonicalItemIdentifier> CanonicalItemIdentifiers { get; }
+
+    DbSet<CanonicalItemSupplierOffer> CanonicalItemSupplierOffers { get; }
+
+    DbSet<CanonicalFitment> CanonicalFitments { get; }
+
+    DbSet<CanonicalItemSource> CanonicalItemSources { get; }
+
     DbSet<GlobalVehicle> GlobalVehicles { get; }
 
     DbSet<Supplier> Suppliers { get; }
@@ -129,6 +141,12 @@ public interface IApplicationDbContext
     DbSet<SupplierListing> SupplierListings { get; }
 
     DbSet<InventoryItem> InventoryItems { get; }
+
+    DbSet<CompanyInventoryItem> CompanyInventoryItems { get; }
+
+    DbSet<CompanyInventoryLocationStock> CompanyInventoryLocationStocks { get; }
+
+    DbSet<CompanyInventoryMovement> CompanyInventoryMovements { get; }
 
     DbSet<PlatformUser> PlatformUsers { get; }
 

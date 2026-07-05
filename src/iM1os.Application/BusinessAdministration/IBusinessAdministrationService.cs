@@ -15,4 +15,6 @@ public interface IBusinessAdministrationService
     Task SaveTaxConfigurationAsync(Guid organizationId, Guid userId, TaxConfigurationRequest request, CancellationToken cancellationToken);
 
     Task SaveNotificationPreferencesAsync(Guid organizationId, Guid userId, NotificationPreferencesRequest request, CancellationToken cancellationToken);
+
+    Task SaveSupplierPreferencesAsync(Guid organizationId, Guid userId, SupplierPreferencesRequest request, CancellationToken cancellationToken);
 }

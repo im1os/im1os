@@ -22,6 +22,9 @@
     var typeOptions = new[] { "Street", "Off-Road", "ATV", "UTV", "PWC", "Snow", "Other" };
     var lineTypeOptions = new[] { "Labor", "Parts", "Fees / Diagnostics" };
     var depositTermOptions = new[] { "No Deposit", "Deposit Required", "Paid in Full" };
+    var tireWidths = new[] { 60, 70, 80, 90, 100, 110, 120, 130, 140, 150, 160, 170, 180, 190, 200, 220, 250 };
+    var tireRatios = new[] { 25, 30, 35, 40, 50, 55, 60, 65, 70, 80, 90, 100 };
+    var tireRims = new[] { 8, 10, 11, 12, 14, 15, 16, 17, 18, 19, 21, 23, 24 };
     var technicianAssignments = new List<iM1os.Application.WorkOrders.WorkOrderTechnicianAssignmentItem>();
     if (Model.LeadTechnician is not null)
     {
@@ -306,9 +309,49 @@
                         <input type="checkbox" data-labor-only />
                         Search Only Labor SKUs
                     </label>
+                    <div class="im1-workorder-tire-search" aria-label="Advanced tire search">
+                        <label>Width
+                            <select data-tire-width>
+                                <option value="">Any</option>
+                                @foreach (var width in tireWidths)
+                                {
+                                    <option value="@width">@width</option>
+                                }
+                            </select>
+                        </label>
+                        <label>Ratio
+                            <select data-tire-ratio>
+                                <option value="">Any</option>
+                                @foreach (var ratio in tireRatios)
+                                {
+                                    <option value="@ratio">@ratio</option>
+                                }
+                            </select>
+                        </label>
+                        <label>Diameter
+                            <select data-tire-diameter>
+                                <option value="">Any</option>
+                                @foreach (var rim in tireRims)
+                                {
+                                    <option value="@rim">@rim</option>
+                                }
+                            </select>
+                        </label>
+                    </div>
                 </div>
                 <div class="im1-workorder-item-results" data-item-results>Search supplier items to add parts to this estimate.</div>
             </div>
+            <dialog class="im1-image-popout-dialog" data-image-popout>
+                <div class="im1-image-popout-inner">
+                    <header>
+                        <strong data-image-popout-title>Product image</strong>
+                        <button class="im1-icon-button" type="button" data-close-image-popout aria-label="Close">x</button>
+                    </header>
+                    <div class="im1-image-popout-frame">
+                        <img data-image-popout-img alt="" />
+                    </div>
+                </div>
+            </dialog>
             <div class="table-wrap im1-table-compact im1-estimate-lines">
                 <table>
                     <colgroup>
@@ -354,7 +397,10 @@
                                     </select>
                                 </td>
                                 <td>
-                                    <input name="LineItems[@index].Description" value="@item.Description" placeholder="Description" data-line-description />
+                                    <span class="im1-line-description-with-supplier">
+                                        <span class="im1-supplier-code-icon im1-line-supplier-icon im1-supplier-code-icon-empty" data-line-supplier-icon aria-hidden="true"></span>
+                                        <input name="LineItems[@index].Description" value="@item.Description" placeholder="Description" data-line-description />
+                                    </span>
                                 </td>
                                 <td><input name="LineItems[@index].Sku" value="@item.Sku" data-line-sku /></td>
                                 <td><input name="LineItems[@index].Quantity" value="@item.Quantity" type="number" min="0" step="0.01" data-line-quantity /></td>
@@ -440,6 +486,129 @@
                 }
 
                 return `${number < 0 ? "-$" : "$"}${Math.abs(number).toFixed(2)}`;
+            };
+            const canCopyValue = value => value !== null && value !== undefined && value !== "";
+            const writeClipboardText = async value => {
+                if (navigator.clipboard?.writeText && window.isSecureContext) {
+                    await navigator.clipboard.writeText(value);
+                    return;
+                }
+
+                const input = document.createElement("textarea");
+                input.value = value;
+                input.setAttribute("readonly", "");
+                input.style.position = "fixed";
+                input.style.opacity = "0";
+                document.body.append(input);
+                input.select();
+                document.execCommand("copy");
+                input.remove();
+            };
+            const createCopyButton = (value, label) => {
+                if (!canCopyValue(value)) {
+                    return null;
+                }
+
+                const button = document.createElement("button");
+                button.type = "button";
+                button.className = "im1-copy-button";
+                button.title = `Copy ${label}`;
+                button.setAttribute("aria-label", `Copy ${label}`);
+                button.addEventListener("click", async event => {
+                    event.stopPropagation();
+                    const previous = button.title;
+                    try {
+                        await writeClipboardText(String(value));
+                        button.classList.add("im1-copy-button-copied");
+                        button.title = "Copied";
+                        setTimeout(() => {
+                            button.classList.remove("im1-copy-button-copied");
+                            button.title = previous;
+                        }, 900);
+                    } catch {
+                        button.title = "Copy failed";
+                        setTimeout(() => {
+                            button.title = previous;
+                        }, 900);
+                    }
+                });
+                return button;
+            };
+            const createCopyableValue = (value, label) => {
+                const wrapper = document.createElement("span");
+                wrapper.className = "im1-copyable-value";
+                const text = document.createElement("span");
+                text.textContent = textOrDash(value);
+                wrapper.append(text);
+                const copy = createCopyButton(value, label);
+                if (copy) {
+                    wrapper.append(copy);
+                }
+                return wrapper;
+            };
+            const appendSupplierMetaPart = (container, value, label) => {
+                if (!canCopyValue(value)) {
+                    return;
+                }
+
+                if (container.dataset.hasMetaPart === "true") {
+                    container.append(document.createTextNode(" | "));
+                }
+
+                if (label === "SKU" || label === "MFG Part#") {
+                    container.append(createCopyableValue(value, label));
+                } else {
+                    container.append(document.createTextNode(value));
+                }
+                container.dataset.hasMetaPart = "true";
+            };
+            const supplierIconAssets = {
+                "turn14": { src: "/images/suppliers/turn14.png", label: "Turn 14 Distribution" },
+                "parts-unlimited": { src: "/images/suppliers/parts-unlimited.png", label: "Parts Unlimited" },
+                "wps": { src: "/images/suppliers/wps.png", label: "WPS" }
+            };
+            const supplierIconKey = (...values) => {
+                const clean = values.filter(Boolean).join(" ").toLowerCase().replace(/[^a-z0-9]/g, "");
+                if (!clean) return null;
+                if (clean.includes("turn14") || clean.includes("turnfourteen")) return "turn14";
+                if (clean.includes("partsunlimited") || clean === "pu" || clean.includes("partsunltd")) return "parts-unlimited";
+                if (clean.includes("wps") || clean.includes("westernpowersports")) return "wps";
+                return null;
+            };
+            const createSupplierIcon = (supplierCode, supplierName) => {
+                const key = supplierIconKey(supplierCode, supplierName);
+                if (!key) return null;
+                const icon = document.createElement("span");
+                icon.className = "im1-supplier-code-icon";
+                icon.title = supplierIconAssets[key].label;
+                const image = document.createElement("img");
+                image.src = supplierIconAssets[key].src;
+                image.alt = supplierIconAssets[key].label;
+                icon.append(image);
+                return icon;
+            };
+            const setLineSupplierIcon = (row, supplierCode, supplierName) => {
+                const slot = row?.querySelector("[data-line-supplier-icon]");
+                if (!slot) return;
+                slot.replaceChildren();
+                slot.classList.add("im1-supplier-code-icon-empty");
+                slot.removeAttribute("title");
+                const icon = createSupplierIcon(supplierCode, supplierName);
+                if (!icon) return;
+                slot.classList.remove("im1-supplier-code-icon-empty");
+                slot.title = icon.title;
+                slot.append(...icon.childNodes);
+            };
+            const inferSupplierFromDescription = value => {
+                const text = value || "";
+                if (/(^|[^a-z0-9])turn\s*14([^a-z0-9]|$)/i.test(text)) return "TURN14";
+                if (/(^|[^a-z0-9])pu([^a-z0-9]|$)/i.test(text)) return "PU";
+                if (/(^|[^a-z0-9])wps([^a-z0-9]|$)/i.test(text)) return "WPS";
+                const key = supplierIconKey(text);
+                if (key === "turn14") return "TURN14";
+                if (key === "parts-unlimited") return "PU";
+                if (key === "wps") return "WPS";
+                return "";
             };
 
             const setText = (selector, value) => {
@@ -832,7 +1001,7 @@
             const rowHtml = index => `
                 <tr data-line-item-row>
                     <td><select name="LineItems[${index}].LineType" data-line-type>${lineTypeOptions.map(option => `<option value="${option}">${option}</option>`).join("")}</select></td>
-                    <td><input name="LineItems[${index}].Description" placeholder="Description" data-line-description /></td>
+                    <td><span class="im1-line-description-with-supplier"><span class="im1-supplier-code-icon im1-line-supplier-icon im1-supplier-code-icon-empty" data-line-supplier-icon aria-hidden="true"></span><input name="LineItems[${index}].Description" placeholder="Description" data-line-description /></span></td>
                     <td><input name="LineItems[${index}].Sku" data-line-sku /></td>
                     <td><input name="LineItems[${index}].Quantity" value="1" type="number" min="0" step="0.01" data-line-quantity /></td>
                     <td><input name="LineItems[${index}].Rate" value="0.00" type="number" min="0" step="0.01" data-line-rate /></td>
@@ -891,7 +1060,121 @@
                 row.querySelector("[data-line-quantity]").value = money(quantity);
                 row.querySelector("[data-line-rate]").value = money(rate);
                 row.querySelector("[data-line-taxable]").checked = lineType === "Labor" ? laborLineItemsTaxable : item.isTaxable !== false;
+                setLineSupplierIcon(row, item.supplierCode, item.supplierName);
                 row.scrollIntoView({ block: "center", behavior: "smooth" });
+            };
+            const supplierOfferPayload = (item, offer) => {
+                if (!offer) {
+                    return item;
+                }
+
+                return {
+                    ...item,
+                    ...offer,
+                    lineType: "Parts",
+                    quantity: 1,
+                    rate: offer.msrp ?? offer.actualCost ?? offer.dealerCost ?? 0,
+                    isTaxable: true
+                };
+            };
+            const confirmAddSupplierOffer = (item, offer) => {
+                const selectedItem = supplierOfferPayload(item, offer);
+                const supplier = offer.supplierName || offer.supplierCode || "supplier";
+                const sku = offer.supplierSku ? ` (${offer.supplierSku})` : "";
+                const title = selectedItem.title || selectedItem.supplierDescription || selectedItem.supplierSku || "Supplier item";
+                const mfgPart = selectedItem.manufacturerPartNumber;
+                const titleWithPart = mfgPart && !String(title).toLowerCase().includes(String(mfgPart).toLowerCase())
+                    ? `${title} - ${mfgPart}`
+                    : title;
+                if (window.confirm(`Add ${titleWithPart}\n${supplier}${sku} to this estimate?`)) {
+                    addItemToEstimate(selectedItem);
+                }
+            };
+            const renderSupplierImage = (container, item) => {
+                container.replaceChildren();
+                if (item.imageUrl) {
+                    const button = document.createElement("button");
+                    button.type = "button";
+                    button.className = "im1-workorder-item-image-button";
+                    button.setAttribute("aria-label", "Open product image");
+                    const img = document.createElement("img");
+                    img.src = item.imageUrl;
+                    img.alt = "";
+                    img.loading = "lazy";
+                    img.referrerPolicy = "no-referrer";
+                    button.append(img);
+                    button.addEventListener("click", () => openImagePopout(item.imageUrl, item.title || item.supplierSku || "Product image"));
+                    container.append(button);
+                    return;
+                }
+
+                const placeholder = document.createElement("span");
+                placeholder.textContent = item.lineType === "Labor" ? "Labor" : "No Image";
+                container.append(placeholder);
+            };
+            const renderSupplierMeta = (container, item) => {
+                container.replaceChildren();
+                delete container.dataset.hasMetaPart;
+                const metaIcon = createSupplierIcon(item.supplierCode, item.supplierName);
+                if (metaIcon) {
+                    container.append(metaIcon);
+                }
+                appendSupplierMetaPart(container, item.supplierCode, "Supplier");
+                appendSupplierMetaPart(container, item.supplierSku, "SKU");
+                appendSupplierMetaPart(container, item.brand, "Brand");
+                appendSupplierMetaPart(container, item.manufacturerPartNumber, "MFG Part#");
+            };
+            const renderSupplierMetrics = (container, item) => {
+                container.replaceChildren();
+                const offers = item.offers || [];
+                const offerFor = supplierCode => offers.find(candidate => (candidate.supplierCode || "").toUpperCase() === supplierCode);
+                const activeSupplierCode = (item.supplierCode || "").toUpperCase();
+                [
+                    { label: "Retail", value: formatCurrency(item.msrp ?? item.rate) },
+                    { label: "WPS Actual", supplierCode: "WPS" },
+                    { label: "Turn14 Actual", supplierCode: "TURN14" },
+                    { label: "Parts Unlimited Actual", supplierCode: "PU" }
+                ].forEach(metric => {
+                    const wrapper = document.createElement("div");
+                    const term = document.createElement("dt");
+                    const detail = document.createElement("dd");
+                    const offer = metric.supplierCode ? offerFor(metric.supplierCode) : null;
+                    const value = metric.value ?? formatCurrency(offer?.actualCost);
+                    term.textContent = metric.label;
+                    if (offer) {
+                        wrapper.classList.add("im1-supplier-actual-tile");
+                        wrapper.tabIndex = 0;
+                        wrapper.setAttribute("role", "button");
+                        wrapper.title = "Add this supplier";
+                        wrapper.setAttribute("aria-label", `Add ${offer.supplierName || offer.supplierCode || "supplier"} at ${value}`);
+                        if (offer.supplierProductId) {
+                            wrapper.dataset.actualSupplierProductId = offer.supplierProductId;
+                        }
+                        wrapper.dataset.preferredWarehouseCode = offer.preferredWarehouseCode || "";
+                        wrapper.addEventListener("click", () => confirmAddSupplierOffer(item, offer));
+                        wrapper.addEventListener("keydown", event => {
+                            if (event.key !== "Enter" && event.key !== " ") {
+                                return;
+                            }
+
+                            event.preventDefault();
+                            confirmAddSupplierOffer(item, offer);
+                        });
+                        if ((offer.supplierCode || "").toUpperCase() === activeSupplierCode) {
+                            wrapper.classList.add("im1-supplier-actual-tile-selected");
+                        }
+                        const price = document.createElement("span");
+                        price.textContent = value;
+                        const stock = document.createElement("span");
+                        stock.className = "im1-top-actual-stock";
+                        stock.dataset.actualStock = "";
+                        detail.append(price, stock);
+                    } else {
+                        detail.textContent = value;
+                    }
+                    wrapper.append(term, detail);
+                    container.append(wrapper);
+                });
             };
 
             const inventoryTotalFromWarehouses = warehouses => {
@@ -919,6 +1202,12 @@
             };
             const inventoryResultCache = new Map();
             const batchInventoryCacheKey = (batchUrl, supplierProductId) => `${batchUrl || ""}::${supplierProductId || ""}`;
+            [...lineItems.querySelectorAll("[data-line-item-row]")].forEach(row => {
+                const supplier = inferSupplierFromDescription(row.querySelector("[data-line-description]")?.value);
+                if (supplier) {
+                    setLineSupplierIcon(row, supplier, supplier);
+                }
+            });
             const hasInventoryFromWarehouses = warehouses => {
                 let hasWarehouse = false;
                 for (const warehouse of warehouses || []) {
@@ -936,31 +1225,111 @@
 
                 return hasWarehouse && !(warehouses || []).some(warehouse => Number(warehouse.quantity) === 0 || /^0$/.test(warehouse.quantityDisplay || ""));
             };
+            const warehouseHasInventory = warehouse => {
+                if (!warehouse) return false;
+                if (Number.isFinite(Number(warehouse.quantity))) {
+                    return Number(warehouse.quantity) > 0;
+                }
+
+                const display = warehouse.quantityDisplay || "";
+                const match = display.match(/\d+/);
+                if (match) return Number(match[0]) > 0;
+                return /available|in stock/i.test(display);
+            };
+            const hasPreferredWarehouseInventory = (warehouses, preferredWarehouseCode) => {
+                if (!preferredWarehouseCode) return false;
+                return (warehouses || []).some(warehouse =>
+                    warehouseHasInventory(warehouse) &&
+                    [warehouse.warehouseCode, warehouse.warehouseName]
+                        .filter(Boolean)
+                        .some(value => String(value).toLowerCase().includes(String(preferredWarehouseCode).toLowerCase())));
+            };
+            const warehouseMatchesPreference = (warehouse, preferredWarehouseCode) => {
+                if (!warehouse || !preferredWarehouseCode) return false;
+                const preferred = String(preferredWarehouseCode).toLowerCase();
+                return [warehouse.warehouseCode, warehouse.warehouseName]
+                    .filter(Boolean)
+                    .some(value => String(value).toLowerCase().includes(preferred));
+            };
+            const warehouseDisplayLabel = warehouse => (warehouse?.warehouseName || warehouse?.warehouseCode || "Warehouse").replace(/\s+Warehouse$/i, "");
+            const selectedDisplayWarehouse = (warehouses, preferredWarehouseCode) => {
+                const rows = warehouses || [];
+                const preferred = preferredWarehouseCode
+                    ? rows.find(warehouse => warehouseMatchesPreference(warehouse, preferredWarehouseCode))
+                    : null;
+                if (preferred && warehouseHasInventory(preferred)) {
+                    return preferred;
+                }
+
+                return rows.find(warehouseHasInventory) || preferred || null;
+            };
+            const offerActualMetricsText = (retail, actual) => {
+                const retailValue = Number(retail);
+                const actualValue = Number(actual);
+                if (!Number.isFinite(retailValue) || !Number.isFinite(actualValue) || retailValue <= 0) {
+                    return "";
+                }
+
+                const grossProfitPercent = ((retailValue - actualValue) / retailValue) * 100;
+                return `${grossProfitPercent.toFixed(1)}% off list | GP ${grossProfitPercent.toFixed(1)}%`;
+            };
+            const preferredWarehouseStockText = (warehouses, preferredWarehouseCode) => {
+                const warehouse = selectedDisplayWarehouse(warehouses, preferredWarehouseCode);
+                return warehouse ? `${warehouseDisplayLabel(warehouse)}: ${warehouse.quantityDisplay || "-"}` : "";
+            };
+            const updateTopActualStock = (item, supplierProductId, warehouses) => {
+                if (!item || !supplierProductId) return;
+                const tile = item.querySelector(`[data-actual-supplier-product-id="${supplierProductId}"]`);
+                const stock = tile?.querySelector("[data-actual-stock]");
+                if (!stock) return;
+                stock.textContent = preferredWarehouseStockText(warehouses || [], tile.dataset.preferredWarehouseCode);
+            };
+            const refreshTopActualStocks = item => {
+                if (!item?._inventoryResultsBySupplierProductId) return;
+                item._inventoryResultsBySupplierProductId.forEach((warehouses, supplierProductId) => {
+                    updateTopActualStock(item, supplierProductId, warehouses);
+                });
+            };
             const selectLeastCostInStockOffer = item => {
                 const rows = [...(item?.querySelectorAll("[data-offer-row]") || [])];
                 if (!rows.length) return;
-                const inStockRows = rows.filter(row => row.dataset.hasInventory === "true");
-                const candidates = inStockRows.length ? inStockRows : rows;
-                const selected = candidates
-                    .map(row => ({ row, cost: Number(row.dataset.offerCost) }))
-                    .sort((a, b) => (Number.isFinite(a.cost) ? a.cost : Number.MAX_VALUE) - (Number.isFinite(b.cost) ? b.cost : Number.MAX_VALUE))[0]?.row;
+                const selected = rows
+                    .map(row => ({
+                        row,
+                        cost: Number(row.dataset.offerCost),
+                        rank: row.dataset.isPreferredSupplier === "true" && row.dataset.hasInventory === "true" ? 0
+                            : row.dataset.hasPreferredWarehouseInventory === "true" ? 1
+                            : row.dataset.hasInventory === "true" ? 2
+                            : row.dataset.isPreferredSupplier === "true" ? 3
+                            : 4
+                    }))
+                    .sort((a, b) =>
+                        a.rank - b.rank ||
+                        (Number.isFinite(a.cost) ? a.cost : Number.MAX_VALUE) - (Number.isFinite(b.cost) ? b.cost : Number.MAX_VALUE))[0]?.row;
                 if (!selected) return;
                 rows.forEach(row => {
                     const isSelected = row === selected;
                     row.classList.toggle("im1-supplier-offer-selected", isSelected);
-                    const status = row.querySelector("header span");
-                    if (status) status.textContent = isSelected ? "Lowest in stock" : "Option";
-                    const button = row.querySelector("button");
-                    if (button) button.textContent = isSelected ? "Add selected" : "Add this supplier";
+                    const action = row.querySelector("[data-offer-add]");
+                    if (action) {
+                        action.classList.toggle("im1-price-action-selected", isSelected);
+                    }
                 });
+                if (selected._supplierOffer && typeof item._bindPrimaryOffer === "function") {
+                    item._bindPrimaryOffer(selected._supplierOffer);
+                }
             };
             const updateOfferInventoryState = (source, result) => {
                 const supplierProductId = source.dataset.supplierProductId;
                 const item = source.closest("[data-item-result]");
                 if (!supplierProductId || !item || !result?.isAvailable) return;
+                item._inventoryResultsBySupplierProductId ??= new Map();
+                item._inventoryResultsBySupplierProductId.set(supplierProductId, result.warehouses || []);
                 const row = item.querySelector(`[data-offer-supplier-product-id="${supplierProductId}"]`);
                 if (!row) return;
                 row.dataset.hasInventory = hasInventoryFromWarehouses(result.warehouses || []) ? "true" : "false";
+                row.dataset.hasPreferredWarehouseInventory = hasPreferredWarehouseInventory(result.warehouses || [], row.dataset.preferredWarehouseCode) ? "true" : "false";
+                updateTopActualStock(item, supplierProductId, result.warehouses || []);
                 selectLeastCostInStockOffer(item);
             };
 
@@ -968,18 +1337,18 @@
                 const status = panel.querySelector("header span");
                 const grid = panel.querySelector(".im1-live-inventory-grid");
                 if (!result?.isAvailable) {
-                    status.textContent = result?.message || "Inventory unavailable.";
+                    if (status) status.textContent = result?.message || "Inventory unavailable.";
                     return;
                 }
 
                 const warehouses = result.warehouses || [];
                 if (!warehouses.length) {
-                    status.textContent = result.message || emptyMessage;
+                    if (status) status.textContent = result.message || emptyMessage;
                     updateOfferInventoryState(panel, result);
                     return;
                 }
 
-                status.textContent = result.message || "Live";
+                if (status) status.textContent = result.message || "";
                 const supplierCode = panel.dataset.supplierCode;
                 if (supplierCode) {
                     const summary = panel.closest("[data-item-result]")?.querySelector(`[data-inventory-summary-code="${supplierCode}"]`);
@@ -1021,15 +1390,9 @@
                     section.dataset.supplierProductId = item.supplierProductId;
                 }
 
-                const header = document.createElement("header");
-                const title = document.createElement("strong");
-                const status = document.createElement("span");
-                title.textContent = (item.inventoryLabel || "Warehouses").replace(/\s+Warehouse Inventory$/i, " Warehouses");
-                status.textContent = "Loading live inventory...";
-                header.append(title, status);
                 const grid = document.createElement("div");
                 grid.className = "im1-live-inventory-grid";
-                section.append(header, grid);
+                section.append(grid);
                 return section;
             };
 
@@ -1153,22 +1516,51 @@
                 const details = document.createElement("details");
                 details.className = "im1-supplier-offers im1-workorder-supplier-offers";
                 const summary = document.createElement("summary");
-                summary.textContent = `Supplier options (${offers.length.toLocaleString()})`;
+                summary.textContent = `Supplier Inventory (${offers.length.toLocaleString()})`;
                 const grid = document.createElement("div");
                 grid.className = "im1-supplier-offer-grid";
                 offers.forEach(offer => {
                     const row = document.createElement("article");
                     row.className = `im1-supplier-offer${offer.isDefaultOffer ? " im1-supplier-offer-selected" : ""}`;
+                    row.title = `Description: ${offer.title || offer.category || "No description available"}`;
+                    row._supplierOffer = offer;
                     row.dataset.offerRow = "";
                     row.dataset.offerSupplierProductId = offer.supplierProductId || "";
                     row.dataset.offerCost = String(offer.actualCost ?? offer.dealerCost ?? Number.MAX_VALUE);
                     row.dataset.hasInventory = offer.hasCachedInventory ? "true" : "false";
+                    row.dataset.isPreferredSupplier = offer.isPreferredSupplier ? "true" : "false";
+                    row.dataset.preferredWarehouseCode = offer.preferredWarehouseCode || "";
+                    row.dataset.preferredWarehouseName = offer.preferredWarehouseName || "";
+                    row.dataset.hasPreferredWarehouseInventory = "false";
                     const header = document.createElement("header");
                     const supplier = document.createElement("strong");
-                    const status = document.createElement("span");
-                    supplier.textContent = offer.supplierName || offer.supplierCode || "-";
-                    status.textContent = offer.hasCachedInventory ? "Cached stock" : "Check inventory";
-                    header.append(supplier, status);
+                    const supplierIcon = createSupplierIcon(offer.supplierCode, offer.supplierName);
+                    if (supplierIcon) {
+                        supplier.append(supplierIcon);
+                    }
+                    supplier.append(document.createTextNode(offer.supplierName || offer.supplierCode || "-"));
+                    header.append(supplier);
+                    const optionMedia = document.createElement("div");
+                    optionMedia.className = "im1-supplier-offer-media";
+                    if (offer.imageUrl) {
+                        const optionImageButton = document.createElement("button");
+                        optionImageButton.type = "button";
+                        optionImageButton.className = "im1-supplier-offer-image-button";
+                        optionImageButton.setAttribute("aria-label", "Open supplier product image");
+                        const optionImage = document.createElement("img");
+                        optionImage.src = offer.imageUrl;
+                        optionImage.alt = "";
+                        optionImage.loading = "lazy";
+                        optionImage.referrerPolicy = "no-referrer";
+                        optionImageButton.append(optionImage);
+                        optionImageButton.addEventListener("click", () => openImagePopout(offer.imageUrl, offer.title || offer.supplierSku || "Supplier product image"));
+                        optionMedia.append(optionImageButton);
+                    } else {
+                        const placeholder = document.createElement("span");
+                        placeholder.textContent = "No Image";
+                        optionMedia.append(placeholder);
+                    }
+                    const addSupplierOffer = () => confirmAddSupplierOffer(item, offer);
                     const metrics = document.createElement("dl");
                     [
                         ["SKU", offer.supplierSku || "-"],
@@ -1180,34 +1572,166 @@
                         const term = document.createElement("dt");
                         const detail = document.createElement("dd");
                         term.textContent = label;
-                        detail.textContent = value;
+                        if (label === "Actual") {
+                            const action = document.createElement("button");
+                            action.type = "button";
+                            action.className = "im1-price-action";
+                            action.dataset.offerAdd = "";
+                            action.title = "Add this supplier";
+                            action.setAttribute("aria-label", `Add ${offer.supplierName || offer.supplierCode || "supplier"} at ${value}`);
+                            const price = document.createElement("span");
+                            price.textContent = value;
+                            const metrics = document.createElement("span");
+                            metrics.className = "im1-offer-actual-metrics";
+                            metrics.textContent = offerActualMetricsText(offer.msrp, offer.actualCost);
+                            action.append(price, metrics);
+                            action.addEventListener("click", addSupplierOffer);
+                            detail.append(action);
+                        } else {
+                            detail.append(label === "SKU" || label === "MFG Part#" ? createCopyableValue(value === "-" ? "" : value, label) : document.createTextNode(value));
+                        }
                         wrapper.append(term, detail);
                         metrics.append(wrapper);
                     });
-                    const addOffer = document.createElement("button");
-                    addOffer.type = "button";
-                    addOffer.className = "im1-button im1-button-secondary";
-                    addOffer.textContent = offer.isDefaultOffer ? "Add selected" : "Add this supplier";
-                    addOffer.addEventListener("click", () => addItemToEstimate({
-                        ...item,
-                        ...offer,
-                        lineType: "Parts",
-                        quantity: 1,
-                        rate: offer.msrp ?? offer.actualCost ?? offer.dealerCost ?? 0,
-                        isTaxable: true
-                    }));
-                    row.append(header, metrics);
+                    row.addEventListener("dblclick", event => {
+                        if (event.target.closest("button")) {
+                            return;
+                        }
+
+                        addSupplierOffer();
+                    });
+                    row.append(optionMedia, header, metrics);
                     const inventory = createInventoryPanel(offer);
                     if (inventory) {
                         row.append(inventory);
                     }
-                    row.append(addOffer);
                     grid.append(row);
                 });
                 details.addEventListener("toggle", () => {
                     if (details.open) {
                         loadInventoryPanels(details);
                     }
+                });
+                details.append(summary, grid);
+                return details;
+            };
+
+            const decodeHtmlEntities = value => {
+                const decoder = document.createElement("textarea");
+                decoder.innerHTML = value || "";
+                return decoder.value;
+            };
+
+            const cleanProductText = value => {
+                let text = decodeHtmlEntities(value);
+                text = text
+                    .replace(/<\s*br\s*\/?>/gi, "\n")
+                    .replace(/<\s*\/li\s*>/gi, "\n")
+                    .replace(/<\s*li[^>]*>/gi, "")
+                    .replace(/<\s*\/p\s*>/gi, "\n")
+                    .replace(/<[^>]+>/g, " ");
+                return decodeHtmlEntities(text)
+                    .replace(/\u00a0/g, " ")
+                    .replace(/[ \t]+/g, " ")
+                    .replace(/[ \t]*\n[ \t]*/g, "\n")
+                    .replace(/\n{3,}/g, "\n\n")
+                    .trim();
+            };
+
+            const splitProductFeatures = value => cleanProductText(value)
+                .split(/\r?\n|(?:\s*;\s*)|(?:\s*\u2022\s*)/)
+                .map(feature => feature.trim())
+                .filter(Boolean);
+
+            const createProductDetailPopout = item => {
+                const sourceRows = (item.offers || []).length ? item.offers : [item];
+                const detailRows = sourceRows
+                    .map(row => ({
+                        supplierCode: row.supplierCode,
+                        supplierName: row.supplierName,
+                        supplierSku: row.supplierSku,
+                        manufacturerPartNumber: row.manufacturerPartNumber,
+                        title: row.title,
+                        imageUrl: row.imageUrl,
+                        longDescription: cleanProductText(row.longDescription),
+                        productFeatures: cleanProductText(row.productFeatures)
+                    }))
+                    .filter(row => (row.longDescription || "").trim() || (row.productFeatures || "").trim());
+
+                if (!detailRows.length) {
+                    return null;
+                }
+
+                const details = document.createElement("details");
+                details.className = "im1-product-detail-popout im1-workorder-product-detail-popout";
+                const summary = document.createElement("summary");
+                summary.textContent = `Product Detail (${detailRows.length.toLocaleString()})`;
+                const grid = document.createElement("div");
+                grid.className = "im1-product-detail-grid";
+                detailRows.forEach(row => {
+                    const article = document.createElement("article");
+                    article.className = "im1-product-detail-card";
+                    if (!row.imageUrl) {
+                        article.classList.add("im1-product-detail-card-no-image");
+                    }
+                    const header = document.createElement("header");
+                    const title = document.createElement("strong");
+                    const supplierIcon = createSupplierIcon(row.supplierCode, row.supplierName);
+                    if (supplierIcon) {
+                        title.append(supplierIcon);
+                    }
+                    appendSupplierMetaPart(title, row.supplierName || row.supplierCode || "Supplier detail", "Supplier");
+                    appendSupplierMetaPart(title, row.supplierSku, "SKU");
+                    appendSupplierMetaPart(title, row.manufacturerPartNumber, "MFG Part#");
+                    header.append(title);
+                    article.append(header);
+                    if (row.imageUrl) {
+                        const imageButton = document.createElement("button");
+                        imageButton.type = "button";
+                        imageButton.className = "im1-product-detail-image-button";
+                        imageButton.setAttribute("aria-label", "Open supplier product image");
+                        const image = document.createElement("img");
+                        image.src = row.imageUrl;
+                        image.alt = "";
+                        image.loading = "lazy";
+                        image.referrerPolicy = "no-referrer";
+                        imageButton.append(image);
+                        imageButton.addEventListener("click", () => openImagePopout(row.imageUrl, row.title || row.supplierSku || "Supplier product image"));
+                        article.append(imageButton);
+                    }
+
+                    if ((row.longDescription || "").trim()) {
+                        const block = document.createElement("section");
+                        const label = document.createElement("h4");
+                        const text = document.createElement("p");
+                        label.textContent = "Description";
+                        text.textContent = row.longDescription.trim();
+                        block.append(label, text);
+                        article.append(block);
+                    }
+
+                    const features = splitProductFeatures(row.productFeatures);
+                    if (features.length) {
+                        const block = document.createElement("section");
+                        const label = document.createElement("h4");
+                        label.textContent = "Features";
+                        if (features.length === 1) {
+                            const text = document.createElement("p");
+                            text.textContent = features[0];
+                            block.append(label, text);
+                        } else {
+                            const list = document.createElement("ul");
+                            features.forEach(feature => {
+                                const item = document.createElement("li");
+                                item.textContent = feature;
+                                list.append(item);
+                            });
+                            block.append(label, list);
+                        }
+                        article.append(block);
+                    }
+
+                    grid.append(article);
                 });
                 details.append(summary, grid);
                 return details;
@@ -1223,6 +1747,8 @@
                 details.className = "im1-fitment-popout im1-workorder-fitment-popout";
                 const summary = document.createElement("summary");
                 summary.textContent = `Fitment (${fitmentRows.length.toLocaleString()})`;
+                const controls = document.createElement("div");
+                controls.className = "im1-fitment-filter";
                 const wrapper = document.createElement("div");
                 wrapper.className = "im1-fitment-grid-wrap";
                 const table = document.createElement("table");
@@ -1236,8 +1762,49 @@
                 });
                 thead.append(headerRow);
                 const tbody = document.createElement("tbody");
+                const uniqueOptions = (rows, selector) => [...new Set(rows
+                    .map(selector)
+                    .filter(value => value !== null && value !== undefined && value !== "")
+                    .map(value => String(value)))]
+                    .sort((a, b) => a.localeCompare(b, undefined, { numeric: true, sensitivity: "base" }));
+                const setSelectOptions = (select, values) => {
+                    const selected = select.value;
+                    select.replaceChildren();
+                    const any = document.createElement("option");
+                    any.value = "";
+                    any.textContent = "All";
+                    select.append(any);
+                    values.forEach(value => {
+                        const option = document.createElement("option");
+                        option.value = value;
+                        option.textContent = value;
+                        select.append(option);
+                    });
+                    select.value = values.includes(selected) ? selected : "";
+                };
+                const createFilter = label => {
+                    const field = document.createElement("label");
+                    const text = document.createElement("span");
+                    const select = document.createElement("select");
+                    text.textContent = label;
+                    select.dataset.fitmentFilter = label.toLowerCase();
+                    field.append(text, select);
+                    return field;
+                };
+                const yearFilter = createFilter("Year");
+                const makeFilter = createFilter("Make");
+                const modelFilter = createFilter("Model");
+                const count = document.createElement("span");
+                count.className = "im1-fitment-filter-count";
+                controls.append(yearFilter, makeFilter, modelFilter, count);
+                const yearSelect = yearFilter.querySelector("select");
+                const makeSelect = makeFilter.querySelector("select");
+                const modelSelect = modelFilter.querySelector("select");
                 fitmentRows.forEach(fitment => {
                     const row = document.createElement("tr");
+                    row.dataset.year = fitment.year === null || fitment.year === undefined ? "" : String(fitment.year);
+                    row.dataset.make = fitment.make || "";
+                    row.dataset.model = fitment.model || "";
                     [
                         fitment.year,
                         fitment.make,
@@ -1249,9 +1816,52 @@
                     });
                     tbody.append(row);
                 });
+                const refreshDependentOptions = () => {
+                    const selectedYear = yearSelect.value;
+                    const yearRows = selectedYear
+                        ? fitmentRows.filter(fitment => String(fitment.year ?? "") === selectedYear)
+                        : fitmentRows;
+                    setSelectOptions(makeSelect, uniqueOptions(yearRows, fitment => fitment.make));
+                    const selectedMake = makeSelect.value;
+                    const makeRows = makeSelect.value
+                        ? yearRows.filter(fitment => (fitment.make || "") === makeSelect.value)
+                        : yearRows;
+                    setSelectOptions(modelSelect, uniqueOptions(makeRows, fitment => fitment.model));
+                };
+                const applyFilter = () => {
+                    const selectedYear = yearSelect.value;
+                    const selectedMake = makeSelect.value;
+                    const selectedModel = modelSelect.value;
+                    let visibleCount = 0;
+                    [...tbody.rows].forEach(row => {
+                        const visible = (!selectedYear || row.dataset.year === selectedYear) &&
+                            (!selectedMake || row.dataset.make === selectedMake) &&
+                            (!selectedModel || row.dataset.model === selectedModel);
+                        row.hidden = !visible;
+                        if (visible) {
+                            visibleCount++;
+                        }
+                    });
+                    count.textContent = `${visibleCount.toLocaleString()} shown`;
+                };
+                setSelectOptions(yearSelect, uniqueOptions(fitmentRows, fitment => fitment.year).sort((a, b) => Number(b) - Number(a)));
+                refreshDependentOptions();
+                yearSelect.addEventListener("change", () => {
+                    makeSelect.value = "";
+                    modelSelect.value = "";
+                    refreshDependentOptions();
+                    applyFilter();
+                });
+                makeSelect.addEventListener("change", () => {
+                    modelSelect.value = "";
+                    refreshDependentOptions();
+                    applyFilter();
+                });
+                modelSelect.addEventListener("change", applyFilter);
+                applyFilter();
                 table.append(thead, tbody);
                 wrapper.append(table);
-                details.append(summary, wrapper);
+                details.append(summary, controls, wrapper);
                 return details;
             };
 
@@ -1350,22 +1960,11 @@
                     const article = document.createElement("article");
                     article.className = "im1-workorder-item-result";
                     article.dataset.itemResult = "";
+                    article._baseItem = item;
                     const media = document.createElement("div");
                     media.className = "im1-workorder-item-media";
                     const image = document.createElement("div");
                     image.className = "im1-workorder-item-image";
-                    if (item.imageUrl) {
-                        const img = document.createElement("img");
-                        img.src = item.imageUrl;
-                        img.alt = "";
-                        img.loading = "lazy";
-                        img.referrerPolicy = "no-referrer";
-                        image.append(img);
-                    } else {
-                        const placeholder = document.createElement("span");
-                        placeholder.textContent = item.lineType === "Labor" ? "Labor" : "No Image";
-                        image.append(placeholder);
-                    }
                     media.append(image);
                     const offers = item.offers || [];
                     const inventorySummary = createInventorySummary(offers);
@@ -1376,50 +1975,74 @@
                     const body = document.createElement("div");
                     body.className = "im1-workorder-item-result-body";
                     const title = document.createElement("strong");
-                    title.textContent = item.title || item.supplierSku || "Supplier item";
+                    title.className = "im1-workorder-item-title";
                     const meta = document.createElement("span");
-                    meta.textContent = [item.supplierCode, item.supplierSku, item.brand, item.manufacturerPartNumber].filter(Boolean).join(" | ");
+                    meta.className = "im1-workorder-item-meta";
                     const metrics = document.createElement("dl");
-                    [
-                        ["Retail", formatCurrency(item.msrp ?? item.rate)],
-                        ["Actual", formatCurrency(item.actualCost)],
-                        ["Dealer", formatCurrency(item.dealerCost)],
-                        ["Fitment", item.fitmentRecordCount === undefined ? "-" : `${Number(item.fitmentRecordCount || 0).toLocaleString()} records`]
-                    ].forEach(([label, value]) => {
-                        const wrapper = document.createElement("div");
-                        const term = document.createElement("dt");
-                        const detail = document.createElement("dd");
-                        term.textContent = label;
-                        detail.textContent = value;
-                        wrapper.append(term, detail);
-                        metrics.append(wrapper);
-                    });
                     body.append(title, meta, metrics);
-                    const fitmentPopout = createFitmentPopout(item);
-                    if (fitmentPopout) {
-                        body.append(fitmentPopout);
-                    }
                     const supplierOffers = createSupplierOfferGrid(item);
                     if (supplierOffers) {
                         body.append(supplierOffers);
+                    }
+                    const productDetailPopout = createProductDetailPopout(item);
+                    if (productDetailPopout) {
+                        body.append(productDetailPopout);
+                    }
+                    const fitmentPopout = createFitmentPopout(item);
+                    if (fitmentPopout) {
+                        body.append(fitmentPopout);
                     }
                     const button = document.createElement("button");
                     button.type = "button";
                     button.className = "im1-button im1-button-secondary";
                     button.textContent = "Add";
-                    button.addEventListener("click", () => addItemToEstimate(item));
+                    article._bindPrimaryOffer = offer => {
+                        const selectedItem = supplierOfferPayload(item, offer);
+                        article._selectedItem = selectedItem;
+                        renderSupplierImage(image, selectedItem);
+                        title.textContent = selectedItem.title || selectedItem.supplierSku || "Supplier item";
+                        title.ondblclick = null;
+                        renderSupplierMeta(meta, selectedItem);
+                        renderSupplierMetrics(metrics, selectedItem);
+                        refreshTopActualStocks(article);
+                        button.onclick = () => addItemToEstimate(selectedItem);
+                    };
+                    article._bindPrimaryOffer(offers.find(offer => offer.isDefaultOffer) || null);
                     article.append(media, body, button);
                     results.append(article);
+                    selectLeastCostInStockOffer(article);
                 }
 
                 loadInventoryPanels(results);
             };
+
+            const imagePopout = document.querySelector("[data-image-popout]");
+            const openImagePopout = (imageUrl, title) => {
+                if (!imagePopout || !imageUrl) {
+                    return;
+                }
+
+                const image = imagePopout.querySelector("[data-image-popout-img]");
+                const titleElement = imagePopout.querySelector("[data-image-popout-title]");
+                image.src = imageUrl;
+                titleElement.textContent = title || "Product image";
+                imagePopout.showModal();
+            };
+            document.querySelector("[data-close-image-popout]")?.addEventListener("click", () => imagePopout?.close());
+            imagePopout?.addEventListener("click", event => {
+                if (event.target === imagePopout) {
+                    imagePopout.close();
+                }
+            });
 
             const runItemSearch = async () => {
                 const url = new URL(lookup.dataset.lookupUrl, window.location.origin);
                 const query = lookup.querySelector("[data-item-query]").value.trim();
                 const useFitment = lookup.querySelector("[data-use-unit-fitment]")?.checked;
                 const laborOnly = lookup.querySelector("[data-labor-only]")?.checked;
+                const tireWidth = lookup.querySelector("[data-tire-width]")?.value;
+                const tireRatio = lookup.querySelector("[data-tire-ratio]")?.value;
+                const tireDiameter = lookup.querySelector("[data-tire-diameter]")?.value;
                 const fitmentYear = fieldValue("[data-edit-unit-year]");
                 const fitmentMake = fieldValue("[data-edit-unit-make]");
                 const fitmentModel = fieldValue("[data-edit-unit-model]");
@@ -1428,6 +2051,15 @@
                 }
                 if (laborOnly) {
                     url.searchParams.set("laborOnly", "true");
+                }
+                if (!laborOnly && tireWidth) {
+                    url.searchParams.set("tireWidth", tireWidth);
+                }
+                if (!laborOnly && tireRatio) {
+                    url.searchParams.set("tireAspectRatio", tireRatio);
+                }
+                if (!laborOnly && tireDiameter) {
+                    url.searchParams.set("tireRimDiameter", tireDiameter);
                 }
                 if (!laborOnly && useFitment && fitmentYear && fitmentMake && fitmentModel) {
                     url.searchParams.set("year", fitmentYear);
@@ -1480,6 +2112,12 @@
                 if (fitment) {
                     fitment.disabled = event.target.checked;
                 }
+                lookup.querySelectorAll("[data-tire-width], [data-tire-ratio], [data-tire-diameter]").forEach(select => {
+                    select.disabled = event.target.checked;
+                });
+            });
+            lookup?.querySelectorAll("[data-tire-width], [data-tire-ratio], [data-tire-diameter]").forEach(select => {
+                select.addEventListener("change", runItemSearch);
             });
             lookup?.querySelector("[data-use-unit-fitment]")?.addEventListener("change", updateFitmentCount);
             renderTechnicianSplits();

@@ -435,6 +435,14 @@ public sealed class Turn14ProductLoadsheetImportService(
                 counters.UpdatedGlobalProducts++;
             }
 
+            CatalogTireParser.Apply(
+                globalProduct,
+                row.Brand,
+                row.Category,
+                row.Title,
+                row.LongDescription,
+                row.SpecificationsJson);
+
             if (supplierProduct is null)
             {
                 supplierProduct = new SupplierProduct

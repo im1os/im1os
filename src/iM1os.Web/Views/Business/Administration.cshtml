@@ -27,6 +27,7 @@
             new IM1TabItemModel("locations", "Locations"),
             new IM1TabItemModel("roles", "Roles"),
             new IM1TabItemModel("operations", "Operations"),
+            new IM1TabItemModel("settings", "Settings"),
             new IM1TabItemModel("connectors", "Suppliers"),
             new IM1TabItemModel("activity", "Activity")
         });
@@ -161,15 +162,15 @@
             @await Html.PartialAsync("IM1DataGrid", locationGrid)
             <form asp-action="Location" asp-route-organizationId="@administrationRoute" method="post" class="form-grid form-grid-spaced">
                 <input type="hidden" name="organizationId" value="@Model.OrganizationId" />
-                <label>Name <input name="Name" /></label>
-                <label>Code <input name="Code" /></label>
+                <label>Name <input name="Name" required /></label>
+                <label>Code <input name="Code" required /></label>
                 <label>Phone <input name="Phone" /></label>
                 <label>Address <input name="AddressLine1" /></label>
                 <label>Address 2 <input name="AddressLine2" /></label>
                 <label>City <input name="City" /></label>
                 <label>State/Region <input name="Region" /></label>
                 <label>Postal Code <input name="PostalCode" /></label>
-                <label>Time Zone <input name="TimeZone" value="@Model.Profile.TimeZone" /></label>
+                <label>Time Zone <input name="TimeZone" value="@Model.Profile.TimeZone" required /></label>
                 <label>Default Labor Rate <input name="DefaultLaborRate" type="number" step="0.01" value="@Model.Configuration.DefaultLaborRate" /></label>
                 <label>Default Tax Region <input name="DefaultTaxRegion" /></label>
                 <label>Status <input name="Status" value="Active" /></label>
@@ -230,6 +231,51 @@
                 </form>
             </article>
         </div>
+    </div>
+
+    <div class="tab-panel" id="settings" role="tabpanel" hidden>
+        <article class="page-band">
+            <header class="im1-section-header">
+                <div>
+                    <h2>Supplier Preferences</h2>
+                    <p>Choose the supplier and warehouses the parts workflow should prefer when matching equivalent items.</p>
+                </div>
+            </header>
+            <form asp-action="SupplierPreferences" asp-route-organizationId="@administrationRoute" method="post" class="form-grid form-grid-spaced">
+                <input type="hidden" name="organizationId" value="@Model.OrganizationId" />
+                <label>
+                    Preferred Supplier
+                    <select name="PreferredSupplierCode">
+                        <option value="">Lowest cost in stock</option>
+                        @foreach (var supplier in Model.Configuration.SupplierPreferences.Warehouses)
+                        {
+                            <option value="@supplier.SupplierCode" selected="@(string.Equals(Model.Configuration.SupplierPreferences.PreferredSupplierCode, supplier.SupplierCode, StringComparison.OrdinalIgnoreCase))">@supplier.SupplierName</option>
+                        }
+                    </select>
+                </label>
+                @foreach (var supplier in Model.Configuration.SupplierPreferences.Warehouses)
+                {
+                    var inputName = supplier.SupplierCode switch
+                    {
+                        "WPS" => "WpsPreferredWarehouseCode",
+                        "TURN14" => "Turn14PreferredWarehouseCode",
+                        "PU" => "PartsUnlimitedPreferredWarehouseCode",
+                        _ => $"{supplier.SupplierCode}PreferredWarehouseCode"
+                    };
+                    <label>
+                        @supplier.SupplierName Preferred Warehouse
+                        <select name="@inputName">
+                            <option value="">Any warehouse</option>
+                            @foreach (var warehouse in supplier.WarehouseOptions)
+                            {
+                                <option value="@warehouse.Code" selected="@(string.Equals(supplier.PreferredWarehouseCode, warehouse.Code, StringComparison.OrdinalIgnoreCase))">@warehouse.Name</option>
+                            }
+                        </select>
+                    </label>
+                }
+                <button class="primary-action" type="submit">Save Supplier Preferences</button>
+            </form>
+        </article>
     </div>
 
     <div class="tab-panel" id="connectors" role="tabpanel" hidden>

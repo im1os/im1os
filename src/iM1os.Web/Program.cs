@@ -215,6 +215,10 @@ app.MapControllerRoute(
     pattern: "company",
     defaults: new { controller = "Business", action = "Dashboard" });
 app.MapControllerRoute(
+    name: "company-inventory",
+    pattern: "company/inventory/{action=Index}",
+    defaults: new { controller = "Inventory" });
+app.MapControllerRoute(
     name: "company-supplier-search",
     pattern: "company/suppliers/catalog/item-search",
     defaults: new { controller = "Business", action = "SupplierItemSearch" });

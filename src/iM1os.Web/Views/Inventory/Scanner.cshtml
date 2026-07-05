@@ -1,0 +1,256 @@
+@model iM1os.Application.Inventory.CompanyInventoryAddPage
+@{
+    ViewData["Title"] = "Inventory Scanner";
+    var organizationId = ViewBag.OrganizationId as Guid?;
+}
+
+@{
+    var hero = new IM1WorkspaceHeroModel(
+        "Inventory Scanner",
+        "Company Inventory",
+        "Keyboard wedge scanner ready. Scan or type a SKU, UPC, or MFG part number and press Enter.",
+        Actions:
+        [
+            new IM1ActionModel("Inventory Grid", Url.Action("Index", "Inventory", new { organizationId }), "secondary"),
+            new IM1ActionModel("Add / Import", Url.Action("Add", "Inventory", new { organizationId }), "secondary")
+        ],
+        Status: "Scanner");
+}
+
+@await Html.PartialAsync("IM1WorkspaceHero", hero)
+
+@if (TempData["InventoryStatus"] is string status)
+{
+    <div class="im1-alert im1-alert-success">@status</div>
+}
+@if (TempData["InventoryError"] is string error)
+{
+    <div class="im1-alert im1-alert-error">@error</div>
+}
+
+<section class="im1-scanner-workspace" data-inventory-scanner data-lookup-url="@Url.Action("SupplierLookup", "Inventory", new { organizationId })">
+    <form class="im1-scanner-lookup" data-scanner-form>
+        <label>
+            Scan / Lookup
+            <input data-scanner-input name="lookupValue" autocomplete="off" placeholder="Scan barcode or enter SKU / UPC / MFG Part#" autofocus />
+        </label>
+        <label>
+            Supplier
+            <select data-scanner-supplier name="supplierCode">
+                <option value="">Any supplier</option>
+                <option value="WPS">WPS</option>
+                <option value="PU">Parts Unlimited</option>
+                <option value="TURN14">Turn14</option>
+            </select>
+        </label>
+        <button class="im1-button im1-button-primary" type="submit">Lookup Product</button>
+    </form>
+
+    <div class="im1-scanner-result" data-scanner-result>
+        <p class="im1-empty-state">Scan an item to load product details.</p>
+    </div>
+</section>
+
+<template data-scanner-result-template>
+    <article class="im1-scanner-product">
+        <div class="im1-scanner-product-media" data-product-media></div>
+        <div class="im1-scanner-product-body">
+            <header>
+                <div>
+                    <h2 data-product-title></h2>
+                    <p data-product-meta></p>
+                </div>
+                <span class="im1-inventory-status" data-product-status></span>
+            </header>
+            <dl class="im1-inventory-metrics">
+                <div><dt>SKU</dt><dd data-product-sku></dd></div>
+                <div><dt>UPC</dt><dd data-product-upc></dd></div>
+                <div><dt>MFG Part#</dt><dd data-product-mfg></dd></div>
+                <div><dt>Retail</dt><dd data-product-retail></dd></div>
+                <div><dt>Cost</dt><dd data-product-cost></dd></div>
+                <div><dt>Current</dt><dd data-product-current></dd></div>
+            </dl>
+            <form class="im1-inventory-form" method="post" asp-controller="Inventory" asp-action="AddSupplierItem" data-add-scanned-form>
+                @Html.AntiForgeryToken()
+                @if (organizationId is not null)
+                {
+                    <input type="hidden" name="organizationId" value="@organizationId" />
+                }
+                <input type="hidden" name="SupplierProductId" data-form-supplier-product-id />
+                <input type="hidden" name="LookupValue" data-form-lookup-value />
+                <input type="hidden" name="SupplierCode" data-form-supplier-code />
+                <input type="hidden" name="returnTo" value="scanner" />
+                <label>
+                    Location
+                    <select name="InitialLocationId" required data-inventory-location-select>
+                        <option value="">Choose location</option>
+                        @foreach (var location in Model.Locations)
+                        {
+                            <option value="@location.Id">@location.Name</option>
+                        }
+                    </select>
+                </label>
+                <input type="hidden" name="InitialBinLocation" value="" />
+                <label>
+                    Physical Count
+                    <input name="InitialQuantityOnHand" type="number" step="0.01" placeholder="1" value="1" />
+                </label>
+                <label>
+                    Assign UPC
+                    <input name="AssignUpc" placeholder="Optional UPC" data-ignore-scanner-enter />
+                </label>
+                <label>
+                    Sale Price
+                    <input name="SalePrice" type="number" step="0.01" min="0" placeholder="Optional" />
+                </label>
+                <label>
+                    Min / Reorder At
+                    <input name="MinQuantity" type="number" step="0.01" min="0.01" placeholder="1" value="1" required data-stock-min />
+                </label>
+                <label>
+                    Reorder Qty
+                    <input name="ReorderQuantity" type="number" step="0.01" min="0.01" placeholder="1" value="1" required data-stock-reorder />
+                </label>
+                <label class="checkbox"><input type="checkbox" name="StockInStore" value="true" checked data-stocked-toggle /> Stocked in store</label>
+                <button class="im1-button im1-button-primary" type="submit">Add / Update Inventory</button>
+            </form>
+        </div>
+    </article>
+</template>
+
+@section Scripts {
+    <script>
+        (() => {
+            const root = document.querySelector("[data-inventory-scanner]");
+            if (!root) return;
+            const form = root.querySelector("[data-scanner-form]");
+            const input = root.querySelector("[data-scanner-input]");
+            const supplier = root.querySelector("[data-scanner-supplier]");
+            const result = root.querySelector("[data-scanner-result]");
+            const template = document.querySelector("[data-scanner-result-template]");
+            const storageKey = "im1.inventory.selectedLocationId";
+            const initialParams = new URLSearchParams(window.location.search);
+            const initialLookup = initialParams.get("lookupValue") || initialParams.get("sku") || "";
+            const initialSupplier = initialParams.get("supplierCode") || "";
+            const money = value => value === null || value === undefined ? "-" : Number(value).toLocaleString(undefined, { style: "currency", currency: "USD" });
+            const qty = value => Number(value || 0).toLocaleString();
+            const text = value => value || "-";
+            const applyLocation = select => {
+                const stored = localStorage.getItem(storageKey);
+                if (stored && [...select.options].some(option => option.value === stored)) {
+                    select.value = stored;
+                }
+                select.addEventListener("change", () => {
+                    if (select.value) localStorage.setItem(storageKey, select.value);
+                });
+            };
+            const syncStockPolicy = scope => {
+                scope.querySelectorAll(".im1-inventory-form").forEach(form => {
+                    const stocked = form.querySelector("[data-stocked-toggle]");
+                    const min = form.querySelector("[data-stock-min]");
+                    const reorder = form.querySelector("[data-stock-reorder]");
+                    const sync = () => {
+                        if (!stocked || !min || !reorder) return;
+                        min.required = stocked.checked;
+                        reorder.required = stocked.checked;
+                        if (stocked.checked) {
+                            if (!min.value) min.value = "1";
+                            if (!reorder.value) reorder.value = "1";
+                        }
+                    };
+                    stocked?.addEventListener("change", sync);
+                    sync();
+                });
+            };
+
+            const focusInput = () => setTimeout(() => input?.focus(), 50);
+            focusInput();
+            document.addEventListener("click", event => {
+                if (!event.target.closest("input, select, textarea, button")) focusInput();
+            });
+            document.addEventListener("keydown", event => {
+                if (event.key !== "Enter" || !event.target.closest("[data-ignore-scanner-enter]")) return;
+                event.preventDefault();
+                event.stopPropagation();
+            });
+
+            const renderError = message => {
+                result.innerHTML = "";
+                const p = document.createElement("p");
+                p.className = "im1-empty-state";
+                p.textContent = message || "No item found.";
+                result.append(p);
+            };
+
+            const renderProduct = item => {
+                const node = template.content.firstElementChild.cloneNode(true);
+                const media = node.querySelector("[data-product-media]");
+                if (item.imageUrl) {
+                    const img = document.createElement("img");
+                    img.src = item.imageUrl;
+                    img.alt = "";
+                    img.loading = "lazy";
+                    img.referrerPolicy = "no-referrer";
+                    media.append(img);
+                } else {
+                    media.textContent = "No Image";
+                }
+                node.querySelector("[data-product-title]").textContent = item.title || "Supplier item";
+                node.querySelector("[data-product-meta]").textContent = [item.supplierName || item.supplierCode, item.brand, item.category].filter(Boolean).join(" | ");
+                node.querySelector("[data-product-status]").textContent = item.alreadyInInventory ? "Already in inventory" : "Ready to add";
+                node.querySelector("[data-product-sku]").textContent = text(item.supplierSku);
+                node.querySelector("[data-product-upc]").textContent = text(item.upc);
+                node.querySelector("[data-product-mfg]").textContent = text(item.manufacturerPartNumber);
+                node.querySelector("[data-product-retail]").textContent = money(item.retailPrice);
+                node.querySelector("[data-product-cost]").textContent = money(item.dealerCost);
+                node.querySelector("[data-product-current]").textContent = `${qty(item.currentOnHand)} on hand / ${qty(item.currentAvailable)} available`;
+                node.querySelector("[data-form-supplier-product-id]").value = item.supplierProductId || "";
+                node.querySelector("[data-form-lookup-value]").value = input.value;
+                node.querySelector("[data-form-supplier-code]").value = item.supplierCode || supplier.value || "";
+                node.querySelectorAll("[data-inventory-location-select]").forEach(applyLocation);
+                syncStockPolicy(node);
+                result.replaceChildren(node);
+            };
+
+            const lookupProduct = async () => {
+                const lookup = input.value.trim();
+                if (!lookup) {
+                    renderError("Scan or enter a SKU, UPC, or MFG part number.");
+                    focusInput();
+                    return false;
+                }
+                const url = new URL(root.dataset.lookupUrl, window.location.origin);
+                url.searchParams.set("lookupValue", lookup);
+                if (supplier.value) url.searchParams.set("supplierCode", supplier.value);
+                result.innerHTML = "<p class=\"im1-empty-state\">Looking up product...</p>";
+                try {
+                    const response = await fetch(url, { headers: { "Accept": "application/json" } });
+                    const payload = await response.json();
+                    if (!payload.found) {
+                        renderError(payload.message || "No item found.");
+                        focusInput();
+                        return;
+                    }
+                    renderProduct(payload);
+                } catch {
+                    renderError("Lookup failed.");
+                }
+                focusInput();
+                return true;
+            };
+
+            form.addEventListener("submit", async event => {
+                event.preventDefault();
+                await lookupProduct();
+            });
+
+            if (initialLookup) {
+                input.value = initialLookup;
+                if (initialSupplier && [...supplier.options].some(option => option.value.toUpperCase() === initialSupplier.toUpperCase())) {
+                    supplier.value = [...supplier.options].find(option => option.value.toUpperCase() === initialSupplier.toUpperCase())?.value || "";
+                }
+                lookupProduct();
+            }
+        })();
+    </script>
+}

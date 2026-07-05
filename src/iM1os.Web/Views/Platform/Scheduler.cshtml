@@ -3,16 +3,26 @@
 @{
     ViewData["Title"] = "Scheduler";
     var enabledCount = Model.Events.Count(x => x.IsEnabled);
+    var parserStats = Model.ParserBackfillStats;
+    var normalizationStats = Model.NormalizationStats;
+    var tabs = new IM1TabsModel(
+        "Catalog scheduler",
+        new[]
+        {
+            new IM1TabItemModel("catalog-normalization", "Catalog Normalization", true),
+            new IM1TabItemModel("catalog-parser-backfill", "Catalog Parser Backfill"),
+            new IM1TabItemModel("scheduled-events", "Scheduled Events")
+        });
     var hero = new IM1WorkspaceHeroModel(
         "Scheduler",
         "Platform Admin",
-        "Read-only view of configured platform schedules and their latest run state.",
+        "Configured platform schedules and their latest run state.",
         new[]
         {
             new IM1WorkspaceStatModel("Events", Model.Events.Count.ToString(), "Registered schedules"),
             new IM1WorkspaceStatModel("Enabled", enabledCount.ToString(), "Running on interval"),
-            new IM1WorkspaceStatModel("Disabled", (Model.Events.Count - enabledCount).ToString(), "Manual only"),
-            new IM1WorkspaceStatModel("Due Now", Model.Events.Count(x => x.IsEnabled && x.NextDueAtUtc <= DateTimeOffset.UtcNow).ToString(), "Awaiting worker")
+            new IM1WorkspaceStatModel("Tire Candidates", parserStats.CandidateProducts.ToString("N0"), $"{parserStats.MissingTireSize:N0} missing size"),
+            new IM1WorkspaceStatModel("Canonical Items", normalizationStats.CanonicalItems.ToString("N0"), $"{normalizationStats.SupplierOffers:N0} supplier offers")
         },
         Array.Empty<IM1ActionModel>(),
         "Global schedule registry");
@@ -25,64 +35,284 @@
 
 @await Html.PartialAsync("IM1WorkspaceHero", hero)
 
-<section class="im1-settings-panel">
-    <header class="im1-section-header">
-        <div>
-            <h2>Scheduled Events</h2>
-            <p>Configured schedules across platform connectors. Edit the schedule interval from the linked configurator.</p>
-        </div>
-    </header>
+@if (TempData["PlatformMessage"] is string platformMessage)
+{
+    <div class="im1-alert">@platformMessage</div>
+}
 
-    <div class="table-wrap im1-table-compact">
-        <table>
-            <thead>
-                <tr>
-                    <th>Schedule</th>
-                    <th>Owner</th>
-                    <th>Status</th>
-                    <th>Schedule Interval</th>
-                    <th>Last Queued</th>
-                    <th>Next Due</th>
-                    <th>Last Run</th>
-                    <th>Configurator</th>
-                </tr>
-            </thead>
-            <tbody>
-                @foreach (var item in Model.Events)
-                {
-                    <tr>
-                        <td>
-                            <strong>@item.Name</strong>
-                            <span class="im1-table-subtext">@item.EventType</span>
-                        </td>
-                        <td>@item.Owner</td>
-                        <td>
-                            <span class="@(item.IsEnabled ? "im1-status-pill im1-status-success" : "im1-status-pill")">
-                                @(item.IsEnabled ? "Enabled" : "Disabled")
-                            </span>
-                        </td>
-                        <td>@Math.Max(1, (int)Math.Ceiling(item.CadenceMinutes / 1440m)) day</td>
-                        <td>@(item.LastQueuedAtUtc?.ToString("yyyy-MM-dd HH:mm") ?? "-")</td>
-                        <td>@(item.NextDueAtUtc?.ToString("yyyy-MM-dd HH:mm") ?? "-")</td>
-                        <td>
-                            @(item.LastRunStatus ?? "-")
-                            @if (item.LastRunCompletedAtUtc is not null)
-                            {
-                                <span class="im1-table-subtext">@item.LastRunCompletedAtUtc.Value.ToString("yyyy-MM-dd HH:mm")</span>
-                            }
-                        </td>
-                        <td>
-                            <a class="im1-link" asp-controller="@item.ConfiguratorController" asp-action="@item.ConfiguratorAction">Open</a>
-                        </td>
-                    </tr>
-                }
-                @if (Model.Events.Count == 0)
-                {
-                    <tr>
-                        <td colspan="8">No scheduled events are configured.</td>
-                    </tr>
-                }
-            </tbody>
-        </table>
+<section class="admin-tabs" data-tabs>
+    @await Html.PartialAsync("IM1Tabs", tabs)
+
+    <div class="tab-panel is-active" id="catalog-normalization" role="tabpanel">
+        <section class="im1-settings-panel">
+            <header class="im1-section-header">
+                <div>
+                    <h2>Catalog Normalization</h2>
+                    <p>Builds the canonical catalog read model from supplier products, supplier offers, identifiers, and fitment rows.</p>
+                </div>
+            </header>
+
+            <div class="im1-settings-grid">
+                <form class="im1-settings-card" asp-action="SaveCatalogNormalizationScheduler" method="post">
+                    @Html.AntiForgeryToken()
+                    <h3>Schedule</h3>
+                    <label class="im1-checkbox-row">
+                        <input type="checkbox" name="IsEnabled" value="true" checked="@Model.NormalizationSettings.IsEnabled" />
+                        <span>Run normalization on schedule</span>
+                    </label>
+                    <input type="hidden" name="IsEnabled" value="false" />
+                    <label>
+                        Schedule Interval (days)
+                        <input name="ScheduleIntervalDays" type="number" min="1" max="365" step="1" value="@Model.NormalizationSettings.ScheduleIntervalDays" />
+                    </label>
+                    <label>
+                        Max supplier products per run
+                        <input name="ScheduleMaxItems" type="number" min="1" step="1" value="@Model.NormalizationSettings.ScheduleMaxItems" placeholder="Blank for all supplier products" />
+                    </label>
+                    <button class="im1-button im1-button-primary" type="submit">Save Normalization Schedule</button>
+                </form>
+
+                <form class="im1-settings-card" asp-action="QueueCatalogNormalization" method="post">
+                    @Html.AntiForgeryToken()
+                    <h3>Run Now</h3>
+                    <label>
+                        Import Mode
+                        <select name="ImportMode">
+                            <option value="Manual">Manual</option>
+                            <option value="LimitedTest">Limited Test</option>
+                        </select>
+                    </label>
+                    <label>
+                        Max supplier products
+                        <input name="MaxItems" type="number" min="1" step="1" value="5000" placeholder="Blank for all supplier products" />
+                    </label>
+                    <button class="im1-button" type="submit">Queue Normalization</button>
+                </form>
+
+                <div class="im1-settings-card">
+                    <h3>Stats</h3>
+                    <dl class="im1-definition-grid">
+                        <dt>Canonical Items</dt>
+                        <dd>@normalizationStats.CanonicalItems.ToString("N0")</dd>
+                        <dt>Supplier Offers</dt>
+                        <dd>@normalizationStats.SupplierOffers.ToString("N0")</dd>
+                        <dt>Identifiers</dt>
+                        <dd>@normalizationStats.Identifiers.ToString("N0")</dd>
+                        <dt>Fitments</dt>
+                        <dd>@normalizationStats.Fitments.ToString("N0")</dd>
+                        <dt>Sources</dt>
+                        <dd>@normalizationStats.Sources.ToString("N0")</dd>
+                        <dt>Last Completed</dt>
+                        <dd>@(normalizationStats.LastCompletedAtUtc?.ToString("yyyy-MM-dd HH:mm") ?? "-")</dd>
+                    </dl>
+                </div>
+
+                <form class="im1-settings-card" asp-action="ResetCanonicalCatalog" method="post" onsubmit="return confirm('Reset the canonical catalog read model only? Supplier source data, pricing, company inventory, and estimates will not be deleted.');">
+                    @Html.AntiForgeryToken()
+                    <h3>Reset Canonical Read Model</h3>
+                    <p>Clears canonical items, supplier offers, identifiers, source links, and canonical fitment rows, then unlinks supplier products from canonical items.</p>
+                    <button class="im1-button im1-button-secondary" type="submit">Reset Canonical Catalog</button>
+                </form>
+            </div>
+
+            <div class="table-wrap im1-table-compact">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Run</th>
+                            <th>Status</th>
+                            <th>Progress</th>
+                            <th>Requested</th>
+                            <th>Completed</th>
+                            <th>Message</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var run in Model.NormalizationRuns)
+                        {
+                            <tr>
+                                <td>@run.ImportType</td>
+                                <td>@run.Status</td>
+                                <td>@run.ProgressProcessed.ToString("N0") / @(run.ProgressTotal?.ToString("N0") ?? "-")</td>
+                                <td>@run.RequestedAtUtc.ToString("yyyy-MM-dd HH:mm")</td>
+                                <td>@(run.CompletedAtUtc?.ToString("yyyy-MM-dd HH:mm") ?? "-")</td>
+                                <td>@run.Message</td>
+                            </tr>
+                        }
+                        @if (Model.NormalizationRuns.Count == 0)
+                        {
+                            <tr>
+                                <td colspan="6">No normalization runs yet.</td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        </section>
+    </div>
+
+    <div class="tab-panel" id="catalog-parser-backfill" role="tabpanel" hidden>
+        <section class="im1-settings-panel">
+            <header class="im1-section-header">
+                <div>
+                    <h2>Catalog Parser Backfill</h2>
+                    <p>Runs the tire parser against existing global catalog products in worker-safe chunks and records progress as a supplier job.</p>
+                </div>
+            </header>
+
+            <div class="im1-settings-grid">
+                <form class="im1-settings-card" asp-action="SaveCatalogParserBackfillScheduler" method="post">
+                    @Html.AntiForgeryToken()
+                    <h3>Schedule</h3>
+                    <label class="im1-checkbox-row">
+                        <input type="checkbox" name="IsEnabled" value="true" checked="@Model.ParserBackfillSettings.IsEnabled" />
+                        <span>Run parser backfill on schedule</span>
+                    </label>
+                    <input type="hidden" name="IsEnabled" value="false" />
+                    <label>
+                        Schedule Interval (days)
+                        <input name="ScheduleIntervalDays" type="number" min="1" max="365" step="1" value="@Model.ParserBackfillSettings.ScheduleIntervalDays" />
+                    </label>
+                    <label>
+                        Max products per run
+                        <input name="ScheduleMaxItems" type="number" min="1" step="1" value="@Model.ParserBackfillSettings.ScheduleMaxItems" placeholder="Blank for all candidates" />
+                    </label>
+                    <button class="im1-button im1-button-primary" type="submit">Save Backfill Schedule</button>
+                </form>
+
+                <form class="im1-settings-card" asp-action="QueueCatalogParserBackfill" method="post">
+                    @Html.AntiForgeryToken()
+                    <h3>Run Now</h3>
+                    <label>
+                        Import Mode
+                        <select name="ImportMode">
+                            <option value="Manual">Manual</option>
+                            <option value="LimitedTest">Limited Test</option>
+                        </select>
+                    </label>
+                    <label>
+                        Max products
+                        <input name="MaxItems" type="number" min="1" step="1" value="5000" placeholder="Blank for all candidates" />
+                    </label>
+                    <button class="im1-button" type="submit">Queue Parser Backfill</button>
+                </form>
+
+                <div class="im1-settings-card">
+                    <h3>Stats</h3>
+                    <dl class="im1-definition-grid">
+                        <dt>Total Products</dt>
+                        <dd>@parserStats.TotalProducts.ToString("N0")</dd>
+                        <dt>Candidate Products</dt>
+                        <dd>@parserStats.CandidateProducts.ToString("N0")</dd>
+                        <dt>Products With Tire Size</dt>
+                        <dd>@parserStats.ProductsWithTireSize.ToString("N0")</dd>
+                        <dt>Products With Tire Type</dt>
+                        <dd>@parserStats.ProductsWithTireType.ToString("N0")</dd>
+                        <dt>Missing Tire Size</dt>
+                        <dd>@parserStats.MissingTireSize.ToString("N0")</dd>
+                        <dt>Last Completed</dt>
+                        <dd>@(parserStats.LastCompletedAtUtc?.ToString("yyyy-MM-dd HH:mm") ?? "-")</dd>
+                    </dl>
+                </div>
+            </div>
+
+            <div class="table-wrap im1-table-compact">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Run</th>
+                            <th>Status</th>
+                            <th>Progress</th>
+                            <th>Requested</th>
+                            <th>Completed</th>
+                            <th>Message</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var run in Model.ParserBackfillRuns)
+                        {
+                            <tr>
+                                <td>@run.ImportType</td>
+                                <td>@run.Status</td>
+                                <td>@run.ProgressProcessed.ToString("N0") / @(run.ProgressTotal?.ToString("N0") ?? "-")</td>
+                                <td>@run.RequestedAtUtc.ToString("yyyy-MM-dd HH:mm")</td>
+                                <td>@(run.CompletedAtUtc?.ToString("yyyy-MM-dd HH:mm") ?? "-")</td>
+                                <td>@run.Message</td>
+                            </tr>
+                        }
+                        @if (Model.ParserBackfillRuns.Count == 0)
+                        {
+                            <tr>
+                                <td colspan="6">No parser backfill runs yet.</td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        </section>
+    </div>
+
+    <div class="tab-panel" id="scheduled-events" role="tabpanel" hidden>
+        <section class="im1-settings-panel">
+            <header class="im1-section-header">
+                <div>
+                    <h2>Scheduled Events</h2>
+                    <p>Configured schedules across platform connectors. Edit the schedule interval from the linked configurator.</p>
+                </div>
+            </header>
+
+            <div class="table-wrap im1-table-compact">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Schedule</th>
+                            <th>Owner</th>
+                            <th>Status</th>
+                            <th>Schedule Interval</th>
+                            <th>Last Queued</th>
+                            <th>Next Due</th>
+                            <th>Last Run</th>
+                            <th>Configurator</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var item in Model.Events)
+                        {
+                            <tr>
+                                <td>
+                                    <strong>@item.Name</strong>
+                                    <span class="im1-table-subtext">@item.EventType</span>
+                                </td>
+                                <td>@item.Owner</td>
+                                <td>
+                                    <span class="@(item.IsEnabled ? "im1-status-pill im1-status-success" : "im1-status-pill")">
+                                        @(item.IsEnabled ? "Enabled" : "Disabled")
+                                    </span>
+                                </td>
+                                <td>@Math.Max(1, (int)Math.Ceiling(item.CadenceMinutes / 1440m)) day</td>
+                                <td>@(item.LastQueuedAtUtc?.ToString("yyyy-MM-dd HH:mm") ?? "-")</td>
+                                <td>@(item.NextDueAtUtc?.ToString("yyyy-MM-dd HH:mm") ?? "-")</td>
+                                <td>
+                                    @(item.LastRunStatus ?? "-")
+                                    @if (item.LastRunCompletedAtUtc is not null)
+                                    {
+                                        <span class="im1-table-subtext">@item.LastRunCompletedAtUtc.Value.ToString("yyyy-MM-dd HH:mm")</span>
+                                    }
+                                </td>
+                                <td>
+                                    <a class="im1-link" asp-controller="@item.ConfiguratorController" asp-action="@item.ConfiguratorAction">Open</a>
+                                </td>
+                            </tr>
+                        }
+                        @if (Model.Events.Count == 0)
+                        {
+                            <tr>
+                                <td colspan="8">No scheduled events are configured.</td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        </section>
     </div>
 </section>

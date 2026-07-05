@@ -13,7 +13,7 @@ namespace iM1os.Tests;
 public sealed class IndieMotoFitmentImportServiceTests
 {
     [Fact]
-    public async Task Import_upserts_source_and_canonical_fitment_with_throttled_request_shape()
+    public async Task Import_upserts_source_and_canonical_fitment_with_streaming_export_request_shape()
     {
         await using var dbContext = CreateContext();
         var supplier = new Supplier { Name = "Western Power Sports", Code = "WPS", ConnectorKey = "WPS" };
@@ -42,7 +42,7 @@ public sealed class IndieMotoFitmentImportServiceTests
         dbContext.SupplierProducts.Add(supplierProduct);
         await dbContext.SaveChangesAsync();
 
-        var httpClientFactory = new StaticHttpClientFactory(FitmentJson());
+        var httpClientFactory = new StaticHttpClientFactory(SingleWpsFitmentExportNdjson());
         var service = new IndieMotoFitmentImportService(
             dbContext,
             httpClientFactory,
@@ -53,7 +53,16 @@ public sealed class IndieMotoFitmentImportServiceTests
             new IndieMotoFitmentImportRequest("WPS", Sku: "020-00104", MaxSkus: 1, FitmentLimit: 1, DelayMilliseconds: 0, BaseUrl: "https://saas.indie-moto.test"),
             CancellationToken.None);
 
-        Assert.Equal("https://saas.indie-moto.test/api/ymm?intent=sku&sku=020-00104&supplier=wps&limit=1", httpClientFactory.LastRequestUri);
+        Assert.Equal(HttpMethod.Post, httpClientFactory.LastMethod);
+        Assert.Equal("https://saas.indie-moto.test/api/ymm", httpClientFactory.LastRequestUri);
+        using (var body = JsonDocument.Parse(httpClientFactory.LastRequestBody!))
+        {
+            Assert.Equal("fitment-export", body.RootElement.GetProperty("intent").GetString());
+            Assert.Equal("WPS", body.RootElement.GetProperty("supplier").GetString());
+            Assert.True(body.RootElement.GetProperty("includeMisses").GetBoolean());
+            Assert.True(body.RootElement.GetProperty("queuePartsUnlimitedMisses").GetBoolean());
+            Assert.Equal(["020-00104"], body.RootElement.GetProperty("skus").EnumerateArray().Select(x => x.GetString()!).ToArray());
+        }
         Assert.Equal(1, result.SkusProcessed);
         Assert.Equal(1, result.SkusWithFitment);
         Assert.Equal(0, result.SkusQueuedForPartsUnlimitedCrawl);
@@ -82,7 +91,7 @@ public sealed class IndieMotoFitmentImportServiceTests
     }
 
     [Fact]
-    public async Task Import_uses_post_batch_lookup_for_multiple_skus()
+    public async Task Import_uses_streaming_fitment_export_for_wps_multiple_skus()
     {
         await using var dbContext = CreateContext();
         var supplier = new Supplier { Name = "Western Power Sports", Code = "WPS", ConnectorKey = "WPS" };
@@ -125,7 +134,7 @@ public sealed class IndieMotoFitmentImportServiceTests
             });
         await dbContext.SaveChangesAsync();
 
-        var httpClientFactory = new StaticHttpClientFactory(BatchFitmentJson());
+        var httpClientFactory = new StaticHttpClientFactory(WpsFitmentExportNdjson());
         var service = new IndieMotoFitmentImportService(
             dbContext,
             httpClientFactory,
@@ -139,10 +148,11 @@ public sealed class IndieMotoFitmentImportServiceTests
         Assert.Equal(HttpMethod.Post, httpClientFactory.LastMethod);
         Assert.Equal("https://saas.indie-moto.test/api/ymm", httpClientFactory.LastRequestUri);
         using var body = JsonDocument.Parse(httpClientFactory.LastRequestBody!);
-        Assert.Equal("fitment-batch", body.RootElement.GetProperty("intent").GetString());
-        Assert.Equal(1000, body.RootElement.GetProperty("limit").GetInt32());
-        Assert.Equal("wps", body.RootElement.GetProperty("supplier").GetString());
-        Assert.False(body.RootElement.TryGetProperty("queuePartsUnlimited", out _));
+        Assert.Equal("fitment-export", body.RootElement.GetProperty("intent").GetString());
+        Assert.Equal("WPS", body.RootElement.GetProperty("supplier").GetString());
+        Assert.True(body.RootElement.GetProperty("includeMisses").GetBoolean());
+        Assert.True(body.RootElement.GetProperty("queuePartsUnlimitedMisses").GetBoolean());
+        Assert.False(body.RootElement.TryGetProperty("limit", out _));
         Assert.Equal(["020-00104", "020-00105"], body.RootElement.GetProperty("skus").EnumerateArray().Select(x => x.GetString()!).ToArray());
 
         Assert.Equal(2, result.SkusProcessed);
@@ -156,7 +166,7 @@ public sealed class IndieMotoFitmentImportServiceTests
     }
 
     [Fact]
-    public async Task Import_sends_turn14_supplier_detail_for_batch_lookup_without_parts_unlimited_queue_flag()
+    public async Task Import_sends_turn14_supplier_detail_for_streaming_export_with_parts_unlimited_queue_flag()
     {
         await using var dbContext = CreateContext();
         var supplier = new Supplier { Name = "Turn14", Code = "TURN14", ConnectorKey = "TURN14" };
@@ -196,21 +206,8 @@ public sealed class IndieMotoFitmentImportServiceTests
         await dbContext.SaveChangesAsync();
 
         var httpClientFactory = new StaticHttpClientFactory("""
-{
-  "ok": true,
-  "requestedCount": 2,
-  "matchedCount": 0,
-  "fitmentCount": 0,
-  "maxBatchSize": 500,
-  "items": [
-    { "sku": "acb2645481007", "count": 0, "fitment": [] },
-    { "sku": "acb2645481008", "count": 0, "fitment": [] }
-  ],
-  "results": {
-    "acb2645481007": [],
-    "acb2645481008": []
-  }
-}
+{"type":"miss","requestedSku":"acb2645481007","supplierKey":"Turn14","partsUnlimitedQueue":null}
+{"type":"miss","requestedSku":"acb2645481008","supplierKey":"Turn14","partsUnlimitedQueue":null}
 """);
         var service = new IndieMotoFitmentImportService(
             dbContext,
@@ -223,9 +220,10 @@ public sealed class IndieMotoFitmentImportServiceTests
             CancellationToken.None);
 
         using var body = JsonDocument.Parse(httpClientFactory.LastRequestBody!);
-        Assert.Equal("fitment-batch", body.RootElement.GetProperty("intent").GetString());
-        Assert.Equal("turn14", body.RootElement.GetProperty("supplier").GetString());
-        Assert.False(body.RootElement.TryGetProperty("queuePartsUnlimited", out _));
+        Assert.Equal("fitment-export", body.RootElement.GetProperty("intent").GetString());
+        Assert.Equal("Turn14", body.RootElement.GetProperty("supplier").GetString());
+        Assert.True(body.RootElement.GetProperty("includeMisses").GetBoolean());
+        Assert.True(body.RootElement.GetProperty("queuePartsUnlimitedMisses").GetBoolean());
         Assert.Equal(["acb2645481007", "acb2645481008"], body.RootElement.GetProperty("skus").EnumerateArray().Select(x => x.GetString()!).ToArray());
 
         Assert.Equal(2, result.SkusProcessed);
@@ -234,7 +232,7 @@ public sealed class IndieMotoFitmentImportServiceTests
     }
 
     [Fact]
-    public async Task Import_marks_parts_unlimited_batch_requests_for_queue_on_missing_fitment()
+    public async Task Import_sends_parts_unlimited_streaming_export_without_queue_flag()
     {
         await using var dbContext = CreateContext();
         var supplier = new Supplier { Name = "Parts Unlimited", Code = "PU", ConnectorKey = "PU" };
@@ -272,39 +270,8 @@ public sealed class IndieMotoFitmentImportServiceTests
         await dbContext.SaveChangesAsync();
 
         var httpClientFactory = new StaticHttpClientFactory("""
-{
-  "ok": true,
-  "requestedCount": 2,
-  "matchedCount": 0,
-  "missingCount": 2,
-  "fitmentCount": 0,
-  "maxBatchSize": 500,
-  "items": [
-    { "sku": "003106", "count": 0, "fitment": [] },
-    { "sku": "003107", "count": 0, "fitment": [] }
-  ],
-  "results": {
-    "003106": [],
-    "003107": []
-  },
-  "partsUnlimitedQueue": {
-    "attemptedCount": 2,
-    "queuedCount": 1,
-    "skippedCount": 1,
-    "results": [
-      {
-        "queued": true,
-        "reason": "queued",
-        "sku": "003106"
-      },
-      {
-        "queued": false,
-        "reason": "already_queued",
-        "sku": "003107"
-      }
-    ]
-  }
-}
+{"type":"miss","requestedSku":"003106","supplierKey":"Parts Unlimited","partsUnlimitedQueue":null}
+{"type":"miss","requestedSku":"003107","supplierKey":"Parts Unlimited","partsUnlimitedQueue":null}
 """);
         var service = new IndieMotoFitmentImportService(
             dbContext,
@@ -317,15 +284,16 @@ public sealed class IndieMotoFitmentImportServiceTests
             CancellationToken.None);
 
         using var body = JsonDocument.Parse(httpClientFactory.LastRequestBody!);
-        Assert.Equal("fitment-batch", body.RootElement.GetProperty("intent").GetString());
-        Assert.Equal("parts_unlimited", body.RootElement.GetProperty("supplier").GetString());
-        Assert.True(body.RootElement.GetProperty("queuePartsUnlimited").GetBoolean());
+        Assert.Equal("fitment-export", body.RootElement.GetProperty("intent").GetString());
+        Assert.Equal("Parts Unlimited", body.RootElement.GetProperty("supplier").GetString());
+        Assert.True(body.RootElement.GetProperty("includeMisses").GetBoolean());
+        Assert.False(body.RootElement.TryGetProperty("queuePartsUnlimitedMisses", out _));
         Assert.Equal(["003106", "003107"], body.RootElement.GetProperty("skus").EnumerateArray().Select(x => x.GetString()!).ToArray());
 
         Assert.Equal(2, result.SkusProcessed);
         Assert.Equal(0, result.SkusWithFitment);
-        Assert.Equal(1, result.SkusQueuedForPartsUnlimitedCrawl);
-        Assert.Equal(1, result.SkusWithoutFitment);
+        Assert.Equal(0, result.SkusQueuedForPartsUnlimitedCrawl);
+        Assert.Equal(2, result.SkusWithoutFitment);
         Assert.Equal(0, result.FailedSkus);
     }
 
@@ -376,7 +344,7 @@ public sealed class IndieMotoFitmentImportServiceTests
             new IndieMotoFitmentImportRequest("PU", Sku: null, MaxSkus: 2, FitmentLimit: 1000, DelayMilliseconds: 0, BaseUrl: "https://saas.indie-moto.test"),
             CancellationToken.None);
 
-        Assert.Equal(1, httpClientFactory.PostRequestCount);
+        Assert.Equal(2, httpClientFactory.PostRequestCount);
         Assert.Equal(2, httpClientFactory.GetRequestCount);
         Assert.Equal(2, result.SkusProcessed);
         Assert.Equal(2, result.SkusWithoutFitment);
@@ -408,15 +376,7 @@ public sealed class IndieMotoFitmentImportServiceTests
         await dbContext.SaveChangesAsync();
 
         var httpClientFactory = new StaticHttpClientFactory("""
-{
-  "count": 0,
-  "fitment": [],
-  "partsUnlimitedQueue": {
-    "queued": true,
-    "reason": "queued",
-    "partNumber": "003106"
-  }
-}
+{"type":"miss","requestedSku":"003106","supplierKey":"Parts Unlimited","partsUnlimitedQueue":{"queued":true,"reason":"queued","partNumber":"003106"}}
 """);
         var service = new IndieMotoFitmentImportService(
             dbContext,
@@ -428,7 +388,7 @@ public sealed class IndieMotoFitmentImportServiceTests
             new IndieMotoFitmentImportRequest("PU", Sku: "003106", MaxSkus: 1, FitmentLimit: null, DelayMilliseconds: 0, BaseUrl: "https://saas.indie-moto.test"),
             CancellationToken.None);
 
-        Assert.Equal("https://saas.indie-moto.test/api/ymm?intent=sku&sku=003106&supplier=parts_unlimited&queuePartsUnlimited=true", httpClientFactory.LastRequestUri);
+        Assert.Equal("https://saas.indie-moto.test/api/ymm", httpClientFactory.LastRequestUri);
         Assert.Equal(1, result.SkusProcessed);
         Assert.Equal(0, result.SkusWithFitment);
         Assert.Equal(1, result.SkusQueuedForPartsUnlimitedCrawl);
@@ -462,15 +422,7 @@ public sealed class IndieMotoFitmentImportServiceTests
         await dbContext.SaveChangesAsync();
 
         var httpClientFactory = new StaticHttpClientFactory("""
-{
-  "count": 0,
-  "fitment": [],
-  "partsUnlimitedQueue": {
-    "queued": false,
-    "reason": "recent_no_fitment",
-    "partNumber": "003106"
-  }
-}
+{"type":"miss","requestedSku":"003106","supplierKey":"Parts Unlimited","partsUnlimitedQueue":{"queued":false,"reason":"recent_no_fitment","partNumber":"003106"}}
 """);
         var service = new IndieMotoFitmentImportService(
             dbContext,
@@ -521,27 +473,7 @@ public sealed class IndieMotoFitmentImportServiceTests
         await dbContext.SaveChangesAsync();
 
         var httpClientFactory = new StaticHttpClientFactory("""
-{
-  "ok": true,
-  "sku": "22999",
-  "count": 1,
-  "fitment": [
-    {
-      "supplierKey": "WPS",
-      "supplierProductId": "22999",
-      "supplierPartNumber": "2-BR9ECMIX",
-      "sku": "2-BR9ECMIX",
-      "fitmentItemId": "22999",
-      "fitmentPartNumber": "2-BR9ECMIX",
-      "mfgPartNumber": "2707",
-      "vehicleClass": "offroad_dirt",
-      "vehicleClassLabel": "Offroad / Dirt",
-      "year": 2018,
-      "make": "KTM",
-      "model": "125 SX"
-    }
-  ]
-}
+{"requestedSku":"22999","supplierKey":"WPS","supplierProductId":"22999","supplierPartNumber":"2-BR9ECMIX","sku":"2-BR9ECMIX","fitmentItemId":"22999","fitmentPartNumber":"2-BR9ECMIX","mfgPartNumber":"2707","vehicleClass":"offroad_dirt","vehicleClassLabel":"Offroad / Dirt","year":2018,"make":"KTM","model":"125 SX"}
 """);
         var service = new IndieMotoFitmentImportService(
             dbContext,
@@ -600,6 +532,14 @@ public sealed class IndieMotoFitmentImportServiceTests
     }
   ]
 }
+""";
+    }
+
+    private static string SingleWpsFitmentExportNdjson()
+    {
+        return """
+{"requestedSku":"020-00104","supplierKey":"WPS","supplierProductId":"415","supplierPartNumber":"020-00104","sku":"020-00104","fitmentItemId":"415","fitmentPartNumber":"020-00104","mfgPartNumber":"48EUTP","vehicleClass":"offroad_dirt","vehicleClassLabel":"Offroad / Dirt","year":2018,"make":"Husqvarna","model":"FC 250"}
+{"requestedSku":"020-00104","supplierKey":"WPS","supplierProductId":"415","supplierPartNumber":"020-00104","sku":"020-00104","fitmentItemId":"415","fitmentPartNumber":"020-00104","mfgPartNumber":"48EUTP","vehicleClass":"offroad_dirt","vehicleClassLabel":"Offroad / Dirt","year":2018,"make":"KTM","model":"125 SX"}
 """;
     }
 
@@ -674,6 +614,14 @@ public sealed class IndieMotoFitmentImportServiceTests
     ]
   }
 }
+""";
+    }
+
+    private static string WpsFitmentExportNdjson()
+    {
+        return """
+{"requestedSku":"020-00104","supplierKey":"WPS","supplierProductId":"415","supplierPartNumber":"020-00104","year":2018,"make":"Husqvarna","model":"FC 250","vehicleClass":"offroad_dirt","vehicleClassLabel":"Offroad / Dirt","mfgPartNumber":"48EUTP"}
+{"type":"miss","requestedSku":"020-00105","supplierKey":"WPS","partsUnlimitedQueue":{"queued":true,"reason":"queued"}}
 """;
     }
 

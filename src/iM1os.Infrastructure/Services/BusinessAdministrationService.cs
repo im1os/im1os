@@ -29,6 +29,34 @@ public sealed class BusinessAdministrationService(
         new("twilio", "Twilio", "Notifications", "Planned", "SMS and voice notification connector for customer and technician messaging.", false, "Manual", null, ["SMS", "Voice", "Delivery status"], null),
         new("future-connectors", "Future Connectors", "Marketplace", "Planned", "Connector marketplace placeholder for additional suppliers and business systems.", false, "Manual", null, ["Marketplace"], null)
     ];
+    private static readonly SupplierWarehousePreferenceDto[] DefaultSupplierWarehousePreferences =
+    [
+        new("WPS", "Western Power Sports", null,
+        [
+            new("CA", "CA"),
+            new("GA", "GA"),
+            new("ID", "ID"),
+            new("IN", "IN"),
+            new("PA", "PA"),
+            new("PA2", "PA2"),
+            new("TX", "TX")
+        ]),
+        new("TURN14", "Turn 14 Distribution", null,
+        [
+            new("01", "Turn14 East"),
+            new("02", "Turn14 West"),
+            new("03", "Turn14 Midwest"),
+            new("59", "Turn14 Central")
+        ]),
+        new("PU", "Parts Unlimited", null,
+        [
+            new("NC", "NC"),
+            new("NV", "NV"),
+            new("NY", "NY"),
+            new("TX", "TX"),
+            new("WI", "WI")
+        ])
+    ];
 
     public static string DefaultConnectorConfigurationJson() => JsonSerializer.Serialize(DefaultConnectors, ConnectorJsonOptions);
 
@@ -118,6 +146,9 @@ public sealed class BusinessAdministrationService(
     public async Task UpsertLocationAsync(Guid organizationId, Guid userId, UpsertLocationRequest request, CancellationToken cancellationToken)
     {
         await EnsureCompanyAdministratorAsync(organizationId, userId, cancellationToken);
+        var name = Required(request.Name, "Location name");
+        var code = Required(request.Code, "Location code").ToUpperInvariant();
+        var timeZone = Defaulted(request.TimeZone, null, "America/Chicago");
         var location = request.Id is Guid locationId
             ? await dbContext.Locations.IgnoreQueryFilters().SingleAsync(x => x.OrganizationId == organizationId && x.Id == locationId, cancellationToken)
             : null;
@@ -125,19 +156,19 @@ public sealed class BusinessAdministrationService(
 
         if (location is null)
         {
-            location = new Location { OrganizationId = organizationId, Name = request.Name.Trim(), Code = request.Code.Trim().ToUpperInvariant() };
+            location = new Location { OrganizationId = organizationId, Name = name, Code = code };
             dbContext.Locations.Add(location);
         }
 
-        location.Name = request.Name.Trim();
-        location.Code = request.Code.Trim().ToUpperInvariant();
+        location.Name = name;
+        location.Code = code;
         location.Phone = Clean(request.Phone);
         location.AddressLine1 = Clean(request.AddressLine1);
         location.AddressLine2 = Clean(request.AddressLine2);
         location.City = Clean(request.City);
         location.Region = Clean(request.Region);
         location.PostalCode = Clean(request.PostalCode);
-        location.TimeZone = request.TimeZone.Trim();
+        location.TimeZone = timeZone;
         location.DefaultLaborRate = request.DefaultLaborRate;
         location.DefaultTaxRegion = Clean(request.DefaultTaxRegion);
         location.Status = string.IsNullOrWhiteSpace(request.Status) ? "Active" : request.Status.Trim();
@@ -233,6 +264,27 @@ public sealed class BusinessAdministrationService(
         var before = ToDto(config);
         config.NotificationPreferencesJson = JsonSerializer.Serialize(request);
         await RecordAdminChangeAsync(organizationId, userId, "NotificationPreferencesUpdated", "BusinessConfiguration", config.Id.ToString(), before, ToDto(config), cancellationToken);
+        await dbContext.SaveChangesAsync(cancellationToken);
+    }
+
+    public async Task SaveSupplierPreferencesAsync(Guid organizationId, Guid userId, SupplierPreferencesRequest request, CancellationToken cancellationToken)
+    {
+        await EnsureCompanyAdministratorAsync(organizationId, userId, cancellationToken);
+        var config = await GetOrCreateConfigurationAsync(organizationId, cancellationToken);
+        var before = ToDto(config);
+        var preferredSupplierCode = NormalizeSupplierCode(request.PreferredSupplierCode);
+        var warehouseCodes = new Dictionary<string, string?>(StringComparer.OrdinalIgnoreCase)
+        {
+            ["WPS"] = Clean(request.WpsPreferredWarehouseCode),
+            ["TURN14"] = Clean(request.Turn14PreferredWarehouseCode),
+            ["PU"] = Clean(request.PartsUnlimitedPreferredWarehouseCode)
+        };
+        config.SupplierPreferencesJson = JsonSerializer.Serialize(new StoredSupplierPreferences(
+            preferredSupplierCode,
+            warehouseCodes
+                .Where(x => x.Value is not null)
+                .ToDictionary(x => x.Key, x => x.Value!, StringComparer.OrdinalIgnoreCase)), ConnectorJsonOptions);
+        await RecordAdminChangeAsync(organizationId, userId, "SupplierPreferencesUpdated", "BusinessConfiguration", config.Id.ToString(), before, ToDto(config), cancellationToken);
         await dbContext.SaveChangesAsync(cancellationToken);
     }
 
@@ -339,7 +391,8 @@ public sealed class BusinessAdministrationService(
         {
             OrganizationId = organizationId,
             DepartmentsJson = JsonSerializer.Serialize(new[] { "Service", "Parts", "Accounting", "Administration" }),
-            ConnectorPlaceholdersJson = DefaultConnectorConfigurationJson()
+            ConnectorPlaceholdersJson = DefaultConnectorConfigurationJson(),
+            SupplierPreferencesJson = "{}"
         };
         dbContext.BusinessConfigurations.Add(config);
         return config;
@@ -644,7 +697,34 @@ public sealed class BusinessAdministrationService(
         config.RegionalTaxOverridesJson,
         config.NumberSequencesJson,
         config.NotificationPreferencesJson,
-        config.DepartmentsJson);
+        config.DepartmentsJson,
+        ReadSupplierPreferences(config.SupplierPreferencesJson));
+
+    private static SupplierPreferencesDto ReadSupplierPreferences(string? json)
+    {
+        StoredSupplierPreferences? stored = null;
+        if (!string.IsNullOrWhiteSpace(json))
+        {
+            try
+            {
+                stored = JsonSerializer.Deserialize<StoredSupplierPreferences>(json, ConnectorJsonOptions);
+            }
+            catch (JsonException)
+            {
+            }
+        }
+
+        var preferredSupplierCode = NormalizeSupplierCode(stored?.PreferredSupplierCode);
+        var preferredWarehouses = stored?.PreferredWarehouseCodes ?? new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        var warehouses = DefaultSupplierWarehousePreferences
+            .Select(supplier =>
+            {
+                preferredWarehouses.TryGetValue(supplier.SupplierCode, out var preferredWarehouseCode);
+                return supplier with { PreferredWarehouseCode = Clean(preferredWarehouseCode) };
+            })
+            .ToList();
+        return new SupplierPreferencesDto(preferredSupplierCode, warehouses);
+    }
 
     private static object SnapshotLocation(Location location) => new
     {
@@ -674,6 +754,12 @@ public sealed class BusinessAdministrationService(
 
     private static string? Clean(string? value) => string.IsNullOrWhiteSpace(value) ? null : value.Trim();
 
+    private static string? NormalizeSupplierCode(string? value)
+    {
+        var clean = Clean(value)?.ToUpperInvariant();
+        return clean is "WPS" or "TURN14" or "PU" ? clean : null;
+    }
+
     private static string Required(string value, string fieldName) => string.IsNullOrWhiteSpace(value) ? throw new InvalidOperationException($"{fieldName} is required.") : value.Trim();
 
     private static string Defaulted(string? value, string? currentValue, string fallback) =>
@@ -696,4 +782,8 @@ public sealed class BusinessAdministrationService(
         string Description,
         IReadOnlyCollection<string> Capabilities,
         bool RequiresSecret);
+
+    private sealed record StoredSupplierPreferences(
+        string? PreferredSupplierCode,
+        IReadOnlyDictionary<string, string> PreferredWarehouseCodes);
 }

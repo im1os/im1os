@@ -7,8 +7,18 @@ public sealed record SupplierItemSearchPage(
     int? Year,
     string? Make,
     string? Model,
+    string? Category,
+    string? Brand,
+    string? TireBrand,
+    string? TireModelLine,
+    int? TireWidth,
+    int? TireAspectRatio,
+    int? TireRimDiameter,
+    string? TirePosition,
     IReadOnlyCollection<SupplierSearchOption> AvailableSuppliers,
     IReadOnlyCollection<SupplierSearchOption> ConfiguredSuppliers,
+    IReadOnlyCollection<string> AvailableCategories,
+    IReadOnlyCollection<string> AvailableBrands,
     IReadOnlyCollection<string> AvailableVehicleTypes,
     IReadOnlyCollection<int> AvailableYears,
     IReadOnlyCollection<string> AvailableMakes,
@@ -29,7 +39,15 @@ public sealed record SupplierItemSearchRequest(
     string? Model,
     int Offset = 0,
     bool SearchExecuted = false,
-    bool IncludeFacets = true);
+    bool IncludeFacets = true,
+    string? Category = null,
+    string? Brand = null,
+    string? TireBrand = null,
+    string? TireModelLine = null,
+    int? TireWidth = null,
+    int? TireAspectRatio = null,
+    int? TireRimDiameter = null,
+    string? TirePosition = null);
 
 public sealed record SupplierSearchOption(
     string Code,
@@ -48,6 +66,8 @@ public sealed record SupplierItemSearchResult(
     string Brand,
     string Title,
     string? Category,
+    string? LongDescription,
+    string? ProductFeatures,
     string Status,
     int FitmentRecordCount,
     decimal? Msrp,
@@ -70,6 +90,8 @@ public sealed record SupplierItemOfferResult(
     string Brand,
     string Title,
     string? Category,
+    string? LongDescription,
+    string? ProductFeatures,
     string Status,
     int FitmentRecordCount,
     decimal? Msrp,
@@ -78,6 +100,9 @@ public sealed record SupplierItemOfferResult(
     string? ImageUrl,
     bool HasCachedInventory,
     int? CachedInventoryTotal,
+    bool IsPreferredSupplier,
+    string? PreferredWarehouseCode,
+    string? PreferredWarehouseName,
     bool IsDefaultOffer);
 
 public sealed record SupplierItemCrossReferenceResult(

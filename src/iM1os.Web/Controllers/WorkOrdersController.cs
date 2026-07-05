@@ -102,7 +102,7 @@ public sealed class WorkOrdersController(
     }
 
     [HttpGet]
-    public async Task<IActionResult> ItemLookup(string? query, string? supplierCode, string? vehicleType, int? year, string? make, string? model, bool laborOnly, int offset, CancellationToken cancellationToken)
+    public async Task<IActionResult> ItemLookup(string? query, string? supplierCode, string? vehicleType, int? year, string? make, string? model, int? tireWidth, int? tireAspectRatio, int? tireRimDiameter, bool laborOnly, int offset, CancellationToken cancellationToken)
     {
         var organizationId = OrganizationId();
         if (laborOnly)
@@ -141,7 +141,7 @@ public sealed class WorkOrdersController(
 
         var page = await supplierItemSearchService.SearchForCompanyAsync(
             organizationId,
-            new SupplierItemSearchRequest(query, supplierCode, vehicleType, year, make, model, offset, SearchExecuted: true, IncludeFacets: false),
+            new SupplierItemSearchRequest(query, supplierCode, vehicleType, year, make, model, offset, SearchExecuted: true, IncludeFacets: false, TireWidth: tireWidth, TireAspectRatio: tireAspectRatio, TireRimDiameter: tireRimDiameter),
             WorkOrderItemSearchPageSize,
             cancellationToken);
 
@@ -160,6 +160,8 @@ public sealed class WorkOrdersController(
                 x.Brand,
                 x.Title,
                 x.Category,
+                x.LongDescription,
+                x.ProductFeatures,
                 x.Status,
                 x.FitmentRecordCount,
                 x.Msrp,
@@ -181,6 +183,8 @@ public sealed class WorkOrdersController(
                     offer.Brand,
                     offer.Title,
                     offer.Category,
+                    offer.LongDescription,
+                    offer.ProductFeatures,
                     offer.Status,
                     offer.FitmentRecordCount,
                     offer.Msrp,
@@ -189,6 +193,9 @@ public sealed class WorkOrdersController(
                     offer.ImageUrl,
                     offer.HasCachedInventory,
                     offer.CachedInventoryTotal,
+                    offer.IsPreferredSupplier,
+                    offer.PreferredWarehouseCode,
+                    offer.PreferredWarehouseName,
                     offer.IsDefaultOffer,
                     InventoryUrl = offer.SupplierCode == "WPS"
                         ? Url.Action(nameof(WpsInventory), new { offer.SupplierProductId })

@@ -20,6 +20,20 @@ public sealed class GlobalProduct : AuditableEntity
 
     public string? Upc { get; set; }
 
+    public int? TireWidth { get; set; }
+
+    public int? TireAspectRatio { get; set; }
+
+    public int? TireRimDiameter { get; set; }
+
+    public string? TirePosition { get; set; }
+
+    public string? TireConstruction { get; set; }
+
+    public string? TireType { get; set; }
+
+    public string? TireModelLine { get; set; }
+
     public decimal? Length { get; set; }
 
     public decimal? Width { get; set; }

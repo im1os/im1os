@@ -21,6 +21,11 @@ public sealed class PlatformSupplierConnectorService(
     private const string PartsUnlimitedConnectorKey = "PU";
     private const string PartsUnlimitedSupplierCode = "PU";
     private const string PartsUnlimitedSupplierName = "Parts Unlimited";
+    private const string CatalogConnectorKey = "CATALOG";
+    private const string CatalogSupplierCode = "CATALOG";
+    private const string CatalogSupplierName = "Global Catalog";
+    private const string CatalogTireBackfillImportType = "GlobalCatalogTireBackfill";
+    private const string CatalogNormalizationImportType = "GlobalCatalogNormalization";
     private const string WpsDefaultBaseApiUrl = "https://api.wps-inc.com";
     private const string WpsDefaultMasterFileUrl = "https://data-depot.s3.us-west-2.amazonaws.com/v4/downloads/master-item-list/master-item-list.json";
     private const string Turn14DefaultBaseUrl = "https://turn14.com";
@@ -48,6 +53,7 @@ public sealed class PlatformSupplierConnectorService(
 
     public async Task<GlobalSchedulerPage> GetGlobalSchedulerAsync(CancellationToken cancellationToken)
     {
+        var catalogConfiguration = await EnsureCatalogConfigurationAsync(cancellationToken);
         var schedules = await (
             from configuration in dbContext.SupplierConnectorConfigurations.AsNoTracking()
             join supplier in dbContext.Suppliers.AsNoTracking() on configuration.SupplierId equals supplier.Id
@@ -151,6 +157,33 @@ public sealed class PlatformSupplierConnectorService(
                 continue;
             }
 
+            if (string.Equals(schedule.ConnectorKey, CatalogConnectorKey, StringComparison.OrdinalIgnoreCase))
+            {
+                rows.Add(await BuildSchedulerRowAsync(
+                    schedule.Id,
+                    "Catalog Tire Parser Backfill",
+                    schedule.SupplierName,
+                    CatalogTireBackfillImportType,
+                    schedule.IsEnabled && schedule.ImportMasterFileOnSchedule,
+                    schedule.MasterFileScheduleCadenceMinutes <= 0 ? 1440 : schedule.MasterFileScheduleCadenceMinutes,
+                    schedule.LastMasterFileScheduledAtUtc,
+                    "Platform",
+                    "Scheduler",
+                    cancellationToken));
+                rows.Add(await BuildSchedulerRowAsync(
+                    schedule.Id,
+                    "Catalog Normalization",
+                    schedule.SupplierName,
+                    CatalogNormalizationImportType,
+                    schedule.IsEnabled && schedule.ImportMediaOnSchedule,
+                    schedule.MediaScheduleCadenceMinutes <= 0 ? 1440 : schedule.MediaScheduleCadenceMinutes,
+                    schedule.LastMediaScheduledAtUtc,
+                    "Platform",
+                    "Scheduler",
+                    cancellationToken));
+                continue;
+            }
+
             rows.Add(await BuildSchedulerRowAsync(
                 schedule.Id,
                 $"{schedule.DisplayName} Master File",
@@ -176,11 +209,166 @@ public sealed class PlatformSupplierConnectorService(
                 cancellationToken));
         }
 
+        var parserBackfillRuns = await GetRecentImportRunsAsync(catalogConfiguration.Id, 10, cancellationToken, CatalogTireBackfillImportType);
+        var parserBackfillStats = await GetParserBackfillStatsAsync(catalogConfiguration.Id, cancellationToken);
+        var normalizationRuns = await GetRecentImportRunsAsync(catalogConfiguration.Id, 10, cancellationToken, CatalogNormalizationImportType);
+        var normalizationStats = await GetNormalizationStatsAsync(catalogConfiguration.Id, cancellationToken);
+
         return new GlobalSchedulerPage(rows
             .OrderByDescending(x => x.IsEnabled)
             .ThenBy(x => x.Owner)
             .ThenBy(x => x.Name)
-            .ToList());
+            .ToList(),
+            new GlobalCatalogParserBackfillSettingsRequest(
+                catalogConfiguration.IsEnabled && catalogConfiguration.ImportMasterFileOnSchedule,
+                MinutesToDays(catalogConfiguration.MasterFileScheduleCadenceMinutes),
+                catalogConfiguration.MasterFileScheduleMaxItems),
+            parserBackfillStats,
+            parserBackfillRuns,
+            new GlobalCatalogNormalizationSettingsRequest(
+                catalogConfiguration.IsEnabled && catalogConfiguration.ImportMediaOnSchedule,
+                MinutesToDays(catalogConfiguration.MediaScheduleCadenceMinutes),
+                catalogConfiguration.MediaScheduleMaxItems),
+            normalizationStats,
+            normalizationRuns);
+    }
+
+    public async Task<GlobalSchedulerPage> SaveGlobalCatalogParserBackfillSchedulerAsync(GlobalCatalogParserBackfillSettingsRequest request, string? platformUserId, CancellationToken cancellationToken)
+    {
+        var configuration = await EnsureCatalogConfigurationAsync(cancellationToken);
+        configuration.IsEnabled = true;
+        configuration.ImportMasterFileOnSchedule = request.IsEnabled;
+        configuration.MasterFileScheduleCadenceMinutes = DaysToMinutes(request.ScheduleIntervalDays);
+        configuration.MasterFileScheduleMaxItems = PositiveOrNull(request.ScheduleMaxItems);
+
+        AddAuditEvent("GlobalCatalogParserBackfillSchedulerSaved", platformUserId, new
+        {
+            request.IsEnabled,
+            request.ScheduleIntervalDays,
+            request.ScheduleMaxItems
+        });
+
+        await dbContext.SaveChangesAsync(cancellationToken);
+        return await GetGlobalSchedulerAsync(cancellationToken);
+    }
+
+    public async Task<GlobalSchedulerPage> QueueGlobalCatalogParserBackfillAsync(GlobalCatalogParserBackfillRunRequest request, string? platformUserId, CancellationToken cancellationToken)
+    {
+        var configuration = await EnsureCatalogConfigurationAsync(cancellationToken);
+        var maxItems = EffectiveManualLimit(request.ImportMode, request.MaxItems);
+        var now = dateTimeProvider.UtcNow;
+
+        dbContext.SupplierConnectorImportRuns.Add(new SupplierConnectorImportRun
+        {
+            SupplierConnectorConfigurationId = configuration.Id,
+            ImportType = CatalogTireBackfillImportType,
+            Status = "Queued",
+            RequestedByPlatformUserId = platformUserId,
+            RequestedAtUtc = now,
+            Source = "platform.global_products",
+            ProgressProcessed = 0,
+            ProgressTotal = maxItems,
+            ParametersJson = JsonSerializer.Serialize(new
+            {
+                request.ImportMode,
+                MaxItems = maxItems
+            }),
+            Message = maxItems is null
+                ? "Catalog tire parser backfill queued."
+                : $"Catalog tire parser backfill queued for first {maxItems.Value:N0} candidate products."
+        });
+
+        AddAuditEvent("GlobalCatalogParserBackfillRequested", platformUserId, new
+        {
+            request.ImportMode,
+            MaxItems = maxItems
+        });
+
+        await dbContext.SaveChangesAsync(cancellationToken);
+        return await GetGlobalSchedulerAsync(cancellationToken);
+    }
+
+    public async Task<GlobalSchedulerPage> SaveGlobalCatalogNormalizationSchedulerAsync(GlobalCatalogNormalizationSettingsRequest request, string? platformUserId, CancellationToken cancellationToken)
+    {
+        var configuration = await EnsureCatalogConfigurationAsync(cancellationToken);
+        configuration.IsEnabled = true;
+        configuration.ImportMediaOnSchedule = request.IsEnabled;
+        configuration.MediaScheduleCadenceMinutes = DaysToMinutes(request.ScheduleIntervalDays);
+        configuration.MediaScheduleMaxItems = PositiveOrNull(request.ScheduleMaxItems);
+
+        AddAuditEvent("GlobalCatalogNormalizationSchedulerSaved", platformUserId, new
+        {
+            request.IsEnabled,
+            request.ScheduleIntervalDays,
+            request.ScheduleMaxItems
+        });
+
+        await dbContext.SaveChangesAsync(cancellationToken);
+        return await GetGlobalSchedulerAsync(cancellationToken);
+    }
+
+    public async Task<GlobalSchedulerPage> QueueGlobalCatalogNormalizationAsync(GlobalCatalogNormalizationRunRequest request, string? platformUserId, CancellationToken cancellationToken)
+    {
+        var configuration = await EnsureCatalogConfigurationAsync(cancellationToken);
+        var maxItems = EffectiveManualLimit(request.ImportMode, request.MaxItems);
+        var now = dateTimeProvider.UtcNow;
+
+        dbContext.SupplierConnectorImportRuns.Add(new SupplierConnectorImportRun
+        {
+            SupplierConnectorConfigurationId = configuration.Id,
+            ImportType = CatalogNormalizationImportType,
+            Status = "Queued",
+            RequestedByPlatformUserId = platformUserId,
+            RequestedAtUtc = now,
+            Source = "platform.supplier_products",
+            ProgressProcessed = 0,
+            ProgressTotal = maxItems,
+            ParametersJson = JsonSerializer.Serialize(new
+            {
+                request.ImportMode,
+                MaxItems = maxItems
+            }),
+            Message = maxItems is null
+                ? "Catalog normalization queued."
+                : $"Catalog normalization queued for first {maxItems.Value:N0} supplier products."
+        });
+
+        AddAuditEvent("GlobalCatalogNormalizationRequested", platformUserId, new
+        {
+            request.ImportMode,
+            MaxItems = maxItems
+        });
+
+        await dbContext.SaveChangesAsync(cancellationToken);
+        return await GetGlobalSchedulerAsync(cancellationToken);
+    }
+
+    public async Task<GlobalSchedulerPage> ResetGlobalCanonicalCatalogAsync(string? platformUserId, CancellationToken cancellationToken)
+    {
+        var linkedSupplierProducts = await dbContext.SupplierProducts
+            .Where(x => x.CanonicalItemId != null)
+            .ExecuteUpdateAsync(
+                setters => setters.SetProperty(x => x.CanonicalItemId, _ => (Guid?)null),
+                cancellationToken);
+
+        var deletedFitments = await dbContext.CanonicalFitments.ExecuteDeleteAsync(cancellationToken);
+        var deletedIdentifiers = await dbContext.CanonicalItemIdentifiers.ExecuteDeleteAsync(cancellationToken);
+        var deletedSources = await dbContext.CanonicalItemSources.ExecuteDeleteAsync(cancellationToken);
+        var deletedOffers = await dbContext.CanonicalItemSupplierOffers.ExecuteDeleteAsync(cancellationToken);
+        var deletedItems = await dbContext.CanonicalItems.ExecuteDeleteAsync(cancellationToken);
+
+        AddAuditEvent("GlobalCanonicalCatalogReset", platformUserId, new
+        {
+            LinkedSupplierProductsCleared = linkedSupplierProducts,
+            DeletedFitments = deletedFitments,
+            DeletedIdentifiers = deletedIdentifiers,
+            DeletedSources = deletedSources,
+            DeletedSupplierOffers = deletedOffers,
+            DeletedCanonicalItems = deletedItems
+        });
+
+        await dbContext.SaveChangesAsync(cancellationToken);
+        return await GetGlobalSchedulerAsync(cancellationToken);
     }
 
     public async Task<WpsConnectorPage> SaveWpsConnectorAsync(WpsConnectorSettingsRequest request, string? platformUserId, CancellationToken cancellationToken)
@@ -1002,6 +1190,54 @@ public sealed class PlatformSupplierConnectorService(
         return new SupplierItemFitmentQueueResult(status == "Queued", message, importRun.Id);
     }
 
+    private async Task<SupplierConnectorConfiguration> EnsureCatalogConfigurationAsync(CancellationToken cancellationToken)
+    {
+        var supplier = await dbContext.Suppliers.SingleOrDefaultAsync(x => x.Code == CatalogSupplierCode, cancellationToken);
+        if (supplier is null)
+        {
+            supplier = new Supplier
+            {
+                Name = CatalogSupplierName,
+                Code = CatalogSupplierCode,
+                ConnectorKey = CatalogConnectorKey,
+                IsActive = true
+            };
+            dbContext.Suppliers.Add(supplier);
+            await dbContext.SaveChangesAsync(cancellationToken);
+        }
+
+        var configuration = await dbContext.SupplierConnectorConfigurations
+            .SingleOrDefaultAsync(x => x.SupplierId == supplier.Id && x.ConnectorKey == CatalogConnectorKey, cancellationToken);
+
+        if (configuration is not null)
+        {
+            return configuration;
+        }
+
+        configuration = new SupplierConnectorConfiguration
+        {
+            SupplierId = supplier.Id,
+            ConnectorKey = CatalogConnectorKey,
+            DisplayName = CatalogSupplierName,
+            AuthMode = "Internal",
+            IsEnabled = true,
+            ImportMasterFileOnSchedule = false,
+            MasterFileImportMode = "Manual",
+            MasterFileScheduleCadenceMinutes = 1440,
+            MasterFileScheduleMaxItems = 5000,
+            ImportFitmentOnSchedule = false,
+            FitmentScheduleCadenceMinutes = 1440,
+            FitmentScheduleDelayMilliseconds = 250,
+            ImportMediaOnSchedule = false,
+            MediaScheduleCadenceMinutes = 1440,
+            MediaScheduleDelayMilliseconds = 750
+        };
+        dbContext.SupplierConnectorConfigurations.Add(configuration);
+        await dbContext.SaveChangesAsync(cancellationToken);
+
+        return configuration;
+    }
+
     private async Task<SupplierConnectorConfiguration> EnsureWpsConfigurationAsync(CancellationToken cancellationToken)
     {
         var supplier = await dbContext.Suppliers.SingleOrDefaultAsync(x => x.Code == WpsSupplierCode, cancellationToken);
@@ -1404,6 +1640,127 @@ public sealed class PlatformSupplierConnectorService(
             .LongCountAsync(x => x.SupplierId == supplierId, cancellationToken);
 
         return new SupplierConnectorDatabaseMetrics(supplierProductCount, fitmentRecordCount);
+    }
+
+    private async Task<IReadOnlyCollection<SupplierConnectorImportRunRow>> GetRecentImportRunsAsync(Guid configurationId, int take, CancellationToken cancellationToken, string? importType = null)
+    {
+        var query = dbContext.SupplierConnectorImportRuns
+            .AsNoTracking()
+            .Where(x => x.SupplierConnectorConfigurationId == configurationId);
+        if (!string.IsNullOrWhiteSpace(importType))
+        {
+            query = query.Where(x => x.ImportType == importType);
+        }
+
+        var rows = await query
+            .OrderByDescending(x => x.RequestedAtUtc)
+            .Take(take)
+            .ToListAsync(cancellationToken);
+
+        return rows
+            .Select(x => new SupplierConnectorImportRunRow(
+                x.Id,
+                x.ImportType,
+                x.Status,
+                x.RequestedAtUtc,
+                x.StartedAtUtc,
+                x.CompletedAtUtc,
+                x.Source,
+                x.Message,
+                ImportProgressPercent(x.Status, x.ProgressProcessed, x.ProgressTotal),
+                x.ProgressProcessed,
+                x.ProgressTotal))
+            .ToList();
+    }
+
+    private async Task<GlobalCatalogParserBackfillStats> GetParserBackfillStatsAsync(Guid configurationId, CancellationToken cancellationToken)
+    {
+        var totalProducts = await dbContext.GlobalProducts
+            .AsNoTracking()
+            .LongCountAsync(cancellationToken);
+        var candidateProducts = await ParserBackfillCandidates()
+            .AsNoTracking()
+            .LongCountAsync(cancellationToken);
+        var productsWithTireSize = await dbContext.GlobalProducts
+            .AsNoTracking()
+            .LongCountAsync(x => x.TireWidth != null && x.TireAspectRatio != null && x.TireRimDiameter != null, cancellationToken);
+        var productsWithTireModelLine = await dbContext.GlobalProducts
+            .AsNoTracking()
+            .LongCountAsync(x => x.TireModelLine != null, cancellationToken);
+        var productsWithTireType = await dbContext.GlobalProducts
+            .AsNoTracking()
+            .LongCountAsync(x => x.TireType != null, cancellationToken);
+        var missingTireSize = await ParserBackfillCandidates()
+            .AsNoTracking()
+            .LongCountAsync(x => x.TireWidth == null || x.TireAspectRatio == null || x.TireRimDiameter == null, cancellationToken);
+        var lastCompleted = await dbContext.SupplierConnectorImportRuns
+            .AsNoTracking()
+            .Where(x =>
+                x.SupplierConnectorConfigurationId == configurationId &&
+                x.ImportType == CatalogTireBackfillImportType &&
+                x.Status == "Completed")
+            .OrderByDescending(x => x.CompletedAtUtc)
+            .Select(x => new { x.CompletedAtUtc, x.Message })
+            .FirstOrDefaultAsync(cancellationToken);
+
+        return new GlobalCatalogParserBackfillStats(
+            totalProducts,
+            candidateProducts,
+            productsWithTireSize,
+            productsWithTireModelLine,
+            productsWithTireType,
+            missingTireSize,
+            lastCompleted?.CompletedAtUtc,
+            lastCompleted?.Message);
+    }
+
+    private async Task<GlobalCatalogNormalizationStats> GetNormalizationStatsAsync(Guid configurationId, CancellationToken cancellationToken)
+    {
+        var canonicalItems = await dbContext.CanonicalItems
+            .AsNoTracking()
+            .LongCountAsync(cancellationToken);
+        var supplierOffers = await dbContext.CanonicalItemSupplierOffers
+            .AsNoTracking()
+            .LongCountAsync(cancellationToken);
+        var identifiers = await dbContext.CanonicalItemIdentifiers
+            .AsNoTracking()
+            .LongCountAsync(cancellationToken);
+        var fitments = await dbContext.CanonicalFitments
+            .AsNoTracking()
+            .LongCountAsync(cancellationToken);
+        var sources = await dbContext.CanonicalItemSources
+            .AsNoTracking()
+            .LongCountAsync(cancellationToken);
+        var lastCompleted = await dbContext.SupplierConnectorImportRuns
+            .AsNoTracking()
+            .Where(x =>
+                x.SupplierConnectorConfigurationId == configurationId &&
+                x.ImportType == CatalogNormalizationImportType &&
+                x.Status == "Completed")
+            .OrderByDescending(x => x.CompletedAtUtc)
+            .Select(x => new { x.CompletedAtUtc, x.Message })
+            .FirstOrDefaultAsync(cancellationToken);
+
+        return new GlobalCatalogNormalizationStats(
+            canonicalItems,
+            supplierOffers,
+            identifiers,
+            fitments,
+            sources,
+            lastCompleted?.CompletedAtUtc,
+            lastCompleted?.Message);
+    }
+
+    private IQueryable<GlobalProduct> ParserBackfillCandidates()
+    {
+        return dbContext.GlobalProducts
+            .Where(x =>
+                x.IsActive &&
+                ((x.Category != null && EF.Functions.ILike(x.Category, "%tire%")) ||
+                    EF.Functions.ILike(x.Description, "%tire%") ||
+                    (x.LongDescription != null && EF.Functions.ILike(x.LongDescription, "%tire%")) ||
+                    EF.Functions.ILike(x.Description, "%/%") ||
+                    (x.LongDescription != null && EF.Functions.ILike(x.LongDescription, "%/%"))));
     }
 
     private async Task<WpsMasterFileRemoteStatus> GetMasterFileRemoteStatusAsync(string sourceUrl, DateTimeOffset? lastSuccessfulImportCompletedAtUtc, CancellationToken cancellationToken)

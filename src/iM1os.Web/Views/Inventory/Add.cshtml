@@ -1,0 +1,235 @@
+@model iM1os.Application.Inventory.CompanyInventoryAddPage
+@{
+    ViewData["Title"] = "Add Inventory";
+    var organizationId = ViewBag.OrganizationId as Guid?;
+}
+
+@{
+    var hero = new IM1WorkspaceHeroModel(
+        "Add Inventory",
+        "Company Inventory",
+        "Create custom inventory, add platform supplier items, or import a spreadsheet.",
+        Actions:
+        [
+            new IM1ActionModel("Inventory Grid", Url.Action("Index", "Inventory", new { organizationId }), "secondary"),
+            new IM1ActionModel("Scanner", Url.Action("Scanner", "Inventory", new { organizationId }), "primary")
+        ],
+        Status: "Add / Import");
+}
+
+@await Html.PartialAsync("IM1WorkspaceHero", hero)
+
+@if (TempData["InventoryStatus"] is string status)
+{
+    <div class="im1-alert im1-alert-success">@status</div>
+}
+@if (TempData["InventoryError"] is string error)
+{
+    <div class="im1-alert im1-alert-error">@error</div>
+}
+
+<section class="im1-inventory-admin-grid">
+    <article class="im1-workspace-card">
+        <header class="im1-section-header">
+            <div>
+                <h2>Add Platform Supplier Item</h2>
+                <p>Look up a platform catalog item by supplier SKU, UPC, MFG part number, or internal supplier product ID.</p>
+            </div>
+        </header>
+        <form class="im1-inventory-form" method="post" asp-controller="Inventory" asp-action="AddSupplierItem">
+            @Html.AntiForgeryToken()
+            @if (organizationId is not null)
+            {
+                <input type="hidden" name="organizationId" value="@organizationId" />
+            }
+            <label>
+                Lookup
+                <input name="LookupValue" placeholder="SKU, UPC, MFG Part#, or Supplier Product ID" required />
+            </label>
+            <label>
+                Supplier
+                <select name="SupplierCode">
+                    <option value="">Any supplier</option>
+                    <option value="WPS">WPS</option>
+                    <option value="PU">Parts Unlimited</option>
+                    <option value="TURN14">Turn14</option>
+                </select>
+            </label>
+            <label>
+                Supplier Product ID
+                <input name="SupplierProductId" placeholder="Optional" />
+            </label>
+            <label>
+                Location
+                <select name="InitialLocationId" required data-inventory-location-select>
+                    <option value="">Choose location</option>
+                    @foreach (var location in Model.Locations)
+                    {
+                        <option value="@location.Id">@location.Name</option>
+                    }
+                </select>
+            </label>
+            <input type="hidden" name="InitialBinLocation" value="" />
+            <label>
+                Physical Count
+                <input name="InitialQuantityOnHand" type="number" step="0.01" placeholder="0" value="0" />
+            </label>
+            <label>
+                Assign UPC
+                <input name="AssignUpc" placeholder="Optional UPC" data-ignore-scanner-enter />
+            </label>
+            <label>
+                Sale Price
+                <input name="SalePrice" type="number" step="0.01" min="0" placeholder="Optional" />
+            </label>
+            <label>
+                Min / Reorder At
+                <input name="MinQuantity" type="number" step="0.01" min="0.01" placeholder="1" value="1" required data-stock-min />
+            </label>
+            <label>
+                Reorder Qty
+                <input name="ReorderQuantity" type="number" step="0.01" min="0.01" placeholder="1" value="1" required data-stock-reorder />
+            </label>
+            <label class="checkbox"><input type="checkbox" name="StockInStore" value="true" checked data-stocked-toggle /> Stock in store</label>
+            <button class="im1-button im1-button-primary" type="submit">Add Supplier Item</button>
+        </form>
+    </article>
+
+    <article class="im1-workspace-card">
+        <header class="im1-section-header">
+            <div>
+                <h2>Add Custom Item</h2>
+                <p>Use this for outside-source parts, shop supplies, and items not tied to the platform supplier database.</p>
+            </div>
+        </header>
+        <form class="im1-inventory-form" method="post" asp-controller="Inventory" asp-action="Create">
+            @Html.AntiForgeryToken()
+            @if (organizationId is not null)
+            {
+                <input type="hidden" name="organizationId" value="@organizationId" />
+            }
+            <label>
+                Title
+                <input name="Title" placeholder="Item title" required />
+            </label>
+            <label>
+                SKU
+                <input name="Sku" placeholder="Internal SKU" />
+            </label>
+            <label>
+                MFG Part#
+                <input name="ManufacturerPartNumber" placeholder="MFG Part#" />
+            </label>
+            <label>
+                Brand
+                <input name="Brand" placeholder="Brand" />
+            </label>
+            <label>
+                UPC
+                <input name="Upc" placeholder="UPC" />
+            </label>
+            <label>
+                Category
+                <input name="Category" placeholder="Category" />
+            </label>
+            <label>
+                Retail
+                <input name="RetailPrice" type="number" step="0.01" placeholder="0.00" />
+            </label>
+            <label>
+                Sale Price
+                <input name="SalePrice" type="number" step="0.01" min="0" placeholder="Optional" />
+            </label>
+            <label>
+                Cost
+                <input name="DefaultCost" type="number" step="0.01" placeholder="0.00" />
+            </label>
+            <label>
+                Location
+                <select name="InitialLocationId" required data-inventory-location-select>
+                    <option value="">Choose location</option>
+                    @foreach (var location in Model.Locations)
+                    {
+                        <option value="@location.Id">@location.Name</option>
+                    }
+                </select>
+            </label>
+            <input type="hidden" name="InitialBinLocation" value="" />
+            <label>
+                Physical Count
+                <input name="InitialQuantityOnHand" type="number" step="0.01" placeholder="0" value="0" />
+            </label>
+            <label>
+                Min / Reorder At
+                <input name="MinQuantity" type="number" step="0.01" min="0.01" placeholder="1" value="1" required data-stock-min />
+            </label>
+            <label>
+                Reorder Qty
+                <input name="ReorderQuantity" type="number" step="0.01" min="0.01" placeholder="1" value="1" required data-stock-reorder />
+            </label>
+            <label class="checkbox"><input type="checkbox" name="IsStockedInStore" value="true" checked data-stocked-toggle /> Stock in store</label>
+            <input type="hidden" name="TrackInventory" value="true" />
+            <button class="im1-button im1-button-primary" type="submit">Create Item</button>
+        </form>
+    </article>
+
+    <article class="im1-workspace-card">
+        <header class="im1-section-header">
+            <div>
+                <h2>Spreadsheet Import</h2>
+                <p>CSV columns: title, sku, mfg part, brand, category, location, bin, qty, min, reorder qty, retail, cost. Min is the reorder trigger; max is calculated as min plus reorder qty.</p>
+            </div>
+        </header>
+        <form class="im1-inventory-form" method="post" enctype="multipart/form-data" asp-controller="Inventory" asp-action="ImportCsv">
+            @Html.AntiForgeryToken()
+            @if (organizationId is not null)
+            {
+                <input type="hidden" name="organizationId" value="@organizationId" />
+            }
+            <label>
+                CSV File
+                <input name="file" type="file" accept=".csv,text/csv" required />
+            </label>
+            <button class="im1-button im1-button-secondary" type="submit">Import CSV</button>
+        </form>
+    </article>
+</section>
+
+@section Scripts {
+    <script>
+        (() => {
+            const storageKey = "im1.inventory.selectedLocationId";
+            const applyLocation = select => {
+                const stored = localStorage.getItem(storageKey);
+                if (stored && [...select.options].some(option => option.value === stored)) {
+                    select.value = stored;
+                }
+                select.addEventListener("change", () => {
+                    if (select.value) localStorage.setItem(storageKey, select.value);
+                });
+            };
+            document.querySelectorAll("[data-inventory-location-select]").forEach(applyLocation);
+            document.querySelectorAll(".im1-inventory-form").forEach(form => {
+                const stocked = form.querySelector("[data-stocked-toggle]");
+                const min = form.querySelector("[data-stock-min]");
+                const reorder = form.querySelector("[data-stock-reorder]");
+                const sync = () => {
+                    if (!stocked || !min || !reorder) return;
+                    min.required = stocked.checked;
+                    reorder.required = stocked.checked;
+                    if (stocked.checked) {
+                        if (!min.value) min.value = "1";
+                        if (!reorder.value) reorder.value = "1";
+                    }
+                };
+                stocked?.addEventListener("change", sync);
+                sync();
+            });
+            document.addEventListener("keydown", event => {
+                if (event.key !== "Enter" || !event.target.closest("[data-ignore-scanner-enter]")) return;
+                event.preventDefault();
+                event.stopPropagation();
+            });
+        })();
+    </script>
+}

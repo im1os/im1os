@@ -74,109 +74,64 @@ public sealed class IndieMotoFitmentImportService(
         {
             cancellationToken.ThrowIfCancellationRequested();
 
-            if (batch.Length == 1)
+            IReadOnlyDictionary<string, FitmentLookupResult> batchLookups;
+            try
             {
-                var supplierProduct = batch[0];
-                try
-                {
-                    var lookup = await GetFitmentRowsAsync(client, baseUrl, supplierCode, supplierProduct.SupplierSku, fitmentLimit, cancellationToken);
-                    await ImportLookupAsync(supplier.Id, supplierCode, supplierProduct, FilterLookupRows(supplierCode, supplierProduct, lookup), counters, cancellationToken);
-
-                    await dbContext.SaveChangesAsync(cancellationToken);
-                    logger.LogInformation(
-                        "Imported {FitmentRows} fitment rows for {SupplierCode} SKU {SupplierSku}. QueuedForPartsUnlimitedCrawl={QueuedForPartsUnlimitedCrawl}, QueueReason={QueueReason}.",
-                        lookup.Rows.Count,
-                        supplierCode,
-                        supplierProduct.SupplierSku,
-                        lookup.PartsUnlimitedQueued,
-                        lookup.PartsUnlimitedQueueReason);
-                }
-                catch (Exception exception)
-                {
-                    counters.FailedSkus++;
-                    logger.LogWarning(exception, "Failed to import fitment for {SupplierCode} SKU {SupplierSku}.", supplierCode, supplierProduct.SupplierSku);
-                }
+                var skus = batch.Select(x => x.SupplierSku).ToArray();
+                batchLookups = await GetStreamingFitmentExportRowsAsync(
+                    client,
+                    baseUrl,
+                    supplierCode,
+                    skus,
+                    cancellationToken);
             }
-            else
+            catch (BatchFitmentLookupUnsupportedException exception)
             {
-                IReadOnlyDictionary<string, FitmentLookupResult> batchLookups;
-                try
-                {
-                    batchLookups = await GetBatchFitmentRowsAsync(
-                        client,
-                        baseUrl,
-                        supplierCode,
-                        batch.Select(x => x.SupplierSku).ToArray(),
-                        fitmentLimit,
-                        cancellationToken);
-                }
-                catch (BatchFitmentLookupUnsupportedException exception)
-                {
-                    logger.LogWarning(exception, "Batch fitment lookup is not supported by {BaseUrl}; falling back to single-SKU GET lookups for {SupplierCode}. BatchSize={BatchSize}.", baseUrl, supplierCode, batch.Length);
-                    foreach (var supplierProduct in batch)
-                    {
-                        cancellationToken.ThrowIfCancellationRequested();
-                        try
-                        {
-                            var lookup = await GetFitmentRowsAsync(client, baseUrl, supplierCode, supplierProduct.SupplierSku, fitmentLimit, cancellationToken);
-                            await ImportLookupAsync(supplier.Id, supplierCode, supplierProduct, FilterLookupRows(supplierCode, supplierProduct, lookup), counters, cancellationToken);
-                        }
-                        catch (Exception singleSkuException)
-                        {
-                            counters.FailedSkus++;
-                            logger.LogWarning(singleSkuException, "Failed to import fitment fallback for {SupplierCode} SKU {SupplierSku}.", supplierCode, supplierProduct.SupplierSku);
-                        }
+                logger.LogWarning(exception, "Streaming fitment export is not supported by {BaseUrl}; falling back to legacy batch lookup for {SupplierCode}. BatchSize={BatchSize}.", baseUrl, supplierCode, batch.Length);
+                batchLookups = await GetLegacyBatchOrSingleFitmentRowsAsync(client, baseUrl, supplier.Id, supplierCode, batch, fitmentLimit, delayMilliseconds, counters, cancellationToken);
+            }
+            catch (Exception exception)
+            {
+                counters.FailedSkus += batch.Length;
+                logger.LogWarning(exception, "Failed to import streaming fitment export for {SupplierCode}. BatchSize={BatchSize}.", supplierCode, batch.Length);
+                batchLookups = new Dictionary<string, FitmentLookupResult>(StringComparer.OrdinalIgnoreCase);
+            }
 
-                        if (delayMilliseconds > 0)
-                        {
-                            await Task.Delay(delayMilliseconds, cancellationToken);
-                        }
-                    }
-
-                    batchLookups = new Dictionary<string, FitmentLookupResult>(StringComparer.OrdinalIgnoreCase);
-                }
-                catch (Exception exception)
+            foreach (var supplierProduct in batch)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                if (batchLookups.TryGetValue(supplierProduct.SupplierSku, out _))
                 {
-                    counters.FailedSkus += batch.Length;
-                    logger.LogWarning(exception, "Failed to import batch fitment for {SupplierCode}. BatchSize={BatchSize}.", supplierCode, batch.Length);
-                    batchLookups = new Dictionary<string, FitmentLookupResult>(StringComparer.OrdinalIgnoreCase);
-                }
-
-                foreach (var supplierProduct in batch)
-                {
-                    cancellationToken.ThrowIfCancellationRequested();
-                    if (batchLookups.TryGetValue(supplierProduct.SupplierSku, out var lookup))
-                    {
-                        continue;
-                    }
-
-                    if (batchLookups.Count > 0)
-                    {
-                        counters.SkusProcessed++;
-                        counters.SkusWithoutFitment++;
-                    }
+                    continue;
                 }
 
                 if (batchLookups.Count > 0)
                 {
-                    await ImportBatchLookupsAsync(
-                        supplier.Id,
-                        supplierCode,
-                        batch
-                            .Where(x => batchLookups.ContainsKey(x.SupplierSku))
-                            .Select(x => new PendingFitmentLookup(x, FilterLookupRows(supplierCode, x, batchLookups[x.SupplierSku])))
-                            .ToList(),
-                        counters,
-                        cancellationToken);
+                    counters.SkusProcessed++;
+                    counters.SkusWithoutFitment++;
                 }
-
-                await dbContext.SaveChangesAsync(cancellationToken);
-                logger.LogInformation(
-                    "Imported batch fitment for {SupplierCode}. BatchSize={BatchSize}, ImportedSkus={ImportedSkus}.",
-                    supplierCode,
-                    batch.Length,
-                    batchLookups.Count);
             }
+
+            if (batchLookups.Count > 0)
+            {
+                await ImportBatchLookupsAsync(
+                    supplier.Id,
+                    supplierCode,
+                    batch
+                        .Where(x => batchLookups.ContainsKey(x.SupplierSku))
+                        .Select(x => new PendingFitmentLookup(x, FilterLookupRows(supplierCode, x, batchLookups[x.SupplierSku])))
+                        .ToList(),
+                    counters,
+                    cancellationToken);
+            }
+
+            await dbContext.SaveChangesAsync(cancellationToken);
+            logger.LogInformation(
+                "Imported streaming fitment export for {SupplierCode}. BatchSize={BatchSize}, ImportedSkus={ImportedSkus}, FitmentRows={FitmentRows}.",
+                supplierCode,
+                batch.Length,
+                batchLookups.Count,
+                batchLookups.Values.Sum(x => x.Rows.Count));
 
             if (importRun is not null)
             {
@@ -201,6 +156,59 @@ public sealed class IndieMotoFitmentImportService(
             counters.GlobalVehiclesUpserted,
             counters.VehicleFitmentsUpserted,
             counters.FailedSkus);
+    }
+
+    private async Task<IReadOnlyDictionary<string, FitmentLookupResult>> GetLegacyBatchOrSingleFitmentRowsAsync(
+        HttpClient client,
+        string baseUrl,
+        Guid supplierId,
+        string supplierCode,
+        IReadOnlyCollection<SupplierProductImportRow> batch,
+        int? fitmentLimit,
+        int delayMilliseconds,
+        ImportCounters counters,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            return await GetBatchFitmentRowsAsync(
+                client,
+                baseUrl,
+                supplierCode,
+                batch.Select(x => x.SupplierSku).ToArray(),
+                fitmentLimit,
+                cancellationToken);
+        }
+        catch (BatchFitmentLookupUnsupportedException exception)
+        {
+            logger.LogWarning(exception, "Legacy batch fitment lookup is not supported by {BaseUrl}; falling back to single-SKU GET lookups for {SupplierCode}. BatchSize={BatchSize}.", baseUrl, supplierCode, batch.Count);
+        }
+        catch (Exception exception)
+        {
+            logger.LogWarning(exception, "Legacy batch fitment lookup failed for {SupplierCode}. Falling back to single-SKU GET lookups. BatchSize={BatchSize}.", supplierCode, batch.Count);
+        }
+
+        foreach (var supplierProduct in batch)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            try
+            {
+                var lookup = await GetFitmentRowsAsync(client, baseUrl, supplierCode, supplierProduct.SupplierSku, fitmentLimit, cancellationToken);
+                await ImportLookupAsync(supplierId, supplierCode, supplierProduct, FilterLookupRows(supplierCode, supplierProduct, lookup), counters, cancellationToken);
+            }
+            catch (Exception singleSkuException)
+            {
+                counters.FailedSkus++;
+                logger.LogWarning(singleSkuException, "Failed to import fitment fallback for {SupplierCode} SKU {SupplierSku}.", supplierCode, supplierProduct.SupplierSku);
+            }
+
+            if (delayMilliseconds > 0)
+            {
+                await Task.Delay(delayMilliseconds, cancellationToken);
+            }
+        }
+
+        return new Dictionary<string, FitmentLookupResult>(StringComparer.OrdinalIgnoreCase);
     }
 
     private async Task ImportBatchLookupsAsync(
@@ -459,6 +467,102 @@ public sealed class IndieMotoFitmentImportService(
         return ParseBatchFitmentLookups(document.RootElement, skus);
     }
 
+    private static async Task<IReadOnlyDictionary<string, FitmentLookupResult>> GetStreamingFitmentExportRowsAsync(
+        HttpClient client,
+        string baseUrl,
+        string supplierCode,
+        IReadOnlyCollection<string> skus,
+        CancellationToken cancellationToken)
+    {
+        var url = $"{baseUrl.TrimEnd('/')}/api/ymm";
+        using var request = new HttpRequestMessage(HttpMethod.Post, url);
+        request.Headers.AcceptEncoding.ParseAdd("gzip");
+        request.Content = new StringContent(
+            JsonSerializer.Serialize(new FitmentExportRequest(
+                "fitment-export",
+                FitmentExportSupplierValue(supplierCode),
+                skus,
+                IncludeMisses: true,
+                QueuePartsUnlimitedMisses: QueuePartsUnlimitedMissesForExport(supplierCode)), JsonOptions),
+            Encoding.UTF8,
+            "application/json");
+
+        using var response = await client.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
+        if (!response.IsSuccessStatusCode)
+        {
+            var body = await response.Content.ReadAsStringAsync(cancellationToken);
+            if (response.StatusCode == HttpStatusCode.BadRequest &&
+                body.Contains("Unknown YMM API action", StringComparison.OrdinalIgnoreCase))
+            {
+                throw new BatchFitmentLookupUnsupportedException(TrimForMessage(body));
+            }
+
+            throw new InvalidOperationException($"Streaming fitment export failed with HTTP {(int)response.StatusCode}: {TrimForMessage(body)}");
+        }
+
+        await using var stream = await response.Content.ReadAsStreamAsync(cancellationToken);
+        using var reader = new StreamReader(stream, Encoding.UTF8);
+        var lookups = skus.ToDictionary(
+            sku => sku,
+            _ => new MutableFitmentLookup(),
+            StringComparer.OrdinalIgnoreCase);
+        while (await reader.ReadLineAsync(cancellationToken) is { } line)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            if (string.IsNullOrWhiteSpace(line))
+            {
+                continue;
+            }
+
+            using var document = JsonDocument.Parse(line);
+            var root = document.RootElement;
+            if (string.Equals(Clean(StringValue(root, "type")), "miss", StringComparison.OrdinalIgnoreCase))
+            {
+                var requestedSku = Clean(StringValue(root, "requestedSku")) ??
+                    Clean(StringValue(root, "sku")) ??
+                    Clean(StringValue(root, "partNumber"));
+                if (requestedSku is null)
+                {
+                    continue;
+                }
+
+                var queue = ParsePartsUnlimitedQueue(root);
+                if (!lookups.TryGetValue(requestedSku, out var lookup))
+                {
+                    lookup = new MutableFitmentLookup();
+                    lookups[requestedSku] = lookup;
+                }
+
+                lookup.PartsUnlimitedQueued = queue.Queued;
+                lookup.PartsUnlimitedQueueReason = queue.Reason;
+                continue;
+            }
+
+            var requestedRowSku = Clean(StringValue(root, "requestedSku")) ??
+                Clean(StringValue(root, "sku")) ??
+                Clean(StringValue(root, "supplierPartNumber"));
+            var row = ParseFitmentRow(root, requestedRowSku);
+            if (row is null)
+            {
+                continue;
+            }
+
+            var lookupKey = requestedRowSku ?? row.SupplierSku;
+            if (!lookups.TryGetValue(lookupKey, out var rowsLookup))
+            {
+                rowsLookup = new MutableFitmentLookup();
+                lookups[lookupKey] = rowsLookup;
+            }
+
+            rowsLookup.Rows.Add(row);
+        }
+
+        return lookups.ToDictionary(
+            x => x.Key,
+            x => new FitmentLookupResult(x.Value.Rows, x.Value.PartsUnlimitedQueued, x.Value.PartsUnlimitedQueueReason),
+            StringComparer.OrdinalIgnoreCase);
+    }
+
     private static IReadOnlyDictionary<string, FitmentLookupResult> ParseBatchFitmentLookups(JsonElement root, IReadOnlyCollection<string> requestedSkus)
     {
         var lookups = new Dictionary<string, FitmentLookupResult>(StringComparer.OrdinalIgnoreCase);
@@ -522,37 +626,51 @@ public sealed class IndieMotoFitmentImportService(
         var rows = new List<IndieMotoFitmentRow>();
         foreach (var item in fitment.EnumerateArray())
         {
-            var year = IntValue(item, "year");
-            var make = Clean(StringValue(item, "make"));
-            var model = Clean(StringValue(item, "model"));
-            var supplierKey = Clean(StringValue(item, "supplierKey"));
-            var supplierSku = Clean(StringValue(item, "sku"));
-            var vehicleClass = Clean(StringValue(item, "vehicleClass"));
-            var vehicleType = Clean(StringValue(item, "vehicleClassLabel")) ?? vehicleClass;
-            if (year is null || make is null || model is null || supplierKey is null || supplierSku is null)
+            var row = ParseFitmentRow(item, Clean(StringValue(item, "sku")));
+            if (row is not null)
             {
-                continue;
+                rows.Add(row);
             }
-
-            rows.Add(new IndieMotoFitmentRow(
-                supplierKey,
-                StringValue(item, "supplierProductId"),
-                StringValue(item, "supplierPartNumber"),
-                supplierSku,
-                StringValue(item, "fitmentItemId"),
-                StringValue(item, "fitmentPartNumber"),
-                StringValue(item, "mfgPartNumber"),
-                vehicleClass,
-                vehicleType,
-                year.Value,
-                make,
-                model,
-                Clean(StringValue(item, "submodel")),
-                Clean(StringValue(item, "engine")),
-                Clean(StringValue(item, "notes"))));
         }
 
         return rows;
+    }
+
+    private static IndieMotoFitmentRow? ParseFitmentRow(JsonElement item, string? requestedSku)
+    {
+        var year = IntValue(item, "year");
+        var make = Clean(StringValue(item, "make"));
+        var model = Clean(StringValue(item, "model"));
+        var supplierKey = Clean(StringValue(item, "supplierKey"));
+        var supplierSku = Clean(StringValue(item, "sku")) ??
+            Clean(StringValue(item, "supplierSku")) ??
+            Clean(requestedSku) ??
+            Clean(StringValue(item, "supplierPartNumber"));
+        var supplierProductId = StringValue(item, "supplierProductId");
+        var supplierPartNumber = StringValue(item, "supplierPartNumber");
+        var vehicleClass = Clean(StringValue(item, "vehicleClass"));
+        var vehicleType = Clean(StringValue(item, "vehicleClassLabel")) ?? Clean(StringValue(item, "vehicleType")) ?? vehicleClass;
+        if (year is null || make is null || model is null || supplierKey is null || supplierSku is null)
+        {
+            return null;
+        }
+
+        return new IndieMotoFitmentRow(
+            supplierKey,
+            supplierProductId,
+            supplierPartNumber,
+            supplierSku,
+            StringValue(item, "fitmentItemId") ?? supplierProductId,
+            StringValue(item, "fitmentPartNumber") ?? supplierPartNumber ?? requestedSku,
+            StringValue(item, "mfgPartNumber") ?? supplierPartNumber ?? requestedSku,
+            vehicleClass,
+            vehicleType,
+            year.Value,
+            make,
+            model,
+            Clean(StringValue(item, "submodel")),
+            Clean(StringValue(item, "engine")),
+            Clean(StringValue(item, "notes")));
     }
 
     private static FitmentLookupResult FilterLookupRows(string supplierCode, SupplierProductImportRow supplierProduct, FitmentLookupResult lookup)
@@ -720,6 +838,14 @@ public sealed class IndieMotoFitmentImportService(
             string.Equals(supplierCode, "PARTS UNLIMITED", StringComparison.OrdinalIgnoreCase);
     }
 
+    private static bool IsWpsSupplier(string supplierCode)
+    {
+        return string.Equals(supplierCode, "WPS", StringComparison.OrdinalIgnoreCase) ||
+            string.Equals(supplierCode, "WESTERN_POWER_SPORTS", StringComparison.OrdinalIgnoreCase) ||
+            string.Equals(supplierCode, "WESTERNPOWERSPORTS", StringComparison.OrdinalIgnoreCase) ||
+            string.Equals(supplierCode, "WESTERN POWER SPORTS", StringComparison.OrdinalIgnoreCase);
+    }
+
     private static string? YmmSupplierValue(string supplierCode)
     {
         if (IsPartsUnlimitedSupplier(supplierCode))
@@ -742,6 +868,33 @@ public sealed class IndieMotoFitmentImportService(
         return Clean(supplierCode)?.ToLowerInvariant();
     }
 
+    private static string FitmentExportSupplierValue(string supplierCode)
+    {
+        if (IsWpsSupplier(supplierCode))
+        {
+            return "WPS";
+        }
+
+        if (IsPartsUnlimitedSupplier(supplierCode))
+        {
+            return "Parts Unlimited";
+        }
+
+        if (string.Equals(supplierCode, "TURN14", StringComparison.OrdinalIgnoreCase) ||
+            string.Equals(supplierCode, "TURN 14", StringComparison.OrdinalIgnoreCase) ||
+            string.Equals(supplierCode, "TURN-14", StringComparison.OrdinalIgnoreCase))
+        {
+            return "Turn14";
+        }
+
+        return Clean(supplierCode) ?? supplierCode;
+    }
+
+    private static bool? QueuePartsUnlimitedMissesForExport(string supplierCode)
+    {
+        return IsPartsUnlimitedSupplier(supplierCode) ? null : true;
+    }
+
     private sealed record SupplierProductImportRow(Guid Id, Guid GlobalProductId, string SupplierSku, string? SourceSupplierProductId);
 
     private sealed record FitmentLookupResult(
@@ -759,6 +912,22 @@ public sealed class IndieMotoFitmentImportService(
         int? Limit,
         string? Supplier,
         bool? QueuePartsUnlimited);
+
+    private sealed record FitmentExportRequest(
+        string Intent,
+        string Supplier,
+        IReadOnlyCollection<string> Skus,
+        bool IncludeMisses,
+        bool? QueuePartsUnlimitedMisses);
+
+    private sealed class MutableFitmentLookup
+    {
+        public List<IndieMotoFitmentRow> Rows { get; } = [];
+
+        public bool PartsUnlimitedQueued { get; set; }
+
+        public string? PartsUnlimitedQueueReason { get; set; }
+    }
 
     private sealed record IndieMotoFitmentRow(
         string SupplierKey,
