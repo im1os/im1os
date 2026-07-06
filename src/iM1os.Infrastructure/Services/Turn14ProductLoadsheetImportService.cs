@@ -469,6 +469,7 @@ public sealed class Turn14ProductLoadsheetImportService(
             supplierProduct.SupplierStatus = row.Status;
             supplierProduct.SupplierImagesJson = row.ImageJson;
             supplierProduct.SourceDataJson = row.SourceDataJson;
+            supplierProduct.CaseQuantity = row.CaseQuantity;
             supplierProduct.LastSyncedAtUtc = now;
 
             if (!pricesBySupplierProductId.TryGetValue(supplierProduct.Id, out var price))
@@ -770,6 +771,20 @@ public sealed class Turn14ProductLoadsheetImportService(
             : null;
     }
 
+    private static int? IntField(IReadOnlyDictionary<string, string?> row, params string[] fieldNames)
+    {
+        var value = FirstField(row, fieldNames);
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            return null;
+        }
+
+        var cleaned = value.Replace(",", string.Empty, StringComparison.Ordinal);
+        return int.TryParse(cleaned, NumberStyles.Integer, CultureInfo.InvariantCulture, out var parsed)
+            ? parsed
+            : null;
+    }
+
     private static string BuildManufacturerPartNumber(string internalPartNumber, string? primaryVendor)
     {
         if (internalPartNumber.Length > 3)
@@ -951,7 +966,8 @@ public sealed class Turn14ProductLoadsheetImportService(
         string SpecificationsJson,
         string SourceDataJson,
         decimal? Msrp,
-        decimal? Map)
+        decimal? Map,
+        int? CaseQuantity)
     {
         public static Turn14LoadsheetRow From(IReadOnlyDictionary<string, string?> row)
         {
@@ -978,7 +994,8 @@ public sealed class Turn14ProductLoadsheetImportService(
                 Turn14ProductLoadsheetImportService.SpecificationsJson(row, primaryVendor, null, null),
                 JsonSerializer.Serialize(new { loadsheet = row, apiItem = (Turn14ApiItem?)null, itemData = (Turn14ItemData?)null }),
                 DecimalField(row, "MSRP", "RetailPrice", "ListPrice", "Retail"),
-                DecimalField(row, "MAP", "MapPrice", "MinimumAdvertisedPrice"));
+                DecimalField(row, "MAP", "MapPrice", "MinimumAdvertisedPrice"),
+                IntField(row, "CaseQuantity", "Case Quantity", "CaseQty", "Case Qty", "UnitsPerCase", "Units Per Case"));
         }
     }
 

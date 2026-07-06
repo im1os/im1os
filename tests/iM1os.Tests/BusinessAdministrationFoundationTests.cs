@@ -1,5 +1,9 @@
+using System.Security.Cryptography;
+using System.Text;
 using iM1os.Application.BusinessAdministration;
+using iM1os.Application.Common;
 using iM1os.Application.Platform;
+using iM1os.Domain.Employees;
 using iM1os.Domain.GlobalCatalog;
 using iM1os.Domain.Identity;
 using iM1os.Domain.Platform;
@@ -160,9 +164,167 @@ public sealed class BusinessAdministrationFoundationTests
         Assert.Equal("ABC Motorsports", workspace.Profile.BusinessName);
     }
 
+    [Fact]
+    public async Task Time_clock_pin_punches_create_open_and_closed_punches()
+    {
+        await using var dbContext = CreateContext();
+        var seeded = await SeedOwnerAsync(dbContext);
+        var clock = new TestClock(new DateTimeOffset(2026, 7, 6, 14, 0, 0, TimeSpan.Zero));
+        var service = CreateService(dbContext, clock);
+        await service.InviteEmployeeAsync(
+            seeded.OrganizationId,
+            seeded.OwnerId,
+            new InviteEmployeeRequest("Sam Tech", "sam-time@abcmoto.test", null, "Technician", null),
+            CancellationToken.None);
+        var user = await dbContext.Users.IgnoreQueryFilters().SingleAsync(x => x.OrganizationId == seeded.OrganizationId && x.Email == "sam-time@abcmoto.test");
+        user.PinHash = HashPin(seeded.OrganizationId, "1234");
+        await dbContext.SaveChangesAsync();
+
+        await service.ClockEmployeeAsync(seeded.OrganizationId, seeded.OwnerId, new ClockEmployeeRequest(user.EmployeeId!.Value, "1234", "in"), CancellationToken.None);
+        var openWorkspace = await service.GetWorkspaceAsync(seeded.OrganizationId, seeded.OwnerId, CancellationToken.None);
+
+        Assert.Single(openWorkspace.TimeClock.OpenPunches);
+
+        clock.UtcNow = clock.UtcNow.AddMinutes(90);
+        await service.ClockEmployeeAsync(seeded.OrganizationId, seeded.OwnerId, new ClockEmployeeRequest(user.EmployeeId.Value, "1234", "out"), CancellationToken.None);
+        var workspace = await service.GetWorkspaceAsync(seeded.OrganizationId, seeded.OwnerId, CancellationToken.None);
+        var punch = Assert.Single(workspace.TimeClock.RecentPunches);
+
+        Assert.Empty(workspace.TimeClock.OpenPunches);
+        Assert.Equal(1.5m, punch.Hours);
+        Assert.Equal(1.5m, workspace.TimeClock.Payroll.TotalWorkedHours);
+    }
+
+    [Fact]
+    public async Task Time_clock_schedule_and_approved_time_off_are_in_payroll_summary()
+    {
+        await using var dbContext = CreateContext();
+        var seeded = await SeedOwnerAsync(dbContext);
+        var clock = new TestClock(new DateTimeOffset(2026, 7, 6, 14, 0, 0, TimeSpan.Zero));
+        var service = CreateService(dbContext, clock);
+        await service.InviteEmployeeAsync(
+            seeded.OrganizationId,
+            seeded.OwnerId,
+            new InviteEmployeeRequest("Riley Parts", "riley@abcmoto.test", null, "Inventory", null),
+            CancellationToken.None);
+        var employee = await dbContext.Employees.IgnoreQueryFilters().SingleAsync(x => x.OrganizationId == seeded.OrganizationId && x.Email == "riley@abcmoto.test");
+
+        await service.AddScheduleShiftAsync(
+            seeded.OrganizationId,
+            seeded.OwnerId,
+            new AddScheduleShiftRequest(employee.Id, new DateOnly(2026, 7, 7), new TimeOnly(9, 0), new TimeOnly(17, 0), "Parts counter"),
+            CancellationToken.None);
+        await service.AddTimeOffAsync(
+            seeded.OrganizationId,
+            seeded.OwnerId,
+            new AddTimeOffRequest(employee.Id, "PTO", new DateOnly(2026, 7, 8), new DateOnly(2026, 7, 8), 8m, null),
+            CancellationToken.None);
+        var timeOff = await dbContext.EmployeeTimeOffRequests.IgnoreQueryFilters().SingleAsync(x => x.EmployeeId == employee.Id);
+        await service.SetTimeOffStatusAsync(seeded.OrganizationId, seeded.OwnerId, new SetTimeOffStatusRequest(timeOff.Id, "Approved"), CancellationToken.None);
+
+        var workspace = await service.GetWorkspaceAsync(seeded.OrganizationId, seeded.OwnerId, CancellationToken.None);
+        var payrollRow = workspace.TimeClock.Payroll.Employees.Single(x => x.EmployeeId == employee.Id);
+
+        Assert.Equal(8m, payrollRow.ScheduledHours);
+        Assert.Equal(8m, payrollRow.TimeOffHours);
+        Assert.Equal(0m, payrollRow.VarianceHours);
+        Assert.Contains(workspace.TimeClock.TimeOffRequests, x => x.Id == timeOff.Id && x.Status == "Approved");
+    }
+
+    [Fact]
+    public async Task Hourly_payroll_report_uses_worked_hours_paid_time_off_and_hourly_rate()
+    {
+        await using var dbContext = CreateContext();
+        var seeded = await SeedOwnerAsync(dbContext);
+        var clock = new TestClock(new DateTimeOffset(2026, 7, 6, 14, 0, 0, TimeSpan.Zero));
+        var service = CreateService(dbContext, clock);
+        await service.InviteEmployeeAsync(
+            seeded.OrganizationId,
+            seeded.OwnerId,
+            new InviteEmployeeRequest("Hourly Tech", "hourly@abcmoto.test", null, "Technician", null),
+            CancellationToken.None);
+        var employee = await dbContext.Employees.IgnoreQueryFilters().SingleAsync(x => x.OrganizationId == seeded.OrganizationId && x.Email == "hourly@abcmoto.test");
+        dbContext.EmployeeCompensations.Add(new EmployeeCompensation
+        {
+            OrganizationId = seeded.OrganizationId,
+            EmployeeId = employee.Id,
+            PayrollType = "Hourly",
+            HourlyRate = 20m,
+            EffectiveStartDate = new DateOnly(2026, 7, 1)
+        });
+        await dbContext.SaveChangesAsync();
+
+        await service.AddTimePunchAsync(
+            seeded.OrganizationId,
+            seeded.OwnerId,
+            new AddTimePunchRequest(employee.Id, new DateTime(2026, 7, 7, 9, 0, 0), new DateTime(2026, 7, 7, 17, 0, 0), "Regular shift"),
+            CancellationToken.None);
+        await service.AddTimeOffAsync(
+            seeded.OrganizationId,
+            seeded.OwnerId,
+            new AddTimeOffRequest(employee.Id, "PTO", new DateOnly(2026, 7, 8), new DateOnly(2026, 7, 8), 8m, null),
+            CancellationToken.None);
+        var timeOff = await dbContext.EmployeeTimeOffRequests.IgnoreQueryFilters().SingleAsync(x => x.EmployeeId == employee.Id);
+        await service.SetTimeOffStatusAsync(seeded.OrganizationId, seeded.OwnerId, new SetTimeOffStatusRequest(timeOff.Id, "Approved"), CancellationToken.None);
+
+        var workspace = await service.GetWorkspaceAsync(seeded.OrganizationId, seeded.OwnerId, CancellationToken.None);
+        var row = workspace.TimeClock.Payroll.Employees.Single(x => x.EmployeeId == employee.Id);
+
+        Assert.Equal("Hourly", row.PayrollType);
+        Assert.Equal(20m, row.HourlyRate);
+        Assert.Equal(8m, row.WorkedHours);
+        Assert.Equal(8m, row.PaidTimeOffHours);
+        Assert.Equal(16m, row.PaidHours);
+        Assert.Equal(320m, row.GrossPay);
+        Assert.Equal(320m, workspace.TimeClock.Payroll.TotalGrossPay);
+    }
+
+    [Fact]
+    public async Task Hr_assets_and_safety_incidents_are_available_in_administration_workspace()
+    {
+        await using var dbContext = CreateContext();
+        var seeded = await SeedOwnerAsync(dbContext);
+        var service = CreateService(dbContext, new TestClock(new DateTimeOffset(2026, 7, 6, 14, 0, 0, TimeSpan.Zero)));
+        await service.InviteEmployeeAsync(
+            seeded.OrganizationId,
+            seeded.OwnerId,
+            new InviteEmployeeRequest("Safety Lead", "safety@abcmoto.test", null, "Manager", null),
+            CancellationToken.None);
+        var employee = await dbContext.Employees.IgnoreQueryFilters().SingleAsync(x => x.OrganizationId == seeded.OrganizationId && x.Email == "safety@abcmoto.test");
+
+        await service.AddCompanyAssetAsync(
+            seeded.OrganizationId,
+            seeded.OwnerId,
+            new AddCompanyAssetRequest(employee.Id, "Shop Laptop", "LT-100", "SN123", new DateOnly(2026, 7, 1), null, "Issued for diagnostics"),
+            CancellationToken.None);
+        await service.AddSafetyIncidentAsync(
+            seeded.OrganizationId,
+            seeded.OwnerId,
+            new AddSafetyIncidentRequest(employee.Id, new DateOnly(2026, 7, 5), "Slip", "First aid", 2.5m, true, false, "Wet floor"),
+            CancellationToken.None);
+
+        var workspace = await service.GetWorkspaceAsync(seeded.OrganizationId, seeded.OwnerId, CancellationToken.None);
+        var asset = Assert.Single(workspace.TimeClock.CompanyAssets);
+        var incident = Assert.Single(workspace.TimeClock.SafetyIncidents);
+
+        Assert.Equal("Shop Laptop", asset.Name);
+        Assert.Equal("Issued", asset.Status);
+        Assert.Equal("LT-100", asset.AssetTag);
+        Assert.Equal("Slip", incident.IncidentType);
+        Assert.True(incident.IsOshaRecordable);
+        Assert.Equal(1, workspace.TimeClock.SafetySummary.IncidentCount);
+        Assert.Equal(1, workspace.TimeClock.SafetySummary.OshaRecordableCount);
+        Assert.Equal(2.5m, workspace.TimeClock.SafetySummary.LostTimeHours);
+    }
+
     private static BusinessAdministrationService CreateService(ApplicationDbContext dbContext)
     {
         return new BusinessAdministrationService(dbContext, new SystemClock(), new PasswordHasher<ApplicationUser>());
+    }
+
+    private static BusinessAdministrationService CreateService(ApplicationDbContext dbContext, IDateTimeProvider clock)
+    {
+        return new BusinessAdministrationService(dbContext, clock, new PasswordHasher<ApplicationUser>());
     }
 
     private static async Task<(Guid OrganizationId, Guid OwnerId)> SeedOwnerAsync(ApplicationDbContext dbContext)
@@ -196,5 +358,16 @@ public sealed class BusinessAdministrationFoundationTests
             currentUser,
             new SystemClock(),
             new TenantProvider(currentUser));
+    }
+
+    private static string HashPin(Guid organizationId, string pin)
+    {
+        var bytes = SHA256.HashData(Encoding.UTF8.GetBytes($"{organizationId:N}:{pin}"));
+        return Convert.ToHexString(bytes);
+    }
+
+    private sealed class TestClock(DateTimeOffset utcNow) : IDateTimeProvider
+    {
+        public DateTimeOffset UtcNow { get; set; } = utcNow;
     }
 }

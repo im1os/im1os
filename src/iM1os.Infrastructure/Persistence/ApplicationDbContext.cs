@@ -5,6 +5,16 @@ using iM1os.Domain.Common;
 using iM1os.Domain.Configuration;
 using iM1os.Domain.Customers;
 using iM1os.Domain.Employees;
+using iM1os.Domain.FinancialServices.Accounting;
+using iM1os.Domain.FinancialServices.Banking;
+using iM1os.Domain.FinancialServices.Billing;
+using iM1os.Domain.FinancialServices.Hardware;
+using iM1os.Domain.FinancialServices.Ledger;
+using iM1os.Domain.FinancialServices.Lending;
+using iM1os.Domain.FinancialServices.Merchant;
+using iM1os.Domain.FinancialServices.Payments;
+using iM1os.Domain.FinancialServices.Providers;
+using iM1os.Domain.FinancialServices.Wallet;
 using iM1os.Domain.GlobalCatalog;
 using iM1os.Domain.Identity;
 using iM1os.Domain.Marketing;
@@ -34,6 +44,16 @@ public sealed class ApplicationDbContext(
     public DbSet<EmployeeCompensation> EmployeeCompensations => Set<EmployeeCompensation>();
 
     public DbSet<EmployeeDocument> EmployeeDocuments => Set<EmployeeDocument>();
+
+    public DbSet<EmployeeTimePunch> EmployeeTimePunches => Set<EmployeeTimePunch>();
+
+    public DbSet<EmployeeScheduleShift> EmployeeScheduleShifts => Set<EmployeeScheduleShift>();
+
+    public DbSet<EmployeeTimeOffRequest> EmployeeTimeOffRequests => Set<EmployeeTimeOffRequest>();
+
+    public DbSet<EmployeeSafetyIncident> EmployeeSafetyIncidents => Set<EmployeeSafetyIncident>();
+
+    public DbSet<EmployeeCompanyAsset> EmployeeCompanyAssets => Set<EmployeeCompanyAsset>();
 
     public DbSet<UserInvitation> UserInvitations => Set<UserInvitation>();
 
@@ -154,6 +174,32 @@ public sealed class ApplicationDbContext(
     public DbSet<CompanyInventoryLocationStock> CompanyInventoryLocationStocks => Set<CompanyInventoryLocationStock>();
 
     public DbSet<CompanyInventoryMovement> CompanyInventoryMovements => Set<CompanyInventoryMovement>();
+
+    public DbSet<PaymentTransaction> PaymentTransactions => Set<PaymentTransaction>();
+
+    public DbSet<FinancialLedgerEntry> FinancialLedgerEntries => Set<FinancialLedgerEntry>();
+
+    public DbSet<MerchantAccount> MerchantAccounts => Set<MerchantAccount>();
+
+    public DbSet<MerchantProviderRelationship> MerchantProviderRelationships => Set<MerchantProviderRelationship>();
+
+    public DbSet<MerchantAccountStatusHistory> MerchantAccountStatusHistories => Set<MerchantAccountStatusHistory>();
+
+    public DbSet<CustomerWallet> CustomerWallets => Set<CustomerWallet>();
+
+    public DbSet<WalletPaymentMethod> WalletPaymentMethods => Set<WalletPaymentMethod>();
+
+    public DbSet<PaymentTerminal> PaymentTerminals => Set<PaymentTerminal>();
+
+    public DbSet<FinancialProviderConnection> FinancialProviderConnections => Set<FinancialProviderConnection>();
+
+    public DbSet<SubscriptionAgreement> SubscriptionAgreements => Set<SubscriptionAgreement>();
+
+    public DbSet<BankingConnection> BankingConnections => Set<BankingConnection>();
+
+    public DbSet<FinancingApplication> FinancingApplications => Set<FinancingApplication>();
+
+    public DbSet<AccountingExportBatch> AccountingExportBatches => Set<AccountingExportBatch>();
 
     public DbSet<PlatformUser> PlatformUsers => Set<PlatformUser>();
 
@@ -300,6 +346,69 @@ public sealed class ApplicationDbContext(
             entity.Property(x => x.Url).HasMaxLength(1000);
             entity.Property(x => x.ContentType).HasMaxLength(120);
             entity.HasOne(x => x.Employee).WithMany(x => x.Documents).HasForeignKey(x => x.EmployeeId);
+            entity.HasQueryFilter(x => x.DeletedAtUtc == null && (tenantProvider.CurrentOrganizationId == null || x.OrganizationId == tenantProvider.CurrentOrganizationId));
+        });
+
+        modelBuilder.Entity<EmployeeTimePunch>(entity =>
+        {
+            entity.ToTable("employee_time_punches");
+            entity.HasIndex(x => new { x.OrganizationId, x.EmployeeId, x.ClockInUtc });
+            entity.HasIndex(x => new { x.OrganizationId, x.EmployeeId, x.ClockOutUtc });
+            entity.Property(x => x.Hours).HasPrecision(8, 2);
+            entity.Property(x => x.Note).HasMaxLength(500);
+            entity.Property(x => x.Source).HasMaxLength(80).IsRequired();
+            entity.HasOne(x => x.Employee).WithMany().HasForeignKey(x => x.EmployeeId);
+            entity.HasQueryFilter(x => x.DeletedAtUtc == null && (tenantProvider.CurrentOrganizationId == null || x.OrganizationId == tenantProvider.CurrentOrganizationId));
+        });
+
+        modelBuilder.Entity<EmployeeScheduleShift>(entity =>
+        {
+            entity.ToTable("employee_schedule_shifts");
+            entity.HasIndex(x => new { x.OrganizationId, x.EmployeeId, x.ShiftDate });
+            entity.Property(x => x.Note).HasMaxLength(500);
+            entity.HasOne(x => x.Employee).WithMany().HasForeignKey(x => x.EmployeeId);
+            entity.HasQueryFilter(x => x.DeletedAtUtc == null && (tenantProvider.CurrentOrganizationId == null || x.OrganizationId == tenantProvider.CurrentOrganizationId));
+        });
+
+        modelBuilder.Entity<EmployeeTimeOffRequest>(entity =>
+        {
+            entity.ToTable("employee_time_off_requests");
+            entity.HasIndex(x => new { x.OrganizationId, x.EmployeeId, x.StartDate, x.EndDate });
+            entity.HasIndex(x => new { x.OrganizationId, x.Status });
+            entity.Property(x => x.Type).HasMaxLength(80).IsRequired();
+            entity.Property(x => x.HoursPerDay).HasPrecision(6, 2);
+            entity.Property(x => x.Status).HasMaxLength(80).IsRequired();
+            entity.Property(x => x.Note).HasMaxLength(500);
+            entity.Property(x => x.ReviewedByUserId).HasMaxLength(80);
+            entity.HasOne(x => x.Employee).WithMany().HasForeignKey(x => x.EmployeeId);
+            entity.HasQueryFilter(x => x.DeletedAtUtc == null && (tenantProvider.CurrentOrganizationId == null || x.OrganizationId == tenantProvider.CurrentOrganizationId));
+        });
+
+        modelBuilder.Entity<EmployeeSafetyIncident>(entity =>
+        {
+            entity.ToTable("employee_safety_incidents");
+            entity.HasIndex(x => new { x.OrganizationId, x.IncidentDate });
+            entity.HasIndex(x => new { x.OrganizationId, x.EmployeeId, x.IncidentDate });
+            entity.HasIndex(x => new { x.OrganizationId, x.IsOshaRecordable });
+            entity.Property(x => x.IncidentType).HasMaxLength(120).IsRequired();
+            entity.Property(x => x.Severity).HasMaxLength(80);
+            entity.Property(x => x.LostTimeHours).HasPrecision(6, 2);
+            entity.Property(x => x.Description).HasMaxLength(1000);
+            entity.HasOne(x => x.Employee).WithMany().HasForeignKey(x => x.EmployeeId);
+            entity.HasQueryFilter(x => x.DeletedAtUtc == null && (tenantProvider.CurrentOrganizationId == null || x.OrganizationId == tenantProvider.CurrentOrganizationId));
+        });
+
+        modelBuilder.Entity<EmployeeCompanyAsset>(entity =>
+        {
+            entity.ToTable("employee_company_assets");
+            entity.HasIndex(x => new { x.OrganizationId, x.EmployeeId, x.Status });
+            entity.HasIndex(x => new { x.OrganizationId, x.AssetTag });
+            entity.Property(x => x.Name).HasMaxLength(160).IsRequired();
+            entity.Property(x => x.AssetTag).HasMaxLength(120);
+            entity.Property(x => x.SerialNumber).HasMaxLength(160);
+            entity.Property(x => x.Status).HasMaxLength(80).IsRequired();
+            entity.Property(x => x.Note).HasMaxLength(500);
+            entity.HasOne(x => x.Employee).WithMany().HasForeignKey(x => x.EmployeeId);
             entity.HasQueryFilter(x => x.DeletedAtUtc == null && (tenantProvider.CurrentOrganizationId == null || x.OrganizationId == tenantProvider.CurrentOrganizationId));
         });
 
@@ -789,6 +898,7 @@ public sealed class ApplicationDbContext(
         {
             entity.ToTable("canonical_items");
             entity.HasIndex(x => new { x.NormalizedManufacturerPartNumber, x.Brand });
+            entity.HasIndex(x => x.NormalizedManufacturerPartNumber);
             entity.HasIndex(x => x.PrimaryUpc);
             entity.HasIndex(x => x.Category);
             entity.HasIndex(x => x.Status);
@@ -822,6 +932,7 @@ public sealed class ApplicationDbContext(
             entity.ToTable("canonical_item_identifiers");
             entity.HasIndex(x => x.CanonicalItemId);
             entity.HasIndex(x => new { x.CanonicalItemId, x.IdentifierType, x.NormalizedValue, x.SupplierProductId }).IsUnique();
+            entity.HasIndex(x => x.NormalizedValue);
             entity.HasIndex(x => new { x.IdentifierType, x.NormalizedValue });
             entity.HasIndex(x => new { x.SupplierId, x.IdentifierType, x.NormalizedValue });
             entity.HasIndex(x => x.SupplierProductId);
@@ -841,6 +952,8 @@ public sealed class ApplicationDbContext(
             entity.HasIndex(x => x.CanonicalItemId);
             entity.HasIndex(x => new { x.CanonicalItemId, x.SupplierCode });
             entity.HasIndex(x => x.SupplierProductId).IsUnique();
+            entity.HasIndex(x => x.SupplierSku);
+            entity.HasIndex(x => x.SupplierPartNumber);
             entity.HasIndex(x => new { x.SupplierId, x.SupplierSku });
             entity.Property(x => x.SupplierCode).HasMaxLength(80).IsRequired();
             entity.Property(x => x.SupplierSku).HasMaxLength(120).IsRequired();
@@ -1250,6 +1363,234 @@ public sealed class ApplicationDbContext(
             entity.Property(x => x.Notes).HasMaxLength(1000);
             entity.HasOne<CompanyInventoryItem>().WithMany().HasForeignKey(x => x.CompanyInventoryItemId);
             entity.HasOne<Location>().WithMany().HasForeignKey(x => x.LocationId);
+            entity.HasQueryFilter(x => tenantProvider.CurrentOrganizationId == null || x.OrganizationId == tenantProvider.CurrentOrganizationId);
+        });
+
+        modelBuilder.Entity<PaymentTransaction>(entity =>
+        {
+            entity.ToTable("payment_transactions");
+            entity.HasIndex(x => new { x.OrganizationId, x.CreatedAtUtc });
+            entity.HasIndex(x => new { x.OrganizationId, x.GatewayTransactionId });
+            entity.HasIndex(x => new { x.OrganizationId, x.Status });
+            entity.Property(x => x.Provider).HasMaxLength(40).IsRequired();
+            entity.Property(x => x.Environment).HasMaxLength(40).IsRequired();
+            entity.Property(x => x.TransactionType).HasMaxLength(40).IsRequired();
+            entity.Property(x => x.PaymentMethod).HasMaxLength(40).IsRequired();
+            entity.Property(x => x.Amount).HasPrecision(12, 2);
+            entity.Property(x => x.Currency).HasMaxLength(3).IsRequired();
+            entity.Property(x => x.Status).HasMaxLength(40).IsRequired();
+            entity.Property(x => x.GatewayTransactionId).HasMaxLength(120);
+            entity.Property(x => x.AuthorizationCode).HasMaxLength(80);
+            entity.Property(x => x.ResponseCode).HasMaxLength(40);
+            entity.Property(x => x.ResponseText).HasMaxLength(1000);
+            entity.Property(x => x.OrderId).HasMaxLength(120);
+            entity.Property(x => x.ReferenceType).HasMaxLength(80);
+            entity.Property(x => x.ReferenceId).HasMaxLength(120);
+            entity.Property(x => x.Description).HasMaxLength(500);
+            entity.Property(x => x.CustomerName).HasMaxLength(200);
+            entity.Property(x => x.CustomerEmail).HasMaxLength(320);
+            entity.Property(x => x.CustomerPhone).HasMaxLength(40);
+            entity.Property(x => x.CardBrand).HasMaxLength(40);
+            entity.Property(x => x.CardLastFour).HasMaxLength(4);
+            entity.Property(x => x.RequestCorrelationId).HasMaxLength(80);
+            entity.Property(x => x.RawResponseJson).HasColumnType("text");
+            entity.HasOne<Location>().WithMany().HasForeignKey(x => x.LocationId);
+            entity.HasQueryFilter(x => tenantProvider.CurrentOrganizationId == null || x.OrganizationId == tenantProvider.CurrentOrganizationId);
+        });
+
+        modelBuilder.Entity<FinancialLedgerEntry>(entity =>
+        {
+            entity.ToTable("financial_ledger_entries");
+            entity.HasIndex(x => new { x.OrganizationId, x.OccurredAtUtc });
+            entity.HasIndex(x => new { x.OrganizationId, x.SourceType, x.SourceId });
+            entity.HasIndex(x => new { x.OrganizationId, x.EntryType });
+            entity.Property(x => x.EntryType).HasMaxLength(80).IsRequired();
+            entity.Property(x => x.Direction).HasMaxLength(20).IsRequired();
+            entity.Property(x => x.Amount).HasPrecision(12, 2);
+            entity.Property(x => x.Currency).HasMaxLength(3).IsRequired();
+            entity.Property(x => x.Status).HasMaxLength(40).IsRequired();
+            entity.Property(x => x.SourceModule).HasMaxLength(80).IsRequired();
+            entity.Property(x => x.SourceType).HasMaxLength(120).IsRequired();
+            entity.Property(x => x.SourceId).HasMaxLength(120).IsRequired();
+            entity.Property(x => x.ReferenceType).HasMaxLength(80);
+            entity.Property(x => x.ReferenceId).HasMaxLength(120);
+            entity.Property(x => x.Provider).HasMaxLength(40);
+            entity.Property(x => x.ProviderTransactionId).HasMaxLength(120);
+            entity.Property(x => x.Description).HasMaxLength(500);
+            entity.Property(x => x.CorrelationId).HasMaxLength(80);
+            entity.HasQueryFilter(x => tenantProvider.CurrentOrganizationId == null || x.OrganizationId == tenantProvider.CurrentOrganizationId);
+        });
+
+        modelBuilder.Entity<MerchantAccount>(entity =>
+        {
+            entity.ToTable("merchant_accounts");
+            entity.HasIndex(x => x.OrganizationId).IsUnique();
+            entity.Property(x => x.Status).HasMaxLength(80).IsRequired();
+            entity.Property(x => x.UnderwritingStatus).HasMaxLength(80).IsRequired();
+            entity.Property(x => x.LegalBusinessName).HasMaxLength(200);
+            entity.Property(x => x.Dba).HasMaxLength(200);
+            entity.Property(x => x.Ein).HasMaxLength(20);
+            entity.Property(x => x.TaxIdentifierLastFour).HasMaxLength(4);
+            entity.Property(x => x.BusinessType).HasMaxLength(120);
+            entity.Property(x => x.PhysicalAddressLine1).HasMaxLength(200);
+            entity.Property(x => x.PhysicalAddressLine2).HasMaxLength(200);
+            entity.Property(x => x.PhysicalCity).HasMaxLength(120);
+            entity.Property(x => x.PhysicalRegion).HasMaxLength(80);
+            entity.Property(x => x.PhysicalPostalCode).HasMaxLength(20);
+            entity.Property(x => x.PhysicalCountry).HasMaxLength(2);
+            entity.Property(x => x.MailingAddressLine1).HasMaxLength(200);
+            entity.Property(x => x.MailingAddressLine2).HasMaxLength(200);
+            entity.Property(x => x.MailingCity).HasMaxLength(120);
+            entity.Property(x => x.MailingRegion).HasMaxLength(80);
+            entity.Property(x => x.MailingPostalCode).HasMaxLength(20);
+            entity.Property(x => x.MailingCountry).HasMaxLength(2);
+            entity.Property(x => x.OwnerName).HasMaxLength(200);
+            entity.Property(x => x.OwnerEmail).HasMaxLength(320);
+            entity.Property(x => x.OwnerPhone).HasMaxLength(40);
+            entity.Property(x => x.BankName).HasMaxLength(160);
+            entity.Property(x => x.BankRoutingLastFour).HasMaxLength(4);
+            entity.Property(x => x.BankAccountLastFour).HasMaxLength(4);
+            entity.Property(x => x.ExpectedMonthlyVolume).HasPrecision(12, 2);
+            entity.Property(x => x.AverageTicket).HasPrecision(12, 2);
+            entity.Property(x => x.Website).HasMaxLength(300);
+            entity.Property(x => x.Mcc).HasMaxLength(10);
+            entity.Property(x => x.ProcessingProfile).HasMaxLength(120);
+            entity.Property(x => x.SettlementSchedule).HasMaxLength(120);
+            entity.Property(x => x.PrimaryProviderCode).HasMaxLength(40);
+            entity.HasQueryFilter(x => tenantProvider.CurrentOrganizationId == null || x.OrganizationId == tenantProvider.CurrentOrganizationId);
+        });
+
+        modelBuilder.Entity<MerchantProviderRelationship>(entity =>
+        {
+            entity.ToTable("merchant_provider_relationships");
+            entity.HasIndex(x => new { x.OrganizationId, x.ProviderCode }).IsUnique();
+            entity.Property(x => x.ProviderCode).HasMaxLength(40).IsRequired();
+            entity.Property(x => x.ProviderMerchantId).HasMaxLength(160).IsRequired();
+            entity.Property(x => x.Status).HasMaxLength(80).IsRequired();
+            entity.Property(x => x.CapabilitiesJson).HasColumnType("jsonb");
+            entity.Property(x => x.ProviderReference).HasMaxLength(160);
+            entity.Property(x => x.LastProviderError).HasMaxLength(1000);
+            entity.Property(x => x.SupportNotes).HasMaxLength(2000);
+            entity.Property(x => x.GatewayUsername).HasMaxLength(160);
+            entity.Property(x => x.GatewayPasswordProtected).HasMaxLength(500);
+            entity.Property(x => x.PaymentApiKeyProtected).HasMaxLength(500);
+            entity.Property(x => x.QueryApiKeyProtected).HasMaxLength(500);
+            entity.Property(x => x.PublicTokenizationKey).HasMaxLength(500);
+            entity.Property(x => x.CredentialMetadataJson).HasColumnType("jsonb");
+            entity.HasOne<MerchantAccount>().WithMany().HasForeignKey(x => x.MerchantAccountId);
+            entity.HasQueryFilter(x => tenantProvider.CurrentOrganizationId == null || x.OrganizationId == tenantProvider.CurrentOrganizationId);
+        });
+
+        modelBuilder.Entity<MerchantAccountStatusHistory>(entity =>
+        {
+            entity.ToTable("merchant_account_status_history");
+            entity.HasIndex(x => new { x.OrganizationId, x.MerchantAccountId, x.CreatedAtUtc });
+            entity.Property(x => x.OldStatus).HasMaxLength(80);
+            entity.Property(x => x.NewStatus).HasMaxLength(80).IsRequired();
+            entity.Property(x => x.Reason).HasMaxLength(1000);
+            entity.Property(x => x.ProviderCode).HasMaxLength(40);
+            entity.Property(x => x.ProviderReference).HasMaxLength(160);
+            entity.Property(x => x.CreatedByUserId).HasMaxLength(80);
+            entity.HasOne<MerchantAccount>().WithMany().HasForeignKey(x => x.MerchantAccountId);
+            entity.HasQueryFilter(x => tenantProvider.CurrentOrganizationId == null || x.OrganizationId == tenantProvider.CurrentOrganizationId);
+        });
+
+        modelBuilder.Entity<CustomerWallet>(entity =>
+        {
+            entity.ToTable("customer_wallets");
+            entity.HasIndex(x => new { x.OrganizationId, x.CustomerId }).IsUnique();
+            entity.Property(x => x.Status).HasMaxLength(80).IsRequired();
+            entity.HasOne<Customer>().WithMany().HasForeignKey(x => x.CustomerId);
+            entity.HasQueryFilter(x => tenantProvider.CurrentOrganizationId == null || x.OrganizationId == tenantProvider.CurrentOrganizationId);
+        });
+
+        modelBuilder.Entity<WalletPaymentMethod>(entity =>
+        {
+            entity.ToTable("wallet_payment_methods");
+            entity.HasIndex(x => new { x.OrganizationId, x.WalletId });
+            entity.HasIndex(x => new { x.OrganizationId, x.ProviderCode, x.ProviderToken }).IsUnique();
+            entity.Property(x => x.ProviderCode).HasMaxLength(40).IsRequired();
+            entity.Property(x => x.ProviderToken).HasMaxLength(500).IsRequired();
+            entity.Property(x => x.MethodType).HasMaxLength(40).IsRequired();
+            entity.Property(x => x.DisplayBrand).HasMaxLength(80);
+            entity.Property(x => x.LastFour).HasMaxLength(4);
+            entity.Property(x => x.Status).HasMaxLength(80).IsRequired();
+            entity.HasOne<CustomerWallet>().WithMany().HasForeignKey(x => x.WalletId);
+            entity.HasQueryFilter(x => tenantProvider.CurrentOrganizationId == null || x.OrganizationId == tenantProvider.CurrentOrganizationId);
+        });
+
+        modelBuilder.Entity<PaymentTerminal>(entity =>
+        {
+            entity.ToTable("payment_terminals");
+            entity.HasIndex(x => new { x.OrganizationId, x.ProviderCode, x.ProviderTerminalId }).IsUnique();
+            entity.HasIndex(x => new { x.OrganizationId, x.LocationId });
+            entity.Property(x => x.ProviderCode).HasMaxLength(40).IsRequired();
+            entity.Property(x => x.DeviceType).HasMaxLength(80).IsRequired();
+            entity.Property(x => x.Model).HasMaxLength(120).IsRequired();
+            entity.Property(x => x.ProviderTerminalId).HasMaxLength(160).IsRequired();
+            entity.Property(x => x.Status).HasMaxLength(80).IsRequired();
+            entity.Property(x => x.AssignedRegister).HasMaxLength(120);
+            entity.Property(x => x.AssignedEmployeeId).HasMaxLength(80);
+            entity.Property(x => x.FirmwareVersion).HasMaxLength(120);
+            entity.HasOne<Location>().WithMany().HasForeignKey(x => x.LocationId);
+            entity.HasQueryFilter(x => tenantProvider.CurrentOrganizationId == null || x.OrganizationId == tenantProvider.CurrentOrganizationId);
+        });
+
+        modelBuilder.Entity<FinancialProviderConnection>(entity =>
+        {
+            entity.ToTable("financial_provider_connections");
+            entity.HasIndex(x => new { x.OrganizationId, x.ProviderCode, x.ProviderType }).IsUnique();
+            entity.Property(x => x.ProviderCode).HasMaxLength(40).IsRequired();
+            entity.Property(x => x.ProviderType).HasMaxLength(80).IsRequired();
+            entity.Property(x => x.Status).HasMaxLength(80).IsRequired();
+            entity.Property(x => x.CapabilitiesJson).HasColumnType("jsonb");
+            entity.Property(x => x.ConfigurationReference).HasMaxLength(200);
+            entity.HasQueryFilter(x => tenantProvider.CurrentOrganizationId == null || x.OrganizationId == tenantProvider.CurrentOrganizationId);
+        });
+
+        modelBuilder.Entity<SubscriptionAgreement>(entity =>
+        {
+            entity.ToTable("subscription_agreements");
+            entity.HasIndex(x => new { x.OrganizationId, x.CustomerId });
+            entity.Property(x => x.PlanName).HasMaxLength(160).IsRequired();
+            entity.Property(x => x.Amount).HasPrecision(12, 2);
+            entity.Property(x => x.Currency).HasMaxLength(3).IsRequired();
+            entity.Property(x => x.BillingCadence).HasMaxLength(40).IsRequired();
+            entity.Property(x => x.Status).HasMaxLength(80).IsRequired();
+            entity.HasOne<Customer>().WithMany().HasForeignKey(x => x.CustomerId);
+            entity.HasQueryFilter(x => tenantProvider.CurrentOrganizationId == null || x.OrganizationId == tenantProvider.CurrentOrganizationId);
+        });
+
+        modelBuilder.Entity<BankingConnection>(entity =>
+        {
+            entity.ToTable("banking_connections");
+            entity.HasIndex(x => new { x.OrganizationId, x.ProviderCode });
+            entity.Property(x => x.ProviderCode).HasMaxLength(40).IsRequired();
+            entity.Property(x => x.Status).HasMaxLength(80).IsRequired();
+            entity.Property(x => x.AccountDescriptor).HasMaxLength(160);
+            entity.Property(x => x.ProviderToken).HasMaxLength(500);
+            entity.HasQueryFilter(x => tenantProvider.CurrentOrganizationId == null || x.OrganizationId == tenantProvider.CurrentOrganizationId);
+        });
+
+        modelBuilder.Entity<FinancingApplication>(entity =>
+        {
+            entity.ToTable("financing_applications");
+            entity.HasIndex(x => new { x.OrganizationId, x.CustomerId });
+            entity.Property(x => x.RequestedAmount).HasPrecision(12, 2);
+            entity.Property(x => x.Currency).HasMaxLength(3).IsRequired();
+            entity.Property(x => x.Status).HasMaxLength(80).IsRequired();
+            entity.Property(x => x.ProviderCode).HasMaxLength(40);
+            entity.HasOne<Customer>().WithMany().HasForeignKey(x => x.CustomerId);
+            entity.HasQueryFilter(x => tenantProvider.CurrentOrganizationId == null || x.OrganizationId == tenantProvider.CurrentOrganizationId);
+        });
+
+        modelBuilder.Entity<AccountingExportBatch>(entity =>
+        {
+            entity.ToTable("accounting_export_batches");
+            entity.HasIndex(x => new { x.OrganizationId, x.PeriodStartUtc, x.PeriodEndUtc });
+            entity.Property(x => x.ProviderCode).HasMaxLength(40).IsRequired();
+            entity.Property(x => x.Status).HasMaxLength(80).IsRequired();
+            entity.Property(x => x.ExportReference).HasMaxLength(160);
             entity.HasQueryFilter(x => tenantProvider.CurrentOrganizationId == null || x.OrganizationId == tenantProvider.CurrentOrganizationId);
         });
 

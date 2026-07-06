@@ -30,3 +30,11 @@ Core product assumptions:
 - iM1 UI is the reusable application framework. Pages and modules must consume iM1-owned UI primitives and wrappers. Do not import AG Grid, MUI, Bootstrap, charting libraries, or other third-party UI libraries directly outside the iM1 UI component boundary.
 
 Do not add unrelated product assumptions, traditional DMS assumptions, or external platform dependencies.
+
+## Deployment Commands
+
+When the user says `Deploy Dev`, use the quick validation path in `deploy/deploy-dev.ps1`. Do not commit, push, or run the full platform release path unless the user explicitly asks for `Deploy Platform`.
+
+When the current changes include database migrations, EF model/snapshot changes, startup/configuration/security changes, dependency/build graph changes, API/worker changes, or any change where `Deploy Dev` may be insufficient, warn the user before deploying. State why the quick path may be insufficient and ask for explicit acknowledgement or recommend `Deploy Platform`.
+
+When the user says `Deploy Platform`, use `deploy/deploy-platform.ps1`: full build, full test suite, intentional staging, commit, push, deploy, health check.

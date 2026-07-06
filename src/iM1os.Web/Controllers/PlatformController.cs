@@ -228,20 +228,20 @@ public sealed class PlatformController(
 
     [Authorize(Roles = "Platform Administrator")]
     [HttpGet]
-    public async Task<IActionResult> ItemSearch(string? query, string? supplierCode, string? category, string? brand, string? vehicleType, int? year, string? make, string? model, string? tireBrand, string? tireModelLine, int? tireWidth, int? tireAspectRatio, int? tireRimDiameter, string? tirePosition, bool searchExecuted, CancellationToken cancellationToken)
+    public async Task<IActionResult> ItemSearch(string? query, string? supplierCode, string? category, string? brand, string? vehicleType, int? year, string? make, string? model, string? tireBrand, string? tireModelLine, int? tireWidth, int? tireAspectRatio, int? tireRimDiameter, string? tirePosition, bool useNormalizedCatalog, bool searchExecuted, CancellationToken cancellationToken)
     {
         return View(await supplierItemSearchService.SearchAsync(
-            new SupplierItemSearchRequest(query, supplierCode, vehicleType, year, make, model, SearchExecuted: searchExecuted, Category: category, Brand: brand, TireBrand: tireBrand, TireModelLine: tireModelLine, TireWidth: tireWidth, TireAspectRatio: tireAspectRatio, TireRimDiameter: tireRimDiameter, TirePosition: tirePosition),
+            new SupplierItemSearchRequest(query, supplierCode, vehicleType, year, make, model, SearchExecuted: searchExecuted, Category: category, Brand: brand, TireBrand: tireBrand, TireModelLine: tireModelLine, TireWidth: tireWidth, TireAspectRatio: tireAspectRatio, TireRimDiameter: tireRimDiameter, TirePosition: tirePosition, UseNormalizedCatalog: useNormalizedCatalog),
             SupplierItemSearchPageSize,
             cancellationToken));
     }
 
     [Authorize(Roles = "Platform Administrator")]
     [HttpGet]
-    public async Task<IActionResult> ItemSearchResults(string? query, string? supplierCode, string? category, string? brand, string? vehicleType, int? year, string? make, string? model, string? tireBrand, string? tireModelLine, int? tireWidth, int? tireAspectRatio, int? tireRimDiameter, string? tirePosition, bool searchExecuted, int offset, CancellationToken cancellationToken)
+    public async Task<IActionResult> ItemSearchResults(string? query, string? supplierCode, string? category, string? brand, string? vehicleType, int? year, string? make, string? model, string? tireBrand, string? tireModelLine, int? tireWidth, int? tireAspectRatio, int? tireRimDiameter, string? tirePosition, bool useNormalizedCatalog, bool searchExecuted, int offset, CancellationToken cancellationToken)
     {
         var page = await supplierItemSearchService.SearchAsync(
-            new SupplierItemSearchRequest(query, supplierCode, vehicleType, year, make, model, offset, searchExecuted, IncludeFacets: false, Category: category, Brand: brand, TireBrand: tireBrand, TireModelLine: tireModelLine, TireWidth: tireWidth, TireAspectRatio: tireAspectRatio, TireRimDiameter: tireRimDiameter, TirePosition: tirePosition),
+            new SupplierItemSearchRequest(query, supplierCode, vehicleType, year, make, model, offset, searchExecuted, IncludeFacets: false, Category: category, Brand: brand, TireBrand: tireBrand, TireModelLine: tireModelLine, TireWidth: tireWidth, TireAspectRatio: tireAspectRatio, TireRimDiameter: tireRimDiameter, TirePosition: tirePosition, UseNormalizedCatalog: useNormalizedCatalog),
             SupplierItemSearchPageSize,
             cancellationToken);
         return Json(new

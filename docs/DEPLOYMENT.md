@@ -6,9 +6,40 @@ The platform expects PostgreSQL and optionally Redis. API, web, and worker hosts
 
 Use `Deploy Dev` when validating local changes on the Dev server before committing them to Git. Use `Deploy Platform` when the change is ready to become the shared platform revision: it commits and pushes the Git change first, then deploys that committed revision to the Dev servers.
 
+Executable scripts:
+
+- `deploy/deploy-dev.ps1`
+- `deploy/deploy-platform.ps1`
+
+### Codex Deployment Rule
+
+When the user says `Deploy Dev`, Codex must use the quick Dev path and must not silently turn it into the Platform path.
+
+If the current changes include database migrations, EF model/snapshot changes, startup/configuration/security changes, dependency/build graph changes, API/worker changes, or any change where a quick Dev deploy may be insufficient, Codex must issue a clear warning before deploying. The warning must state why `Deploy Dev` may be insufficient and recommend either `Deploy Platform` or an explicit acknowledgement to continue with `Deploy Dev`.
+
+The scripted acknowledgement is:
+
+```powershell
+.\deploy\deploy-dev.ps1 -AcknowledgeRisk
+```
+
 ### Deploy Dev
 
 Purpose: push the current working changes to the Dev server for validation without creating a Git commit.
+
+Command:
+
+```powershell
+.\deploy\deploy-dev.ps1
+```
+
+Common quick options:
+
+```powershell
+.\deploy\deploy-dev.ps1 -Services web
+.\deploy\deploy-dev.ps1 -Services web -TestFilter "MerchantAccountServiceTests"
+.\deploy\deploy-dev.ps1 -Services web,worker -AcknowledgeRisk
+```
 
 Preconditions:
 
@@ -20,15 +51,17 @@ Preconditions:
 Procedure:
 
 1. Review the pending file changes.
-2. Build the solution locally.
-3. Run the relevant automated tests.
-4. Package or publish the deployable projects for the Dev environment.
+2. Build the solution locally unless explicitly skipped for a quick static/UI-only change.
+3. Run the relevant automated tests when the change has behavioral risk.
+4. Package or publish only the affected deployable projects for the Dev environment.
 5. Push the published API, web, and worker outputs to the Dev server.
 6. Apply required Dev database migrations.
 7. Restart the affected Dev services.
 8. Verify API and web health checks.
 9. Smoke test the changed workflow on the Dev server.
 10. Record the deployment result, including the local source state, migration status, and any follow-up fixes.
+
+`Deploy Dev` does not commit or push Git changes. It is for fast validation of the local working tree.
 
 Rollback:
 
@@ -40,6 +73,19 @@ Rollback:
 ### Deploy Platform
 
 Purpose: commit and push platform changes to Git, then deploy the committed revision to the Dev servers.
+
+Command:
+
+```powershell
+git add <intended files>
+.\deploy\deploy-platform.ps1 -CommitMessage "Describe the platform change"
+```
+
+Use `-StageAll` only when the entire working tree is intentionally part of the platform deployment:
+
+```powershell
+.\deploy\deploy-platform.ps1 -CommitMessage "Describe the platform change" -StageAll
+```
 
 Preconditions:
 

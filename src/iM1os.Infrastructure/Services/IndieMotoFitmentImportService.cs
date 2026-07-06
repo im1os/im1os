@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Net;
 using System.Text;
 using System.Text.Json;
@@ -57,23 +58,18 @@ public sealed class IndieMotoFitmentImportService(
 
         var client = httpClientFactory.CreateClient("IndieMotoFitment");
         var counters = new ImportCounters();
-        SupplierConnectorImportRun? importRun = null;
         if (request.ImportRunId is not null)
         {
-            importRun = await dbContext.SupplierConnectorImportRuns
-                .SingleOrDefaultAsync(x => x.Id == request.ImportRunId.Value, cancellationToken);
-            if (importRun is not null)
-            {
-                importRun.ProgressProcessed = 0;
-                importRun.ProgressTotal = supplierProducts.Count;
-                await dbContext.SaveChangesAsync(cancellationToken);
-            }
+            await UpdateImportRunProgressAsync(request.ImportRunId.Value, 0, supplierProducts.Count, cancellationToken);
+            ClearChangeTracker();
         }
 
         foreach (var batch in supplierProducts.Chunk(MaxBatchSize))
         {
             cancellationToken.ThrowIfCancellationRequested();
 
+            var batchTimer = Stopwatch.StartNew();
+            var fetchTimer = Stopwatch.StartNew();
             IReadOnlyDictionary<string, FitmentLookupResult> batchLookups;
             try
             {
@@ -97,6 +93,8 @@ public sealed class IndieMotoFitmentImportService(
                 batchLookups = new Dictionary<string, FitmentLookupResult>(StringComparer.OrdinalIgnoreCase);
             }
 
+            fetchTimer.Stop();
+            var prepareTimer = Stopwatch.StartNew();
             foreach (var supplierProduct in batch)
             {
                 cancellationToken.ThrowIfCancellationRequested();
@@ -125,20 +123,32 @@ public sealed class IndieMotoFitmentImportService(
                     cancellationToken);
             }
 
+            prepareTimer.Stop();
+            var saveTimer = Stopwatch.StartNew();
             await dbContext.SaveChangesAsync(cancellationToken);
+            saveTimer.Stop();
+
+            var progressTimer = Stopwatch.StartNew();
+            await UpdateImportRunProgressAsync(
+                request.ImportRunId,
+                counters.SkusProcessed + counters.FailedSkus,
+                supplierProducts.Count,
+                cancellationToken);
+            progressTimer.Stop();
+            ClearChangeTracker();
+            batchTimer.Stop();
+
             logger.LogInformation(
-                "Imported streaming fitment export for {SupplierCode}. BatchSize={BatchSize}, ImportedSkus={ImportedSkus}, FitmentRows={FitmentRows}.",
+                "Imported streaming fitment export for {SupplierCode}. BatchSize={BatchSize}, ImportedSkus={ImportedSkus}, FitmentRows={FitmentRows}. FetchMs={FetchMs}, PrepareMs={PrepareMs}, SaveMs={SaveMs}, ProgressMs={ProgressMs}, TotalMs={TotalMs}.",
                 supplierCode,
                 batch.Length,
                 batchLookups.Count,
-                batchLookups.Values.Sum(x => x.Rows.Count));
-
-            if (importRun is not null)
-            {
-                importRun.ProgressProcessed = counters.SkusProcessed + counters.FailedSkus;
-                importRun.ProgressTotal = supplierProducts.Count;
-                await dbContext.SaveChangesAsync(cancellationToken);
-            }
+                batchLookups.Values.Sum(x => x.Rows.Count),
+                fetchTimer.ElapsedMilliseconds,
+                prepareTimer.ElapsedMilliseconds,
+                saveTimer.ElapsedMilliseconds,
+                progressTimer.ElapsedMilliseconds,
+                batchTimer.ElapsedMilliseconds);
 
             if (delayMilliseconds > 0)
             {
@@ -156,6 +166,30 @@ public sealed class IndieMotoFitmentImportService(
             counters.GlobalVehiclesUpserted,
             counters.VehicleFitmentsUpserted,
             counters.FailedSkus);
+    }
+
+    private async Task UpdateImportRunProgressAsync(Guid? importRunId, int processed, int total, CancellationToken cancellationToken)
+    {
+        if (importRunId is null)
+        {
+            return;
+        }
+
+        await dbContext.SupplierConnectorImportRuns
+            .Where(x => x.Id == importRunId.Value)
+            .ExecuteUpdateAsync(
+                setters => setters
+                    .SetProperty(x => x.ProgressProcessed, processed)
+                    .SetProperty(x => x.ProgressTotal, total),
+                cancellationToken);
+    }
+
+    private void ClearChangeTracker()
+    {
+        if (dbContext is DbContext efContext)
+        {
+            efContext.ChangeTracker.Clear();
+        }
     }
 
     private async Task<IReadOnlyDictionary<string, FitmentLookupResult>> GetLegacyBatchOrSingleFitmentRowsAsync(

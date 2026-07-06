@@ -8,6 +8,7 @@ public sealed record BusinessAdministrationWorkspace(
     IReadOnlyCollection<EmployeeDto> Employees,
     IReadOnlyCollection<RoleDto> Roles,
     IReadOnlyCollection<ConnectorDto> Connectors,
+    TimeClockWorkspace TimeClock,
     IReadOnlyCollection<string> RecentActivity,
     int SetupProgress,
     bool IsReadyForOperations);
@@ -90,6 +91,132 @@ public sealed record EmployeeDto(
     string Role,
     string Status,
     string? PrimaryLocation);
+
+public sealed record TimeClockWorkspace(
+    IReadOnlyCollection<TimeClockEmployeeOption> Employees,
+    IReadOnlyCollection<TimeClockOpenPunchDto> OpenPunches,
+    IReadOnlyCollection<TimeClockPunchDto> RecentPunches,
+    IReadOnlyCollection<TimeClockScheduleShiftDto> UpcomingShifts,
+    IReadOnlyCollection<TimeClockTimeOffDto> TimeOffRequests,
+    IReadOnlyCollection<EmployeeCompanyAssetDto> CompanyAssets,
+    IReadOnlyCollection<EmployeeSafetyIncidentDto> SafetyIncidents,
+    SafetySummaryDto SafetySummary,
+    TimeClockPayrollSummary Payroll,
+    DateOnly PayrollStartDate,
+    DateOnly PayrollEndDate);
+
+public sealed record TimeClockEmployeeOption(Guid Id, string Name, bool HasPin, string Status);
+
+public sealed record TimeClockOpenPunchDto(Guid Id, Guid EmployeeId, string EmployeeName, DateTimeOffset ClockInUtc, decimal ElapsedHours);
+
+public sealed record TimeClockPunchDto(
+    Guid Id,
+    Guid EmployeeId,
+    string EmployeeName,
+    DateTimeOffset ClockInUtc,
+    DateTimeOffset? ClockOutUtc,
+    decimal Hours,
+    string? Note,
+    bool IsOpen);
+
+public sealed record TimeClockScheduleShiftDto(
+    Guid Id,
+    Guid EmployeeId,
+    string EmployeeName,
+    DateOnly ShiftDate,
+    TimeOnly StartTime,
+    TimeOnly EndTime,
+    decimal Hours,
+    string? Note);
+
+public sealed record TimeClockTimeOffDto(
+    Guid Id,
+    Guid EmployeeId,
+    string EmployeeName,
+    string Type,
+    DateOnly StartDate,
+    DateOnly EndDate,
+    decimal HoursPerDay,
+    decimal TotalHours,
+    string Status,
+    string? Note);
+
+public sealed record TimeClockPayrollSummary(
+    IReadOnlyCollection<TimeClockPayrollEmployeeSummary> Employees,
+    decimal TotalWorkedHours,
+    decimal TotalScheduledHours,
+    decimal TotalTimeOffHours,
+    decimal TotalPaidHours,
+    decimal TotalGrossPay);
+
+public sealed record TimeClockPayrollEmployeeSummary(
+    Guid EmployeeId,
+    string EmployeeName,
+    string PayrollType,
+    decimal? HourlyRate,
+    decimal WorkedHours,
+    decimal ScheduledHours,
+    decimal TimeOffHours,
+    decimal PaidTimeOffHours,
+    decimal PaidHours,
+    decimal VarianceHours,
+    decimal GrossPay);
+
+public sealed record EmployeeCompanyAssetDto(
+    Guid Id,
+    Guid EmployeeId,
+    string EmployeeName,
+    string Name,
+    string? AssetTag,
+    string? SerialNumber,
+    DateOnly? IssuedDate,
+    DateOnly? ReturnedDate,
+    string Status,
+    string? Note);
+
+public sealed record EmployeeSafetyIncidentDto(
+    Guid Id,
+    Guid? EmployeeId,
+    string EmployeeName,
+    DateOnly IncidentDate,
+    string IncidentType,
+    string? Severity,
+    decimal LostTimeHours,
+    bool IsOshaRecordable,
+    bool ReportedToOsha,
+    string? Description);
+
+public sealed record SafetySummaryDto(
+    int IncidentCount,
+    int OshaRecordableCount,
+    int ReportedToOshaCount,
+    decimal LostTimeHours);
+
+public sealed record ClockEmployeeRequest(Guid EmployeeId, string Pin, string Action);
+
+public sealed record AddTimePunchRequest(Guid EmployeeId, DateTime ClockInLocal, DateTime? ClockOutLocal, string? Note);
+
+public sealed record UpdateTimePunchRequest(Guid PunchId, DateTime ClockInLocal, DateTime? ClockOutLocal, string? Note);
+
+public sealed record DeleteTimePunchRequest(Guid PunchId);
+
+public sealed record AddScheduleShiftRequest(Guid EmployeeId, DateOnly ShiftDate, TimeOnly StartTime, TimeOnly EndTime, string? Note);
+
+public sealed record DeleteScheduleShiftRequest(Guid ShiftId);
+
+public sealed record AddTimeOffRequest(Guid EmployeeId, string Type, DateOnly StartDate, DateOnly EndDate, decimal HoursPerDay, string? Note);
+
+public sealed record SetTimeOffStatusRequest(Guid TimeOffRequestId, string Status);
+
+public sealed record DeleteTimeOffRequest(Guid TimeOffRequestId);
+
+public sealed record AddCompanyAssetRequest(Guid EmployeeId, string Name, string? AssetTag, string? SerialNumber, DateOnly? IssuedDate, DateOnly? ReturnedDate, string? Note);
+
+public sealed record ReturnCompanyAssetRequest(Guid AssetId, DateOnly ReturnedDate, string? Note);
+
+public sealed record DeleteCompanyAssetRequest(Guid AssetId);
+
+public sealed record AddSafetyIncidentRequest(Guid? EmployeeId, DateOnly IncidentDate, string IncidentType, string? Severity, decimal LostTimeHours, bool IsOshaRecordable, bool ReportedToOsha, string? Description);
 
 public sealed record InviteEmployeeRequest(
     string Name,

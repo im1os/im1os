@@ -1,0 +1,273 @@
+using System.Net;
+using iM1os.Application.Payments;
+using iM1os.Infrastructure.FinancialServices.Providers;
+using iM1os.Infrastructure.Configuration;
+using iM1os.Infrastructure.Persistence;
+using iM1os.Infrastructure.Services;
+using iM1os.Domain.FinancialServices.Merchant;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Options;
+
+namespace iM1os.Tests;
+
+public sealed class Im1PaymentsServiceTests
+{
+    [Fact]
+    public async Task CreateSaleAsync_records_approved_transaction_ledger_entry_and_domain_event()
+    {
+        await using var dbContext = CreateContext();
+        var handler = new RecordingHandler("""
+            {
+              "object": "transaction",
+              "id": "28147497671995",
+              "type": "sale",
+              "amount": "10.00",
+              "auth_code": "TAS536",
+              "response": "1",
+              "response_text": "Approved",
+              "status": "approved"
+            }
+            """);
+        var service = CreateService(dbContext, handler);
+        var organizationId = Guid.NewGuid();
+        AddActiveMerchant(dbContext, organizationId);
+
+        var result = await service.CreateSaleAsync(
+            organizationId,
+            Guid.NewGuid(),
+            new PaymentSaleRequest(
+                "tok_123",
+                10m,
+                "USD",
+                OrderId: "WO-1001",
+                Description: "Deposit",
+                FirstName: "Ada",
+                LastName: "Rider",
+                Email: "ada@example.test",
+                CardBrand: "visa",
+                CardLastFour: "1111"),
+            CancellationToken.None);
+
+        Assert.True(result.Success);
+        Assert.Equal("28147497671995", result.GatewayTransactionId);
+        Assert.Equal("TAS536", result.AuthorizationCode);
+        Assert.Equal("merchant-private-key", handler.AuthorizationHeader);
+        Assert.Contains("\"payment_token\":\"tok_123\"", handler.RequestBody!);
+
+        var transaction = await dbContext.PaymentTransactions.IgnoreQueryFilters().SingleAsync();
+        Assert.Equal(organizationId, transaction.OrganizationId);
+        Assert.Equal("Approved", transaction.Status);
+        Assert.Equal(10m, transaction.Amount);
+        Assert.Equal("Ada Rider", transaction.CustomerName);
+        Assert.Equal("1111", transaction.CardLastFour);
+        Assert.Equal("NMI", transaction.Provider);
+
+        var ledgerEntry = await dbContext.FinancialLedgerEntries.IgnoreQueryFilters().SingleAsync();
+        Assert.Equal(transaction.Id.ToString(), ledgerEntry.SourceId);
+        Assert.Equal("PaymentApproved", ledgerEntry.EntryType);
+        Assert.Equal(10m, ledgerEntry.Amount);
+        Assert.Equal("NMI", ledgerEntry.Provider);
+
+        var domainEvent = await dbContext.DomainEvents.IgnoreQueryFilters().SingleAsync();
+        Assert.Equal("PaymentApproved", domainEvent.EventType);
+        Assert.Equal("FinancialServices", domainEvent.SourceModule);
+    }
+
+    [Fact]
+    public async Task GetWorkspaceAsync_reports_configuration_and_totals()
+    {
+        await using var dbContext = CreateContext();
+        var organizationId = Guid.NewGuid();
+        dbContext.PaymentTransactions.Add(new()
+        {
+            OrganizationId = organizationId,
+            Amount = 25m,
+            IsApproved = true,
+            Status = "Approved",
+            TransactionType = "Sale"
+        });
+        dbContext.PaymentTransactions.Add(new()
+        {
+            OrganizationId = organizationId,
+            Amount = 5m,
+            IsApproved = false,
+            Status = "Declined",
+            TransactionType = "Sale"
+        });
+        await dbContext.SaveChangesAsync();
+        var service = CreateService(dbContext, new RecordingHandler("{}"));
+        AddActiveMerchant(dbContext, organizationId);
+
+        var workspace = await service.GetWorkspaceAsync(organizationId, CancellationToken.None);
+
+        Assert.True(workspace.Configuration.IsConfigured);
+        Assert.True(workspace.Configuration.HasActiveMerchant);
+        Assert.Equal("Sandbox", workspace.Configuration.Environment);
+        Assert.Equal(25m, workspace.ApprovedSalesTotal);
+        Assert.Equal(1, workspace.ApprovedCount);
+        Assert.Equal(1, workspace.DeclinedCount);
+    }
+
+    [Fact]
+    public async Task CreateSaleAsync_records_nmi_http_error_message()
+    {
+        await using var dbContext = CreateContext();
+        var handler = new RecordingHandler("""
+            {
+              "type": "authenticationError",
+              "error_code": "E_AUTHENTICATION_MISSING",
+              "message": "Missing/Invalid Authentication",
+              "ref_id": "83485292"
+            }
+            """, HttpStatusCode.Unauthorized);
+        var service = CreateService(dbContext, handler);
+        var organizationId = Guid.NewGuid();
+        AddActiveMerchant(dbContext, organizationId);
+
+        var result = await service.CreateSaleAsync(
+            organizationId,
+            Guid.NewGuid(),
+            new PaymentSaleRequest("tok_123", 10m),
+            CancellationToken.None);
+
+        Assert.False(result.Success);
+        Assert.Equal("Error", result.Status);
+        Assert.Equal("401", result.ResponseCode);
+        Assert.Equal("Missing/Invalid Authentication", result.ResponseText);
+
+        var transaction = await dbContext.PaymentTransactions.IgnoreQueryFilters().SingleAsync();
+        Assert.Contains("E_AUTHENTICATION_MISSING", transaction.RawResponseJson);
+    }
+
+    [Fact]
+    public async Task CreateSaleAsync_requires_active_merchant_account()
+    {
+        await using var dbContext = CreateContext();
+        var handler = new RecordingHandler("{}");
+        var service = CreateService(dbContext, handler);
+
+        var ex = await Assert.ThrowsAsync<InvalidOperationException>(() => service.CreateSaleAsync(
+            Guid.NewGuid(),
+            Guid.NewGuid(),
+            new PaymentSaleRequest("tok_123", 10m),
+            CancellationToken.None));
+
+        Assert.Equal("An active merchant account is required before payments can run.", ex.Message);
+        Assert.Null(handler.RequestBody);
+        Assert.Empty(await dbContext.PaymentTransactions.IgnoreQueryFilters().ToListAsync());
+    }
+
+    [Theory]
+    [InlineData(MerchantAccountStatuses.Rejected)]
+    [InlineData(MerchantAccountStatuses.Suspended)]
+    public async Task CreateSaleAsync_blocks_rejected_and_suspended_merchants(string merchantStatus)
+    {
+        await using var dbContext = CreateContext();
+        var handler = new RecordingHandler("{}");
+        var service = CreateService(dbContext, handler);
+        var organizationId = Guid.NewGuid();
+        AddMerchant(dbContext, organizationId, merchantStatus);
+
+        var ex = await Assert.ThrowsAsync<InvalidOperationException>(() => service.CreateSaleAsync(
+            organizationId,
+            Guid.NewGuid(),
+            new PaymentSaleRequest("tok_123", 10m),
+            CancellationToken.None));
+
+        Assert.Equal("An active merchant account is required before payments can run.", ex.Message);
+        Assert.Null(handler.RequestBody);
+        Assert.Empty(await dbContext.PaymentTransactions.IgnoreQueryFilters().ToListAsync());
+    }
+
+    private static ApplicationDbContext CreateContext()
+    {
+        var options = new DbContextOptionsBuilder<ApplicationDbContext>()
+            .UseInMemoryDatabase(Guid.NewGuid().ToString())
+            .Options;
+        var currentUser = new NoCurrentUser();
+        return new ApplicationDbContext(options, currentUser, new SystemClock(), new TenantProvider(currentUser));
+    }
+
+    private static PaymentService CreateService(ApplicationDbContext dbContext, RecordingHandler handler)
+    {
+        var client = new HttpClient(handler)
+        {
+            BaseAddress = new Uri("https://sandbox.nmi.com/api/v5/")
+        };
+        var currentUser = new NoCurrentUser();
+        return new PaymentService(
+            dbContext,
+            new NmiPaymentProvider(
+                new StaticHttpClientFactory(client),
+                Options.Create(new NmiPaymentOptions
+                {
+                    Environment = "Sandbox",
+                    PaymentsBaseUrl = "https://sandbox.nmi.com/api/v5/",
+                    MerchantPrivateKey = "test-private-key",
+                    MerchantTokenizationKey = "test-public-key"
+                })),
+            new DomainEventRecorder(dbContext, currentUser, new SystemClock()),
+            new SystemClock());
+    }
+
+    private static void AddActiveMerchant(ApplicationDbContext dbContext, Guid organizationId)
+    {
+        AddMerchant(dbContext, organizationId, MerchantAccountStatuses.Active);
+    }
+
+    private static void AddMerchant(ApplicationDbContext dbContext, Guid organizationId, string status)
+    {
+        var merchantAccount = new MerchantAccount
+        {
+            OrganizationId = organizationId,
+            Status = status,
+            UnderwritingStatus = status == MerchantAccountStatuses.Active ? "Approved" : status,
+            LegalBusinessName = "Test Merchant",
+            PrimaryProviderCode = "NMI",
+            PaymentsEnabled = status == MerchantAccountStatuses.Active
+        };
+        dbContext.MerchantAccounts.Add(merchantAccount);
+        dbContext.SaveChanges();
+        dbContext.MerchantProviderRelationships.Add(new MerchantProviderRelationship
+        {
+            OrganizationId = organizationId,
+            MerchantAccountId = merchantAccount.Id,
+            ProviderCode = "NMI",
+            ProviderMerchantId = "nmi-merchant-123",
+            Status = status,
+            PaymentApiKeyProtected = status == MerchantAccountStatuses.Active ? "merchant-private-key" : null,
+            PublicTokenizationKey = status == MerchantAccountStatuses.Active ? "merchant-public-key" : null
+        });
+        dbContext.SaveChanges();
+    }
+
+    private sealed class StaticHttpClientFactory(HttpClient client) : IHttpClientFactory
+    {
+        public HttpClient CreateClient(string name)
+        {
+            return client;
+        }
+    }
+
+    private sealed class RecordingHandler(string responseBody, HttpStatusCode statusCode = HttpStatusCode.OK) : HttpMessageHandler
+    {
+        public string? AuthorizationHeader { get; private set; }
+
+        public string? RequestBody { get; private set; }
+
+        protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+        {
+            AuthorizationHeader = request.Headers.TryGetValues("Authorization", out var values)
+                ? values.SingleOrDefault()
+                : null;
+            RequestBody = request.Content is null
+                ? string.Empty
+                : await request.Content.ReadAsStringAsync(cancellationToken);
+
+            return new HttpResponseMessage(statusCode)
+            {
+                Content = new StringContent(responseBody)
+            };
+        }
+    }
+}

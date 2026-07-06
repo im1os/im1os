@@ -1,0 +1,140 @@
+@model HrWorkspacePage
+
+@{
+    ViewData["Title"] = "Time Clock";
+    var admin = Model.Administration;
+    var timeClock = admin.TimeClock;
+}
+
+@await Html.PartialAsync("_HrHeader", Model)
+
+<section class="im1-workspace-grid">
+    <article class="im1-workspace-card span-4">
+        <header class="im1-section-header"><div><h2>PIN Clock</h2><p>Clock an employee in or out.</p></div></header>
+        <form asp-controller="Hr" asp-action="TimeClockPunch" method="post" class="form-grid single">
+            <input type="hidden" name="organizationId" value="@admin.OrganizationId" />
+            <label>
+                Employee
+                <select name="EmployeeId" required>
+                    <option value="">Select employee</option>
+                    @foreach (var employee in timeClock.Employees)
+                    {
+                        <option value="@employee.Id">@employee.Name @(employee.HasPin ? "" : "(no PIN)")</option>
+                    }
+                </select>
+            </label>
+            <label>PIN <input name="Pin" type="password" inputmode="numeric" maxlength="4" pattern="\d{4}" required /></label>
+            <label>
+                Action
+                <select name="Action" required>
+                    <option value="in">Clock In</option>
+                    <option value="out">Clock Out</option>
+                </select>
+            </label>
+            <button class="primary-action" type="submit">Submit Punch</button>
+        </form>
+    </article>
+
+    <article class="im1-workspace-card span-8">
+        <header class="im1-section-header"><div><h2>Currently Clocked In</h2><p>Open punches.</p></div></header>
+        <div class="compact-list">
+            @foreach (var punch in timeClock.OpenPunches)
+            {
+                <p><strong>@punch.EmployeeName</strong> since @FormatLocal(punch.ClockInUtc, admin.Profile.TimeZone) - @punch.ElapsedHours.ToString("0.00") hrs</p>
+            }
+            @if (timeClock.OpenPunches.Count == 0)
+            {
+                <p class="im1-empty-state">No employees are clocked in.</p>
+            }
+        </div>
+    </article>
+
+    <article class="im1-workspace-card span-12">
+        <header class="im1-section-header"><div><h2>Manual Punches</h2><p>Add missed punches or correct recent entries.</p></div></header>
+        <form asp-controller="Hr" asp-action="AddPunch" method="post" class="form-grid form-grid-spaced">
+            <input type="hidden" name="organizationId" value="@admin.OrganizationId" />
+            <label>
+                Employee
+                <select name="EmployeeId" required>
+                    <option value="">Select employee</option>
+                    @foreach (var employee in timeClock.Employees)
+                    {
+                        <option value="@employee.Id">@employee.Name</option>
+                    }
+                </select>
+            </label>
+            <label>Clock In <input name="ClockInLocal" type="datetime-local" required /></label>
+            <label>Clock Out <input name="ClockOutLocal" type="datetime-local" /></label>
+            <label>Note <input name="Note" /></label>
+            <button class="primary-action" type="submit">Add Punch</button>
+        </form>
+
+        <div class="table-scroll">
+            <table class="data-table">
+                <thead><tr><th>Employee</th><th>Clock In / Out</th><th>Hours</th><th>Note</th><th>Actions</th></tr></thead>
+                <tbody>
+                @foreach (var punch in timeClock.RecentPunches)
+                {
+                    <tr>
+                        <td>@punch.EmployeeName</td>
+                        <td>
+                            <form asp-controller="Hr" asp-action="UpdatePunch" method="post" class="inline-edit-form">
+                                <input type="hidden" name="organizationId" value="@admin.OrganizationId" />
+                                <input type="hidden" name="PunchId" value="@punch.Id" />
+                                <input name="ClockInLocal" type="datetime-local" value="@FormatLocalInput(punch.ClockInUtc, admin.Profile.TimeZone)" required />
+                                <input name="ClockOutLocal" type="datetime-local" value="@(punch.ClockOutUtc is null ? "" : FormatLocalInput(punch.ClockOutUtc.Value, admin.Profile.TimeZone))" />
+                                <input name="Note" value="@punch.Note" placeholder="Note" />
+                                <button class="im1-button im1-button-secondary" type="submit">Save</button>
+                            </form>
+                        </td>
+                        <td>@punch.Hours.ToString("0.00")</td>
+                        <td>@(punch.Note ?? "-")</td>
+                        <td>
+                            <form asp-controller="Hr" asp-action="DeletePunch" method="post">
+                                <input type="hidden" name="organizationId" value="@admin.OrganizationId" />
+                                <input type="hidden" name="PunchId" value="@punch.Id" />
+                                <button class="im1-button im1-button-danger" type="submit">Delete</button>
+                            </form>
+                        </td>
+                    </tr>
+                }
+                @if (timeClock.RecentPunches.Count == 0)
+                {
+                    <tr><td colspan="5">No recent punches.</td></tr>
+                }
+                </tbody>
+            </table>
+        </div>
+    </article>
+</section>
+
+@functions {
+    private static string FormatLocal(DateTimeOffset value, string timeZoneId)
+    {
+        return TimeZoneInfo.ConvertTime(value, FindTimeZone(timeZoneId)).ToString("MMM d, yyyy h:mm tt");
+    }
+
+    private static string FormatLocalInput(DateTimeOffset value, string timeZoneId)
+    {
+        return TimeZoneInfo.ConvertTime(value, FindTimeZone(timeZoneId)).ToString("yyyy-MM-ddTHH:mm");
+    }
+
+    private static TimeZoneInfo FindTimeZone(string? timeZoneId)
+    {
+        if (!string.IsNullOrWhiteSpace(timeZoneId))
+        {
+            try
+            {
+                return TimeZoneInfo.FindSystemTimeZoneById(timeZoneId);
+            }
+            catch (TimeZoneNotFoundException)
+            {
+            }
+            catch (InvalidTimeZoneException)
+            {
+            }
+        }
+
+        return TimeZoneInfo.Utc;
+    }
+}

@@ -89,9 +89,9 @@ public sealed class WorkOrdersController(
     }
 
     [HttpGet]
-    public async Task<IActionResult> New(CancellationToken cancellationToken)
+    public IActionResult New()
     {
-        return View("Edit", await workOrderService.GetNewEditorAsync(OrganizationId(), cancellationToken));
+        return RedirectToAction(nameof(Intake));
     }
 
     [HttpGet]
@@ -102,7 +102,33 @@ public sealed class WorkOrdersController(
     }
 
     [HttpGet]
-    public async Task<IActionResult> ItemLookup(string? query, string? supplierCode, string? vehicleType, int? year, string? make, string? model, int? tireWidth, int? tireAspectRatio, int? tireRimDiameter, bool laborOnly, int offset, CancellationToken cancellationToken)
+    public async Task<IActionResult> ItemLookupFacets(string? category, string? brand, CancellationToken cancellationToken)
+    {
+        var page = await supplierItemSearchService.SearchForCompanyAsync(
+            OrganizationId(),
+            new SupplierItemSearchRequest(
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                SearchExecuted: false,
+                IncludeFacets: true,
+                Category: category,
+                Brand: brand),
+            1,
+            cancellationToken);
+
+        return Json(new
+        {
+            Categories = page.AvailableCategories,
+            Brands = page.AvailableBrands
+        });
+    }
+
+    [HttpGet]
+    public async Task<IActionResult> ItemLookup(string? query, string? supplierCode, string? category, string? brand, string? vehicleType, int? year, string? make, string? model, int? tireWidth, int? tireAspectRatio, int? tireRimDiameter, bool laborOnly, int offset, CancellationToken cancellationToken)
     {
         var organizationId = OrganizationId();
         if (laborOnly)
@@ -141,7 +167,7 @@ public sealed class WorkOrdersController(
 
         var page = await supplierItemSearchService.SearchForCompanyAsync(
             organizationId,
-            new SupplierItemSearchRequest(query, supplierCode, vehicleType, year, make, model, offset, SearchExecuted: true, IncludeFacets: false, TireWidth: tireWidth, TireAspectRatio: tireAspectRatio, TireRimDiameter: tireRimDiameter),
+            new SupplierItemSearchRequest(query, supplierCode, vehicleType, year, make, model, offset, SearchExecuted: true, IncludeFacets: false, Category: category, Brand: brand, TireWidth: tireWidth, TireAspectRatio: tireAspectRatio, TireRimDiameter: tireRimDiameter),
             WorkOrderItemSearchPageSize,
             cancellationToken);
 
@@ -328,7 +354,7 @@ public sealed class WorkOrdersController(
                 return RedirectToAction(nameof(Edit), new { workOrderId = existingWorkOrderId });
             }
 
-            return RedirectToAction(nameof(New));
+            return RedirectToAction(nameof(Intake));
         }
 
         return RedirectToAction(nameof(Edit), new { workOrderId });

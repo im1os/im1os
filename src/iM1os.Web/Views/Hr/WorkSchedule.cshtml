@@ -1,0 +1,54 @@
+@model HrWorkspacePage
+
+@{
+    ViewData["Title"] = "Work Schedule";
+    var admin = Model.Administration;
+    var timeClock = admin.TimeClock;
+}
+
+@await Html.PartialAsync("_HrHeader", Model)
+
+<section class="im1-workspace-grid">
+    <article class="im1-workspace-card span-5">
+        <header class="im1-section-header"><div><h2>Add Shift</h2><p>Create upcoming employee shifts.</p></div></header>
+        <form asp-controller="Hr" asp-action="AddScheduleShift" method="post" class="form-grid">
+            <input type="hidden" name="organizationId" value="@admin.OrganizationId" />
+            <label>
+                Employee
+                <select name="EmployeeId" required>
+                    <option value="">Select employee</option>
+                    @foreach (var employee in timeClock.Employees)
+                    {
+                        <option value="@employee.Id">@employee.Name</option>
+                    }
+                </select>
+            </label>
+            <label>Date <input name="ShiftDate" type="date" required /></label>
+            <label>Start <input name="StartTime" type="time" required /></label>
+            <label>End <input name="EndTime" type="time" required /></label>
+            <label>Note <input name="Note" /></label>
+            <button class="primary-action" type="submit">Add Shift</button>
+        </form>
+    </article>
+
+    <article class="im1-workspace-card span-7">
+        <header class="im1-section-header"><div><h2>Upcoming Shifts</h2><p>Scheduled labor coverage.</p></div></header>
+        <div class="compact-list">
+            @foreach (var shift in timeClock.UpcomingShifts)
+            {
+                <div class="timeoff-row">
+                    <span><strong>@shift.EmployeeName</strong> @shift.ShiftDate.ToString("MMM d") @shift.StartTime.ToString("h\\:mm")-@shift.EndTime.ToString("h\\:mm") <em>@shift.Hours.ToString("0.00") hrs</em></span>
+                    <form asp-controller="Hr" asp-action="DeleteScheduleShift" method="post">
+                        <input type="hidden" name="organizationId" value="@admin.OrganizationId" />
+                        <input type="hidden" name="ShiftId" value="@shift.Id" />
+                        <button class="im1-button im1-button-danger" type="submit">Delete</button>
+                    </form>
+                </div>
+            }
+            @if (timeClock.UpcomingShifts.Count == 0)
+            {
+                <p class="im1-empty-state">No upcoming shifts.</p>
+            }
+        </div>
+    </article>
+</section>

@@ -1,0 +1,25 @@
+@model HrWorkspacePage
+
+@{
+    var page = new IM1PageModel(
+        Model.Title,
+        "HR",
+        Model.Description,
+        Breadcrumbs: new[]
+        {
+            new IM1BreadcrumbModel("Company", Url.Action("Dashboard", "Business")),
+            new IM1BreadcrumbModel("HR"),
+            new IM1BreadcrumbModel(Model.Title)
+        });
+}
+
+@await Html.PartialAsync("IM1Page", page)
+
+@if (TempData["HrStatus"] is string statusMessage)
+{
+    <div class="form-alert success">@statusMessage</div>
+}
+@if (TempData["HrError"] is string errorMessage)
+{
+    <div class="form-alert error">@errorMessage</div>
+}

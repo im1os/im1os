@@ -1,0 +1,29 @@
+@model HrWorkspacePage
+
+@{
+    ViewData["Title"] = "Performance Reviews";
+}
+
+@await Html.PartialAsync("_HrHeader", Model)
+
+<section class="im1-workspace-grid">
+    <article class="im1-workspace-card span-12">
+        <header class="im1-section-header"><div><h2>Employee Review Roster</h2><p>Review work starts from each employee record.</p></div></header>
+        <div class="table-scroll">
+            <table class="data-table">
+                <thead><tr><th>Employee</th><th>Job Title</th><th>Status</th><th>Action</th></tr></thead>
+                <tbody>
+                @foreach (var employee in Model.Employees.Employees)
+                {
+                    <tr>
+                        <td>@employee.Name</td>
+                        <td>@(employee.JobTitle ?? "-")</td>
+                        <td>@employee.Status</td>
+                        <td><a class="im1-button im1-button-secondary" asp-controller="Employees" asp-action="Edit" asp-route-employeeId="@employee.Id">Open Employee</a></td>
+                    </tr>
+                }
+                </tbody>
+            </table>
+        </div>
+    </article>
+</section>

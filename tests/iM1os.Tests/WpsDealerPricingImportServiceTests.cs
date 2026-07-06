@@ -113,6 +113,36 @@ public sealed class WpsDealerPricingImportServiceTests
     }
 
     [Fact]
+    public async Task Dealer_pricing_import_keeps_polling_when_wps_temporarily_returns_service_unavailable()
+    {
+        var organizationId = Guid.NewGuid();
+        await using var dbContext = CreateContext();
+        var importRun = await SeedImportRunAsync(dbContext, organizationId);
+        var httpClientFactory = new SequenceHttpClientFactory(
+            new(HttpStatusCode.Accepted, string.Empty, "application/json", TimeSpan.Zero),
+            new(HttpStatusCode.ServiceUnavailable, string.Empty, "text/plain", TimeSpan.Zero),
+            new(HttpStatusCode.OK, """{"url":"https://files.wps.test/dealer-pricing.csv"}""", "application/json"),
+            new(HttpStatusCode.OK, "ItemNumber,DealerCost,Currency\r\n020-00104,92.18,USD\r\n", "text/csv"));
+        var service = new WpsDealerPricingImportService(
+            dbContext,
+            httpClientFactory,
+            new TestClock(),
+            NullLogger<WpsDealerPricingImportService>.Instance);
+
+        var result = await service.ImportAsync(new WpsDealerPricingImportRequest(importRun.Id), CancellationToken.None);
+
+        Assert.Equal(1, result.PricesUpserted);
+        Assert.Equal(
+            [
+                "https://api.wps.test/dealer-pricing",
+                "https://api.wps.test/dealer-pricing",
+                "https://api.wps.test/dealer-pricing",
+                "https://files.wps.test/dealer-pricing.csv"
+            ],
+            httpClientFactory.RequestUris);
+    }
+
+    [Fact]
     public async Task Dealer_pricing_import_parses_wps_actual_dealer_price_header()
     {
         var organizationId = Guid.NewGuid();
@@ -159,6 +189,34 @@ public sealed class WpsDealerPricingImportServiceTests
         Assert.Equal("020-00104", companyPrice.SupplierSku);
         Assert.Equal("415", companyPrice.SourceSupplierProductId);
         Assert.Equal(92.18m, companyPrice.ActualDealerCost);
+    }
+
+    [Fact]
+    public async Task Dealer_pricing_import_updates_same_company_price_when_file_contains_duplicate_product_rows()
+    {
+        var organizationId = Guid.NewGuid();
+        await using var dbContext = CreateContext();
+        var importRun = await SeedImportRunAsync(dbContext, organizationId);
+        var httpClientFactory = new SequenceHttpClientFactory(
+            new(HttpStatusCode.OK, """{"url":"https://files.wps.test/dealer-pricing.csv"}""", "application/json"),
+            new(HttpStatusCode.OK, """
+id,sku,actual_dealer_price,currency
+415,020-00104,92.18,USD
+415,020-00104,93.25,USD
+""", "text/csv"));
+        var service = new WpsDealerPricingImportService(
+            dbContext,
+            httpClientFactory,
+            new TestClock(),
+            NullLogger<WpsDealerPricingImportService>.Instance);
+
+        var result = await service.ImportAsync(new WpsDealerPricingImportRequest(importRun.Id), CancellationToken.None);
+
+        Assert.Equal(2, result.RowsProcessed);
+        Assert.Equal(2, result.PricesUpserted);
+        var companyPrice = await dbContext.CompanySupplierPrices.AsNoTracking().SingleAsync();
+        Assert.Equal("020-00104", companyPrice.SupplierSku);
+        Assert.Equal(93.25m, companyPrice.ActualDealerCost);
     }
 
     [Fact]
@@ -281,13 +339,19 @@ id,sku,actual_dealer_price,standard_dealer_price,list_price,drop_ship_eligible,d
             authorizationHeaders.Add(request.Headers.Authorization is null
                 ? null
                 : $"{request.Headers.Authorization.Scheme} {request.Headers.Authorization.Parameter}");
-            var response = responses.Dequeue();
-            return Task.FromResult(new HttpResponseMessage(response.StatusCode)
+            var sequenceResponse = responses.Dequeue();
+            var response = new HttpResponseMessage(sequenceResponse.StatusCode)
             {
-                Content = new StringContent(response.Body, null, response.ContentType)
-            });
+                Content = new StringContent(sequenceResponse.Body, null, sequenceResponse.ContentType)
+            };
+            if (sequenceResponse.RetryAfter is not null)
+            {
+                response.Headers.RetryAfter = new(sequenceResponse.RetryAfter.Value);
+            }
+
+            return Task.FromResult(response);
         }
     }
 
-    private sealed record SequenceResponse(HttpStatusCode StatusCode, string Body, string ContentType);
+    private sealed record SequenceResponse(HttpStatusCode StatusCode, string Body, string ContentType, TimeSpan? RetryAfter = null);
 }

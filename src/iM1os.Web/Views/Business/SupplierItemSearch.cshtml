@@ -129,7 +129,7 @@
     {
         <div class="im1-search-active-indicator">
             <span class="im1-status-pill im1-status-success">Search active</span>
-            <span>@Model.TotalResults.ToString("N0") results matching the current filters</span>
+            <span>@Model.TotalResults.ToString("N0") results matching the current filters in @Model.SearchElapsedMilliseconds.ToString("N0") ms</span>
         </div>
     }
 
@@ -220,6 +220,10 @@
                             <option value="@supplier.Code" selected="@(string.Equals(Model.SupplierCode, supplier.Code, StringComparison.OrdinalIgnoreCase))">@supplier.Name</option>
                         }
                     </select>
+                </label>
+                <label class="im1-field im1-checkbox-field">
+                    <input type="checkbox" name="useNormalizedCatalog" value="true" checked="@Model.UseNormalizedCatalog" />
+                    <span>Use normalized catalog</span>
                 </label>
                 <label class="im1-field">
                     <span>Type</span>
@@ -424,6 +428,10 @@
                                     @foreach (var offer in item.Offers!)
                                     {
                                         var supplierIconSrc = SupplierIconSrc(offer.SupplierCode, offer.SupplierName);
+                                        var caseQuantity = offer.CaseQuantity.GetValueOrDefault();
+                                        var retailEachPrice = offer.Msrp.HasValue && caseQuantity > 0
+                                            ? offer.Msrp.Value / caseQuantity
+                                            : (decimal?)null;
                                         <article class="im1-supplier-offer @(offer.IsDefaultOffer ? "im1-supplier-offer-selected" : string.Empty)" data-offer-row data-offer-supplier-product-id="@offer.SupplierProductId" data-offer-cost="@(offer.ActualCost ?? offer.DealerCost ?? decimal.MaxValue)" data-has-inventory="@offer.HasCachedInventory.ToString().ToLowerInvariant()">
                                             <div class="im1-supplier-offer-media">
                                                 @if (!string.IsNullOrWhiteSpace(offer.ImageUrl))
@@ -451,7 +459,16 @@
                                             <dl>
                                                 <div><dt>SKU</dt><dd>@offer.SupplierSku</dd></div>
                                                 <div><dt>MFG Part#</dt><dd>@(offer.ManufacturerPartNumber ?? "-")</dd></div>
-                                                <div><dt>Retail</dt><dd>@FormatCurrency(offer.Msrp)</dd></div>
+                                                @if (caseQuantity > 0)
+                                                {
+                                                    <div><dt>Case Qty</dt><dd>@caseQuantity.ToString("N0")</dd></div>
+                                                    <div><dt>Retail /ea</dt><dd>@FormatCurrency(retailEachPrice)</dd></div>
+                                                    <div><dt>Retail /case</dt><dd>@FormatCurrency(offer.Msrp)</dd></div>
+                                                }
+                                                else
+                                                {
+                                                    <div><dt>Retail</dt><dd>@FormatCurrency(offer.Msrp)</dd></div>
+                                                }
                                                 <div><dt>Actual</dt><dd>@FormatCurrency(offer.ActualCost)</dd></div>
                                             </dl>
                                             @if (offer.SupplierCode == "WPS")
@@ -1428,11 +1445,19 @@
                     supplier.append(document.createTextNode(offer.supplierName || offer.supplierCode || "-"));
                     header.append(supplier);
                     const metrics = document.createElement("dl");
+                    const caseQuantity = Number(offer.caseQuantity || 0);
+                    const retailEachPrice = offer.msrp != null && caseQuantity > 0 ? offer.msrp / caseQuantity : null;
                     const metricRows = [
                         createMetric("SKU", createCopyableValue(offer.supplierSku, "SKU")),
-                        createMetric("MFG Part#", createCopyableValue(offer.manufacturerPartNumber, "MFG Part#")),
-                        createMetric("Retail", formatCurrency(offer.msrp))
+                        createMetric("MFG Part#", createCopyableValue(offer.manufacturerPartNumber, "MFG Part#"))
                     ];
+                    if (caseQuantity > 0) {
+                        metricRows.push(createMetric("Case Qty", caseQuantity.toLocaleString()));
+                        metricRows.push(createMetric("Retail /ea", formatCurrency(retailEachPrice)));
+                        metricRows.push(createMetric("Retail /case", formatCurrency(offer.msrp)));
+                    } else {
+                        metricRows.push(createMetric("Retail", formatCurrency(offer.msrp)));
+                    }
                     if (!isPlatformCatalog) {
                         metricRows.push(createMetric("Actual", formatCurrency(offer.actualCost)));
                     }

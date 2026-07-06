@@ -1,0 +1,55 @@
+@model iM1os.Application.FinancialServices.FinancialServicesModuleDefinition
+@{
+    ViewData["Title"] = Model.Name;
+
+    var hero = new IM1WorkspaceHeroModel(
+        Model.Name,
+        "Payments & Finance placeholder",
+        Model.Summary,
+        new[]
+        {
+            new IM1WorkspaceStatModel("Status", Model.Status, "Implementation state"),
+            new IM1WorkspaceStatModel("Category", Model.Category, "Framework area"),
+            new IM1WorkspaceStatModel("Workflow", Model.WorkflowStage, "Primary step"),
+            new IM1WorkspaceStatModel("Provider Layer", "Abstracted", "No gateway-specific UX")
+        },
+        new[]
+        {
+            new IM1ActionModel("Payments & Finance", Url.Action("Index", "FinancialServices"), "secondary"),
+            new IM1ActionModel("Payments", Url.Action("Index", "Payments"), "primary")
+        },
+        Model.Status);
+}
+
+@await Html.PartialAsync("IM1WorkspaceHero", hero)
+
+<section class="im1-workspace-grid">
+    <article class="im1-workspace-card span-6">
+        <header class="im1-section-header">
+            <div>
+                <h2>Module Boundary</h2>
+                <p>This placeholder reserves the product surface while the underlying service contracts are built.</p>
+            </div>
+        </header>
+        <div class="im1-key-value-list">
+            <div><dt>Module key</dt><dd>@Model.Key</dd></div>
+            <div><dt>Category</dt><dd>@Model.Category</dd></div>
+            <div><dt>Workflow stage</dt><dd>@Model.WorkflowStage</dd></div>
+            <div><dt>Status</dt><dd>@Model.Status</dd></div>
+        </div>
+    </article>
+    <article class="im1-workspace-card span-6">
+        <header class="im1-section-header">
+            <div>
+                <h2>Implementation Notes</h2>
+                <p>Provider-specific details remain behind the Payments & Finance engine.</p>
+            </div>
+        </header>
+        <ul class="event-list">
+            <li>Use iM1 payment abstractions from Service, Invoices, Customer Portal, Ecommerce, and POS workflows.</li>
+            <li>Store tokens and transaction descriptors only; never store raw card or bank credentials.</li>
+            <li>Record tenant-owned financial events for audit, settlement, reporting, and future intelligence.</li>
+            <li>Keep gateway and terminal drivers interchangeable.</li>
+        </ul>
+    </article>
+</section>

@@ -60,6 +60,7 @@ public sealed class Turn14ProductLoadsheetImportServiceTests
         Assert.Equal("ABC123", supplierProduct.SupplierSku);
         Assert.Equal("123", supplierProduct.ManufacturerPartNumber);
         Assert.Equal("123", supplierProduct.NormalizedManufacturerPartNumber);
+        Assert.Equal(1, supplierProduct.CaseQuantity);
         Assert.Null(supplierProduct.SourceSupplierProductId);
         Assert.Null(supplierProduct.SupplierImagesJson);
 

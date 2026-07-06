@@ -5,6 +5,7 @@ using iM1os.Api.Security;
 using iM1os.Application.Authentication;
 using iM1os.Application.Common;
 using iM1os.Infrastructure;
+using iM1os.Infrastructure.Configuration;
 using iM1os.Infrastructure.Persistence;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Authorization;
@@ -12,6 +13,7 @@ using Microsoft.IdentityModel.Tokens;
 using Serilog;
 
 var builder = WebApplication.CreateBuilder(args);
+builder.Configuration.AddLocalDotEnvFile();
 
 builder.Host.UseSerilog((context, logger) =>
 {

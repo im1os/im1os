@@ -28,7 +28,9 @@ public sealed record SupplierItemSearchPage(
     int PageSize,
     bool HasMore,
     IReadOnlyCollection<SupplierItemSearchResult> Results,
-    bool IsSearchExecuted);
+    bool IsSearchExecuted,
+    bool UseNormalizedCatalog = false,
+    long SearchElapsedMilliseconds = 0);
 
 public sealed record SupplierItemSearchRequest(
     string? Query,
@@ -47,7 +49,8 @@ public sealed record SupplierItemSearchRequest(
     int? TireWidth = null,
     int? TireAspectRatio = null,
     int? TireRimDiameter = null,
-    string? TirePosition = null);
+    string? TirePosition = null,
+    bool UseNormalizedCatalog = false);
 
 public sealed record SupplierSearchOption(
     string Code,
@@ -97,6 +100,7 @@ public sealed record SupplierItemOfferResult(
     decimal? Msrp,
     decimal? DealerCost,
     decimal? ActualCost,
+    int? CaseQuantity,
     string? ImageUrl,
     bool HasCachedInventory,
     int? CachedInventoryTotal,

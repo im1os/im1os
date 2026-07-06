@@ -168,6 +168,28 @@ public static class IM1ShellNavigation
                     new("Parts Unlimited", "Platform", "PartsUnlimitedConnector", "PU")
                 ]),
             new(
+                "Financial Services",
+                Icon: "FS",
+                Children:
+                [
+                    new("Overview", "PlatformFinancialServices", "Index", "OV"),
+                    new("Merchant Applications", "PlatformFinancialServices", "MerchantApplications", "MA"),
+                    new("Active Merchants", "PlatformFinancialServices", "ActiveMerchants", "AM"),
+                    new("Underwriting Queue", "PlatformFinancialServices", "UnderwritingQueue", "UQ"),
+                    new("Risk Monitoring", "PlatformFinancialServices", "RiskMonitoring", "RM"),
+                    new("Processor Management", "PlatformFinancialServices", "ProcessorManagement", "PM"),
+                    new("Gateway Providers", "PlatformFinancialServices", "GatewayProviders", "GP"),
+                    new("Residual Reporting", "PlatformFinancialServices", "ResidualReporting", "RR"),
+                    new("Settlements", "PlatformFinancialServices", "SettlementMonitoring", "SM"),
+                    new("Chargebacks", "PlatformFinancialServices", "ChargebackManagement", "CB"),
+                    new("Hardware Catalog", "PlatformFinancialServices", "HardwareCatalog", "HC"),
+                    new("Device Inventory", "PlatformFinancialServices", "DeviceInventory", "DI"),
+                    new("Fulfillment", "PlatformFinancialServices", "ShippingFulfillment", "SF"),
+                    new("Pricing Plans", "PlatformFinancialServices", "PricingPlans", "PP"),
+                    new("Merchant Support", "PlatformFinancialServices", "MerchantSupport", "MS"),
+                    new("Provider Config", "PlatformFinancialServices", "ProviderConfiguration", "PC")
+                ]),
+            new(
                 "Marketing CMS",
                 Icon: "MC",
                 Children:
@@ -205,6 +227,26 @@ public static class IM1ShellNavigation
                     new("Scanner", "Inventory", "Scanner", "SC")
                 ]),
             new(
+                "Payments & Finance",
+                Icon: "PF",
+                Children:
+                [
+                    new("Dashboard", "FinancialServices", "Index", "DB"),
+                    new("Merchant Account", "FinancialServices", "MerchantAccount", "MA"),
+                    new("Transactions", "FinancialServices", "TransactionCenter", "TR"),
+                    new("Payments", "Payments", "Index", "PY"),
+                    new("Customer Wallet", "FinancialServices", "CustomerWallet", "CW"),
+                    new("Payment Links", "FinancialServices", "PaymentLinks", "PL"),
+                    new("Terminals", "FinancialServices", "TerminalManagement", "TM"),
+                    new("ACH", "FinancialServices", "AchProcessing", "ACH"),
+                    new("Subscriptions", "FinancialServices", "SubscriptionBilling", "SB"),
+                    new("Financial Ledger", "FinancialServices", "FinancialLedger", "FL"),
+                    new("Deposits", "FinancialServices", "Deposits", "DP"),
+                    new("Statements", "FinancialServices", "Statements", "ST"),
+                    new("Reports", "FinancialServices", "Reports", "RP"),
+                    new("Settings", "FinancialServices", "Settings", "SE")
+                ]),
+            new(
                 "CRM",
                 Icon: "CR",
                 Children:
@@ -225,17 +267,17 @@ public static class IM1ShellNavigation
                 Children:
                 [
                     new("Employees", "Employees", "Index", "EM"),
-                    new("Time Clock", Icon: "TC"),
-                    new("Work Schedule", Icon: "WS"),
-                    new("Time Off", Icon: "TO"),
-                    new("Payroll", Icon: "PY"),
-                    new("Sales Commissions", Icon: "SC"),
-                    new("Work Order Commissions", Icon: "WC"),
-                    new("Certifications", Icon: "CE"),
-                    new("Documents", Icon: "DC"),
-                    new("OSHA / Safety", Icon: "OS"),
-                    new("Company Assets", Icon: "AS"),
-                    new("Performance Reviews", Icon: "PR")
+                    new("Time Clock", "Hr", "TimeClock", "TC"),
+                    new("Work Schedule", "Hr", "WorkSchedule", "WS"),
+                    new("Time Off", "Hr", "TimeOff", "TO"),
+                    new("Payroll", "Hr", "Payroll", "PY"),
+                    new("Sales Commissions", "Hr", "SalesCommissions", "SC"),
+                    new("Work Order Commissions", "Hr", "WorkOrderCommissions", "WC"),
+                    new("Certifications", "Hr", "Certifications", "CE"),
+                    new("Documents", "Hr", "Documents", "DC"),
+                    new("OSHA / Safety", "Hr", "Safety", "OS"),
+                    new("Company Assets", "Hr", "CompanyAssets", "AS"),
+                    new("Performance Reviews", "Hr", "PerformanceReviews", "PR")
                 ])
         ]);
 

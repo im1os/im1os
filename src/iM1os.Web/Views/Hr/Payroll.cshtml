@@ -1,0 +1,43 @@
+@model HrWorkspacePage
+
+@{
+    ViewData["Title"] = "Payroll";
+    var admin = Model.Administration;
+    var payroll = admin.TimeClock.Payroll;
+}
+
+@await Html.PartialAsync("_HrHeader", Model)
+
+<section class="im1-workspace-grid">
+    <article class="im1-workspace-card span-12">
+        <header class="im1-section-header"><div><h2>Payroll Summary</h2><p>Semi-monthly cycle @admin.TimeClock.PayrollStartDate.ToString("MMM d") - @admin.TimeClock.PayrollEndDate.ToString("MMM d, yyyy").</p></div></header>
+        <div class="connector-readiness">
+            <div><span>Worked</span><strong>@payroll.TotalWorkedHours.ToString("0.00") hrs</strong></div>
+            <div><span>Scheduled</span><strong>@payroll.TotalScheduledHours.ToString("0.00") hrs</strong></div>
+            <div><span>Time Off</span><strong>@payroll.TotalTimeOffHours.ToString("0.00") hrs</strong></div>
+            <div><span>Paid Hours</span><strong>@payroll.TotalPaidHours.ToString("0.00") hrs</strong></div>
+            <div><span>Gross Pay</span><strong>@payroll.TotalGrossPay.ToString("C")</strong></div>
+        </div>
+        <div class="table-scroll">
+            <table class="data-table">
+                <thead><tr><th>Employee</th><th>Type</th><th>Rate</th><th>Worked</th><th>Paid Time Off</th><th>Paid Hours</th><th>Scheduled</th><th>Variance</th><th>Gross</th></tr></thead>
+                <tbody>
+                @foreach (var row in payroll.Employees)
+                {
+                    <tr>
+                        <td>@row.EmployeeName</td>
+                        <td>@row.PayrollType</td>
+                        <td>@(row.HourlyRate?.ToString("C") ?? "-")</td>
+                        <td>@row.WorkedHours.ToString("0.00")</td>
+                        <td>@row.PaidTimeOffHours.ToString("0.00")</td>
+                        <td>@row.PaidHours.ToString("0.00")</td>
+                        <td>@row.ScheduledHours.ToString("0.00")</td>
+                        <td>@row.VarianceHours.ToString("0.00")</td>
+                        <td>@row.GrossPay.ToString("C")</td>
+                    </tr>
+                }
+                </tbody>
+            </table>
+        </div>
+    </article>
+</section>

@@ -405,7 +405,481 @@ public sealed class SupplierItemSearchService(
                 cappedLimit,
                 false,
                 [],
-                isSearchExecuted);
+                isSearchExecuted,
+                request.UseNormalizedCatalog,
+                totalStopwatch.ElapsedMilliseconds);
+        }
+
+        if (request.UseNormalizedCatalog)
+        {
+            var normalizedFastPathCanonicalItemIds = Array.Empty<Guid>();
+            if (hasTextSearch && isIdentifierSearch)
+            {
+                var fastPathCanonicalItemIds = await TimedAsync("normalized-fast-canonical-identifiers", async () =>
+                {
+                    var canonicalItemIds = await dbContext.CanonicalItems
+                        .AsNoTracking()
+                        .Where(canonicalItem =>
+                            (normalizedPartQuery != null &&
+                                canonicalItem.NormalizedManufacturerPartNumber != null &&
+                                canonicalItem.NormalizedManufacturerPartNumber == normalizedPartQuery) ||
+                            (cleanQuery != null &&
+                                canonicalItem.PrimaryUpc != null &&
+                                canonicalItem.PrimaryUpc == cleanQuery) ||
+                            (cleanQuery != null &&
+                                canonicalItem.ManufacturerPartNumber != null &&
+                                (usePostgresLike
+                                    ? EF.Functions.ILike(canonicalItem.ManufacturerPartNumber, cleanQuery)
+                                    : canonicalItem.ManufacturerPartNumber.ToLower() == lowerQuery)))
+                        .Select(canonicalItem => canonicalItem.Id)
+                        .Take(1000)
+                        .ToListAsync(cancellationToken);
+
+                    var identifierCanonicalItemIds = await dbContext.CanonicalItemIdentifiers
+                        .AsNoTracking()
+                        .Where(identifier =>
+                            (normalizedPartQuery != null && identifier.NormalizedValue == normalizedPartQuery) ||
+                            (cleanQuery != null &&
+                                (usePostgresLike
+                                    ? EF.Functions.ILike(identifier.IdentifierValue, cleanQuery)
+                                    : identifier.IdentifierValue.ToLower() == lowerQuery)))
+                        .Select(identifier => identifier.CanonicalItemId)
+                        .Take(1000)
+                        .ToListAsync(cancellationToken);
+
+                    var offerCanonicalItemIds = await dbContext.CanonicalItemSupplierOffers
+                        .AsNoTracking()
+                        .Where(offer =>
+                            cleanQuery != null &&
+                            ((usePostgresLike
+                                ? EF.Functions.ILike(offer.SupplierSku, cleanQuery)
+                                : offer.SupplierSku.ToLower() == lowerQuery) ||
+                            (offer.SupplierPartNumber != null &&
+                                (usePostgresLike
+                                    ? EF.Functions.ILike(offer.SupplierPartNumber, cleanQuery)
+                                    : offer.SupplierPartNumber.ToLower() == lowerQuery))))
+                        .Select(offer => offer.CanonicalItemId)
+                        .Take(1000)
+                        .ToListAsync(cancellationToken);
+
+                    return canonicalItemIds
+                        .Concat(identifierCanonicalItemIds)
+                        .Concat(offerCanonicalItemIds)
+                        .Distinct()
+                        .Take(1000)
+                        .ToArray();
+                });
+
+                normalizedFastPathCanonicalItemIds = fastPathCanonicalItemIds;
+            }
+
+            var normalizedYmmCanonicalItemIds = Array.Empty<Guid>();
+            if (hasYmmSearch)
+            {
+                var canonicalYmmCandidateIds = await TimedAsync("normalized-ymm-canonical-fitment-candidates", () => dbContext.CanonicalFitments
+                    .AsNoTracking()
+                    .Where(fitment =>
+                        fitment.Year == selectedYear!.Value &&
+                        fitment.Make == cleanMake &&
+                        fitment.Model == cleanModel &&
+                        (cleanVehicleType == null || fitment.VehicleType == cleanVehicleType))
+                    .Select(fitment => fitment.CanonicalItemId)
+                    .Distinct()
+                    .Take(50000)
+                    .ToListAsync(cancellationToken));
+                var directYmmCandidateIds = await TimedAsync("normalized-ymm-direct-fitment-candidates", () => (
+                        from fitment in dbContext.SupplierFitmentRecords.AsNoTracking()
+                        join offer in dbContext.CanonicalItemSupplierOffers.AsNoTracking()
+                            on fitment.SupplierProductId equals (Guid?)offer.SupplierProductId
+                        where
+                            fitment.SupplierProductId != null &&
+                            fitment.Year == selectedYear!.Value &&
+                            fitment.Make == cleanMake &&
+                            fitment.Model == cleanModel &&
+                            (cleanVehicleType == null || fitment.VehicleType == cleanVehicleType) &&
+                            (organizationId == null || enabledCompanySupplierCodeList.Contains(offer.SupplierCode)) &&
+                            (!hasSupplierFilter || offer.SupplierCode == cleanSupplierCode)
+                        select offer.CanonicalItemId)
+                    .Distinct()
+                    .Take(50000)
+                    .ToListAsync(cancellationToken));
+                var skuYmmCandidateIds = await TimedAsync("normalized-ymm-sku-fitment-candidates", () => (
+                        from fitment in dbContext.SupplierFitmentRecords.AsNoTracking()
+                        join offer in dbContext.CanonicalItemSupplierOffers.AsNoTracking()
+                            on new { fitment.SupplierId, fitment.SupplierSku } equals new { offer.SupplierId, offer.SupplierSku }
+                        where
+                            fitment.Year == selectedYear!.Value &&
+                            fitment.Make == cleanMake &&
+                            fitment.Model == cleanModel &&
+                            (cleanVehicleType == null || fitment.VehicleType == cleanVehicleType) &&
+                            (organizationId == null || enabledCompanySupplierCodeList.Contains(offer.SupplierCode)) &&
+                            (!hasSupplierFilter || offer.SupplierCode == cleanSupplierCode)
+                        select offer.CanonicalItemId)
+                    .Distinct()
+                    .Take(50000)
+                    .ToListAsync(cancellationToken));
+
+                normalizedYmmCanonicalItemIds = canonicalYmmCandidateIds
+                    .Concat(directYmmCandidateIds)
+                    .Concat(skuYmmCandidateIds)
+                    .Distinct()
+                    .ToArray();
+            }
+
+            var hasNormalizedFastPathMatches = normalizedFastPathCanonicalItemIds.Length > 0;
+            var normalizedRows = await TimedAsync(hasNormalizedFastPathMatches ? "normalized-canonical-fast-query" : "normalized-canonical-query", () => (
+                    from canonicalItem in dbContext.CanonicalItems.AsNoTracking()
+                    where
+                        (!hasNormalizedFastPathMatches || normalizedFastPathCanonicalItemIds.Contains(canonicalItem.Id)) &&
+                        (cleanCategory == null || canonicalItem.Category == cleanCategory) &&
+                        (cleanBrand == null || canonicalItem.Brand == cleanBrand) &&
+                        (!hasSupplierFilter || dbContext.CanonicalItemSupplierOffers.AsNoTracking().Any(offer =>
+                            offer.CanonicalItemId == canonicalItem.Id &&
+                            offer.SupplierCode == cleanSupplierCode)) &&
+                        (organizationId == null || dbContext.CanonicalItemSupplierOffers.AsNoTracking().Any(offer =>
+                            offer.CanonicalItemId == canonicalItem.Id &&
+                            enabledCompanySupplierCodeList.Contains(offer.SupplierCode))) &&
+                        (!hasYmmSearch || normalizedYmmCanonicalItemIds.Contains(canonicalItem.Id)) &&
+                        (!hasTireSearch ||
+                            ((cleanTireBrand == null || (canonicalItem.Brand != null && (usePostgresLike ? EF.Functions.ILike(canonicalItem.Brand, cleanTireBrand) : canonicalItem.Brand.ToLower() == cleanTireBrand.ToLower()))) &&
+                            dbContext.CanonicalItemSources.AsNoTracking().Any(source =>
+                                source.CanonicalItemId == canonicalItem.Id &&
+                                source.GlobalProductId != null &&
+                                dbContext.GlobalProducts.AsNoTracking().Any(globalProduct =>
+                                    globalProduct.Id == source.GlobalProductId.Value &&
+                                    (cleanTireModelLine == null || globalProduct.TireModelLine == cleanTireModelLine) &&
+                                    (request.TireWidth == null || globalProduct.TireWidth == request.TireWidth) &&
+                                    (request.TireAspectRatio == null || globalProduct.TireAspectRatio == request.TireAspectRatio) &&
+                                    (request.TireRimDiameter == null || globalProduct.TireRimDiameter == request.TireRimDiameter) &&
+                                    (cleanTirePosition == null || globalProduct.TirePosition == cleanTirePosition))))) &&
+                        (!hasTextSearch ||
+                            hasNormalizedFastPathMatches ||
+                            (canonicalItem.Title.ToLower() == lowerQuery) ||
+                            (canonicalItem.ManufacturerPartNumber != null && canonicalItem.ManufacturerPartNumber.ToLower() == lowerQuery) ||
+                            (canonicalItem.NormalizedManufacturerPartNumber != null && normalizedPartQuery != null && canonicalItem.NormalizedManufacturerPartNumber == normalizedPartQuery) ||
+                            (canonicalItem.PrimaryUpc != null && canonicalItem.PrimaryUpc == cleanQuery) ||
+                            (usePostgresLike
+                                ? ((canonicalItem.SearchText != null && EF.Functions.ILike(canonicalItem.SearchText, likeQuery!)) ||
+                                    EF.Functions.ILike(canonicalItem.Title, likeQuery!) ||
+                                    (canonicalItem.Brand != null && EF.Functions.ILike(canonicalItem.Brand, likeQuery!)) ||
+                                    (canonicalItem.Manufacturer != null && EF.Functions.ILike(canonicalItem.Manufacturer, likeQuery!)) ||
+                                    (canonicalItem.ManufacturerPartNumber != null && EF.Functions.ILike(canonicalItem.ManufacturerPartNumber, likeQuery!)))
+                                : ((canonicalItem.SearchText != null && canonicalItem.SearchText.ToLower().Contains(lowerQuery!)) ||
+                                    canonicalItem.Title.ToLower().Contains(lowerQuery!) ||
+                                    (canonicalItem.Brand != null && canonicalItem.Brand.ToLower().Contains(lowerQuery!)) ||
+                                    (canonicalItem.Manufacturer != null && canonicalItem.Manufacturer.ToLower().Contains(lowerQuery!)) ||
+                                    (canonicalItem.ManufacturerPartNumber != null && canonicalItem.ManufacturerPartNumber.ToLower().Contains(lowerQuery!)))) ||
+                            dbContext.CanonicalItemIdentifiers.AsNoTracking().Any(identifier =>
+                                identifier.CanonicalItemId == canonicalItem.Id &&
+                                ((usePostgresLike ? EF.Functions.ILike(identifier.IdentifierValue, likeQuery!) : identifier.IdentifierValue.ToLower().Contains(lowerQuery!)) ||
+                                    (usePostgresLike ? EF.Functions.ILike(identifier.NormalizedValue, likeQuery!) : identifier.NormalizedValue.ToLower().Contains(lowerQuery!)))) ||
+                            dbContext.CanonicalItemSupplierOffers.AsNoTracking().Any(offer =>
+                                offer.CanonicalItemId == canonicalItem.Id &&
+                                ((usePostgresLike ? EF.Functions.ILike(offer.SupplierSku, likeQuery!) : offer.SupplierSku.ToLower().Contains(lowerQuery!)) ||
+                                    (offer.SupplierPartNumber != null && (usePostgresLike ? EF.Functions.ILike(offer.SupplierPartNumber, likeQuery!) : offer.SupplierPartNumber.ToLower().Contains(lowerQuery!))) ||
+                                    (offer.SupplierTitle != null && (usePostgresLike ? EF.Functions.ILike(offer.SupplierTitle, likeQuery!) : offer.SupplierTitle.ToLower().Contains(lowerQuery!))))))
+                    orderby
+                        !hasTextSearch ? 100 :
+                            canonicalItem.ManufacturerPartNumber != null && canonicalItem.ManufacturerPartNumber.ToLower() == lowerQuery ? 0 :
+                            canonicalItem.NormalizedManufacturerPartNumber != null && normalizedPartQuery != null && canonicalItem.NormalizedManufacturerPartNumber == normalizedPartQuery ? 0 :
+                            canonicalItem.PrimaryUpc != null && canonicalItem.PrimaryUpc == cleanQuery ? 0 :
+                            canonicalItem.Title.ToLower() == lowerQuery ? 1 :
+                            canonicalItem.Title.ToLower().StartsWith(lowerQuery!) ? 3 :
+                            10,
+                        canonicalItem.Brand,
+                        canonicalItem.ManufacturerPartNumber,
+                        canonicalItem.Title
+                    select new NormalizedCanonicalRow(
+                        canonicalItem.Id,
+                        canonicalItem.Brand,
+                        canonicalItem.Manufacturer,
+                        canonicalItem.ManufacturerPartNumber,
+                        canonicalItem.NormalizedManufacturerPartNumber,
+                        canonicalItem.PrimaryUpc,
+                        canonicalItem.Title,
+                        canonicalItem.Category,
+                        canonicalItem.PrimaryImageUrl,
+                        canonicalItem.SearchText,
+                        canonicalItem.Status))
+                .Skip(offset)
+                .Take(cappedLimit + 1)
+                .ToListAsync(cancellationToken));
+            var normalizedHasMore = normalizedRows.Count > cappedLimit;
+            if (normalizedHasMore)
+            {
+                normalizedRows = normalizedRows.Take(cappedLimit).ToList();
+            }
+
+            var canonicalItemIds = normalizedRows.Select(x => x.CanonicalItemId).ToArray();
+            var normalizedOfferRows = canonicalItemIds.Length == 0
+                ? []
+                : await TimedAsync("normalized-offers", () => (
+                    from offer in dbContext.CanonicalItemSupplierOffers.AsNoTracking()
+                    join supplier in dbContext.Suppliers.AsNoTracking()
+                        on offer.SupplierId equals supplier.Id
+                    join supplierProduct in dbContext.SupplierProducts.AsNoTracking()
+                        on offer.SupplierProductId equals supplierProduct.Id
+                    join globalProduct in dbContext.GlobalProducts.AsNoTracking()
+                        on supplierProduct.GlobalProductId equals globalProduct.Id
+                    where canonicalItemIds.Contains(offer.CanonicalItemId) &&
+                        (organizationId == null || enabledCompanySupplierCodeList.Contains(offer.SupplierCode)) &&
+                        (!hasSupplierFilter || offer.SupplierCode == cleanSupplierCode)
+                    select new NormalizedOfferRow(
+                        offer.CanonicalItemId,
+                        offer.SupplierProductId,
+                        supplierProduct.GlobalProductId,
+                        offer.SupplierId,
+                        offer.SupplierCode,
+                        supplier.Name,
+                        offer.SupplierSku,
+                        supplierProduct.ManufacturerPartNumber ?? globalProduct.ManufacturerPartNumber ?? offer.SupplierPartNumber,
+                        supplierProduct.NormalizedManufacturerPartNumber ?? globalProduct.NormalizedManufacturerPartNumber,
+                        globalProduct.Upc,
+                        offer.SupplierTitle,
+                        globalProduct.LongDescription,
+                        globalProduct.SpecificationsJson,
+                        offer.Status,
+                        offer.ListPrice,
+                        offer.DealerCost,
+                        supplierProduct.CaseQuantity,
+                        offer.WarehouseAvailability,
+                        offer.ImageUrl,
+                        supplierProduct.SupplierImagesJson,
+                        globalProduct.ImagesJson))
+                    .ToListAsync(cancellationToken));
+            var normalizedSupplierProductIds = normalizedOfferRows.Select(x => x.SupplierProductId).Distinct().ToArray();
+            var normalizedCompanyPrices = organizationId is null || normalizedSupplierProductIds.Length == 0
+                ? []
+                : await TimedAsync("normalized-company-prices", () => dbContext.CompanySupplierPrices
+                    .IgnoreQueryFilters()
+                    .AsNoTracking()
+                    .Where(x => x.OrganizationId == organizationId.Value && normalizedSupplierProductIds.Contains(x.SupplierProductId))
+                    .ToDictionaryAsync(x => x.SupplierProductId, x => x.ActualDealerCost, cancellationToken));
+            var normalizedFitmentRows = canonicalItemIds.Length == 0
+                ? new List<NormalizedFitmentRow>()
+                : await TimedAsync("normalized-fitment", () => dbContext.CanonicalFitments
+                    .AsNoTracking()
+                    .Where(x => canonicalItemIds.Contains(x.CanonicalItemId))
+                    .Select(x => new NormalizedFitmentRow(
+                        x.CanonicalItemId,
+                        x.Year,
+                        x.Make,
+                        x.Model,
+                        x.Submodel,
+                        x.Engine,
+                        x.Notes,
+                        x.VehicleType))
+                    .ToListAsync(cancellationToken));
+            var normalizedSupplierIds = normalizedOfferRows.Select(x => x.SupplierId).Distinct().ToArray();
+            var normalizedSupplierSkus = normalizedOfferRows.Select(x => x.SupplierSku).Distinct().ToArray();
+            var normalizedSourceFitmentRows = normalizedSupplierProductIds.Length == 0
+                ? []
+                : await TimedAsync("normalized-source-fitment", () => dbContext.SupplierFitmentRecords
+                    .AsNoTracking()
+                    .Where(x =>
+                        (x.SupplierProductId != null && normalizedSupplierProductIds.Contains(x.SupplierProductId.Value)) ||
+                        (normalizedSupplierIds.Contains(x.SupplierId) && normalizedSupplierSkus.Contains(x.SupplierSku)))
+                    .Select(x => new FitmentSourceRow(
+                        x.Id,
+                        x.SupplierProductId,
+                        x.SupplierId,
+                        x.SupplierKey,
+                        x.SupplierSku,
+                        x.Year,
+                        x.Make,
+                        x.Model,
+                        x.Submodel,
+                        x.Engine,
+                        x.Notes,
+                        x.VehicleType))
+                    .ToListAsync(cancellationToken));
+            if (normalizedSourceFitmentRows.Count > 0)
+            {
+                var canonicalBySupplierProductId = normalizedOfferRows
+                    .GroupBy(x => x.SupplierProductId)
+                    .ToDictionary(x => x.Key, x => x.First().CanonicalItemId);
+                var canonicalBySupplierKey = normalizedOfferRows
+                    .GroupBy(x => $"{x.SupplierId:N}|{x.SupplierSku}", StringComparer.OrdinalIgnoreCase)
+                    .ToDictionary(x => x.Key, x => x.First().CanonicalItemId, StringComparer.OrdinalIgnoreCase);
+
+                normalizedFitmentRows.AddRange(normalizedSourceFitmentRows.Select(row =>
+                {
+                    Guid? canonicalItemId = null;
+                    if (row.SupplierProductId is Guid supplierProductId &&
+                        canonicalBySupplierProductId.TryGetValue(supplierProductId, out var productCanonicalItemId))
+                    {
+                        canonicalItemId = productCanonicalItemId;
+                    }
+                    else if (canonicalBySupplierKey.TryGetValue($"{row.SupplierId:N}|{row.SupplierSku}", out var supplierKeyCanonicalItemId))
+                    {
+                        canonicalItemId = supplierKeyCanonicalItemId;
+                    }
+
+                    return canonicalItemId is null
+                        ? null
+                        : new NormalizedFitmentRow(
+                            canonicalItemId.Value,
+                            row.Year,
+                            row.Make,
+                            row.Model,
+                            row.Submodel,
+                            row.Engine,
+                            row.Notes,
+                            row.VehicleType);
+                }).Where(x => x is not null).Select(x => x!));
+            }
+
+            var normalizedRowsById = normalizedRows.ToDictionary(x => x.CanonicalItemId);
+            var normalizedResults = Timed("normalized-build-results", () => normalizedRows
+                .Select((row, index) => new
+                {
+                    Row = row,
+                    SortIndex = index,
+                    GroupKey = GroupKey(row.Brand, row.Manufacturer, row.NormalizedManufacturerPartNumber, row.ManufacturerPartNumber, Guid.Empty, row.CanonicalItemId)
+                })
+                .GroupBy(x => x.GroupKey, StringComparer.OrdinalIgnoreCase)
+                .OrderBy(group => group.Min(x => x.SortIndex))
+                .Select(group =>
+                {
+                    var groupRows = group.Select(x => x.Row).ToList();
+                    var groupCanonicalItemIds = groupRows.Select(x => x.CanonicalItemId).ToHashSet();
+                    var offerRows = normalizedOfferRows
+                        .Where(x => groupCanonicalItemIds.Contains(x.CanonicalItemId))
+                        .OrderBy(x => ServerPreferenceRank(x.SupplierCode, x.WarehouseAvailability, supplierPreferences))
+                        .ThenBy(x => normalizedCompanyPrices.TryGetValue(x.SupplierProductId, out var actualCost) ? actualCost : x.DealerCost ?? decimal.MaxValue)
+                        .ThenBy(x => x.SupplierName)
+                        .ThenBy(x => x.SupplierSku)
+                        .ToList();
+                    if (offerRows.Count == 0)
+                    {
+                        return null;
+                    }
+
+                    var selectedRow = offerRows.First();
+                    var displayRow = normalizedRowsById.TryGetValue(selectedRow.CanonicalItemId, out var selectedCanonicalRow)
+                        ? selectedCanonicalRow
+                        : groupRows.First();
+                    var offers = offerRows
+                        .Select(offer =>
+                        {
+                            var offerRow = normalizedRowsById.TryGetValue(offer.CanonicalItemId, out var canonicalRow)
+                                ? canonicalRow
+                                : displayRow;
+                            normalizedCompanyPrices.TryGetValue(offer.SupplierProductId, out var actualCost);
+                            return new SupplierItemOfferResult(
+                                offer.SupplierProductId,
+                                offer.GlobalProductId,
+                                offer.SupplierCode,
+                                offer.SupplierName,
+                                offer.SupplierSku,
+                                offer.ManufacturerPartNumber,
+                                offer.Upc,
+                                displayRow.Brand ?? offerRow.Brand ?? string.Empty,
+                                BuildDisplayTitle(
+                                    offer.SupplierCode,
+                                    displayRow.Manufacturer ?? offerRow.Manufacturer,
+                                    displayRow.Brand ?? offerRow.Brand ?? string.Empty,
+                                    offer.SupplierTitle,
+                                    offerRow.Title,
+                                    offer.LongDescription,
+                                    offer.ManufacturerPartNumber),
+                                displayRow.Category ?? offerRow.Category,
+                                offer.LongDescription,
+                                ProductFeatures(offer.SpecificationsJson),
+                                offer.Status,
+                                normalizedFitmentRows.Count(x => groupCanonicalItemIds.Contains(x.CanonicalItemId)),
+                                offer.Msrp,
+                                offer.DealerCost,
+                                normalizedCompanyPrices.ContainsKey(offer.SupplierProductId) ? actualCost : null,
+                                offer.CaseQuantity,
+                                FirstImageUrl(offer.ImageUrl) ?? FirstImageUrl(offer.SupplierImageJson) ?? FirstImageUrl(offer.GlobalImageJson),
+                                HasCachedInventory(offer.WarehouseAvailability),
+                                CachedInventoryTotal(offer.WarehouseAvailability),
+                                supplierPreferences.IsPreferredSupplier(offer.SupplierCode),
+                                supplierPreferences.PreferredWarehouseCode(offer.SupplierCode),
+                                supplierPreferences.PreferredWarehouseName(offer.SupplierCode),
+                                offer.SupplierProductId == selectedRow.SupplierProductId);
+                        })
+                        .ToList();
+                    var selected = offers.First(x => x.IsDefaultOffer);
+                    var fitment = normalizedFitmentRows
+                        .Where(x => groupCanonicalItemIds.Contains(x.CanonicalItemId))
+                        .GroupBy(x => new { x.Year, x.Make, x.Model, x.Submodel, x.Engine, x.Notes, x.VehicleType })
+                        .Select(group => new SupplierItemFitmentResult(
+                            group.Key.Year,
+                            group.Key.Make,
+                            group.Key.Model,
+                            group.Key.Submodel,
+                            group.Key.Engine,
+                            group.Key.Notes,
+                            group.Key.VehicleType,
+                            offers.Select(x => x.SupplierCode).Distinct(StringComparer.OrdinalIgnoreCase).OrderBy(x => x).ToList(),
+                            offers.Select(x => x.SupplierSku).Distinct(StringComparer.OrdinalIgnoreCase).OrderBy(x => x).ToList()))
+                        .OrderByDescending(x => x.Year)
+                        .ThenBy(x => x.Make)
+                        .ThenBy(x => x.Model)
+                        .ToList();
+
+                    return new SupplierItemSearchResult(
+                        selected.SupplierProductId,
+                        selected.GlobalProductId,
+                        selected.SupplierCode,
+                        selected.SupplierName,
+                        selected.SupplierSku,
+                        selected.ManufacturerPartNumber ?? displayRow.ManufacturerPartNumber,
+                        selected.Upc ?? displayRow.PrimaryUpc,
+                        displayRow.Brand ?? string.Empty,
+                        displayRow.Title,
+                        displayRow.Category,
+                        selected.LongDescription,
+                        selected.ProductFeatures,
+                        displayRow.Status,
+                        fitment.Count,
+                        selected.Msrp,
+                        selected.DealerCost,
+                        selected.ActualCost,
+                        selected.ImageUrl ?? displayRow.PrimaryImageUrl ?? offers.FirstOrDefault(x => x.ImageUrl is not null)?.ImageUrl,
+                        [],
+                        Offers: offers,
+                        Fitment: fitment);
+                })
+                .Where(x => x is not null)
+                .Select(x => x!)
+                .ToList());
+
+            LogSearchTiming("normalized-completed", normalizedRows.Count, normalizedResults.Count, 0, normalizedFitmentRows.Count);
+
+            return new SupplierItemSearchPage(
+                cleanQuery,
+                cleanSupplierCode,
+                cleanVehicleType,
+                selectedYear,
+                cleanMake,
+                cleanModel,
+                cleanCategory,
+                cleanBrand,
+                cleanTireBrand,
+                cleanTireModelLine,
+                request.TireWidth,
+                request.TireAspectRatio,
+                request.TireRimDiameter,
+                cleanTirePosition,
+                availableSuppliers,
+                configuredSuppliers,
+                availableCategories,
+                availableBrands,
+                availableVehicleTypes,
+                availableYears,
+                availableMakes,
+                availableModels,
+                offset + normalizedRows.Count,
+                offset,
+                cappedLimit,
+                normalizedHasMore,
+                normalizedResults,
+                isSearchExecuted,
+                true,
+                totalStopwatch.ElapsedMilliseconds);
         }
 
         var identifierCandidateIds = Array.Empty<Guid>();
@@ -550,6 +1024,7 @@ public sealed class SupplierItemSearchService(
                     globalProduct.LongDescription,
                     globalProduct.SpecificationsJson,
                     Status = supplierProduct.SupplierStatus,
+                    supplierProduct.CaseQuantity,
                     supplierProduct.WarehouseAvailability,
                     ImageJson = supplierProduct.SupplierImagesJson ?? globalProduct.ImagesJson
                 })
@@ -691,6 +1166,7 @@ public sealed class SupplierItemSearchService(
                     globalProduct.LongDescription,
                     globalProduct.SpecificationsJson,
                     Status = supplierProduct.SupplierStatus,
+                    supplierProduct.CaseQuantity,
                     supplierProduct.WarehouseAvailability,
                     ImageJson = supplierProduct.SupplierImagesJson ?? globalProduct.ImagesJson
                 })
@@ -839,6 +1315,7 @@ public sealed class SupplierItemSearchService(
                     globalProduct.LongDescription,
                     globalProduct.SpecificationsJson,
                     Status = supplierProduct.SupplierStatus,
+                    supplierProduct.CaseQuantity,
                     supplierProduct.WarehouseAvailability,
                     ImageJson = supplierProduct.SupplierImagesJson ?? globalProduct.ImagesJson
                 })
@@ -971,6 +1448,7 @@ public sealed class SupplierItemSearchService(
                         globalProduct.Category,
                         globalProduct.LongDescription,
                         globalProduct.SpecificationsJson,
+                        supplierProduct.CaseQuantity,
                         supplierProduct.WarehouseAvailability,
                         supplierProduct.SupplierImagesJson ?? globalProduct.ImagesJson,
                         supplierProduct.SupplierStatus))
@@ -1052,6 +1530,7 @@ public sealed class SupplierItemSearchService(
                         price?.Msrp,
                         price?.DealerCost,
                         companyPrices.ContainsKey(row.SupplierProductId) ? actualCost : null,
+                        row.CaseQuantity,
                         FirstImageUrl(row.ImageJson),
                         HasCachedInventory(row.WarehouseAvailability),
                         CachedInventoryTotal(row.WarehouseAvailability),
@@ -1100,6 +1579,7 @@ public sealed class SupplierItemSearchService(
                         price?.Msrp,
                         price?.DealerCost,
                         crossReferenceCompanyPrices.ContainsKey(row.SupplierProductId) ? actualCost : null,
+                        row.CaseQuantity,
                         FirstImageUrl(row.ImageJson),
                         HasCachedInventory(row.WarehouseAvailability),
                         CachedInventoryTotal(row.WarehouseAvailability),
@@ -1192,7 +1672,9 @@ public sealed class SupplierItemSearchService(
             cappedLimit,
             hasMore,
             results,
-            isSearchExecuted);
+            isSearchExecuted,
+            request.UseNormalizedCatalog,
+            totalStopwatch.ElapsedMilliseconds);
 
         void LogSearchTiming(string outcome, int rowsCount, int resultCount, int crossReferenceCount, int fitmentCount)
         {
@@ -1278,6 +1760,23 @@ public sealed class SupplierItemSearchService(
         }
 
         return offer.IsPreferredSupplier ? 2 : 3;
+    }
+
+    private static int ServerPreferenceRank(string supplierCode, string? warehouseAvailability, SupplierPurchasePreferences supplierPreferences)
+    {
+        var isPreferred = supplierPreferences.IsPreferredSupplier(supplierCode);
+        var hasInventory = HasCachedInventory(warehouseAvailability);
+        if (isPreferred && hasInventory)
+        {
+            return 0;
+        }
+
+        if (hasInventory)
+        {
+            return 1;
+        }
+
+        return isPreferred ? 2 : 3;
     }
 
     private static string? FirstImageUrl(string? imageJson)
@@ -1733,9 +2232,56 @@ public sealed class SupplierItemSearchService(
         string? Category,
         string? LongDescription,
         string? SpecificationsJson,
+        int? CaseQuantity,
         string? WarehouseAvailability,
         string? ImageJson,
         string Status);
+
+    private sealed record NormalizedCanonicalRow(
+        Guid CanonicalItemId,
+        string? Brand,
+        string? Manufacturer,
+        string? ManufacturerPartNumber,
+        string? NormalizedManufacturerPartNumber,
+        string? PrimaryUpc,
+        string Title,
+        string? Category,
+        string? PrimaryImageUrl,
+        string? SearchText,
+        string Status);
+
+    private sealed record NormalizedOfferRow(
+        Guid CanonicalItemId,
+        Guid SupplierProductId,
+        Guid GlobalProductId,
+        Guid SupplierId,
+        string SupplierCode,
+        string SupplierName,
+        string SupplierSku,
+        string? ManufacturerPartNumber,
+        string? NormalizedManufacturerPartNumber,
+        string? Upc,
+        string? SupplierTitle,
+        string? LongDescription,
+        string? SpecificationsJson,
+        string Status,
+        decimal? Msrp,
+        decimal? DealerCost,
+        int? CaseQuantity,
+        string? WarehouseAvailability,
+        string? ImageUrl,
+        string? SupplierImageJson,
+        string? GlobalImageJson);
+
+    private sealed record NormalizedFitmentRow(
+        Guid CanonicalItemId,
+        int Year,
+        string Make,
+        string Model,
+        string? Submodel,
+        string? Engine,
+        string? Notes,
+        string? VehicleType);
 
     private sealed record StoredSupplierPurchasePreferences(
         string? PreferredSupplierCode,

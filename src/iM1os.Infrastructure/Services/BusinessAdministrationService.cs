@@ -1,4 +1,6 @@
 using System.Text.Json;
+using System.Security.Cryptography;
+using System.Text;
 using iM1os.Application.BusinessAdministration;
 using iM1os.Application.Common;
 using iM1os.Application.Platform;
@@ -82,6 +84,7 @@ public sealed class BusinessAdministrationService(
             .Where(x => x.OrganizationId == organizationId)
             .Include(x => x.LoginAccount!).ThenInclude(x => x.UserRoles).ThenInclude(x => x.Role)
             .Include(x => x.LoginAccount!).ThenInclude(x => x.OrganizationMemberships)
+            .Include(x => x.CompensationRecords)
             .OrderBy(x => x.DisplayName)
             .ToListAsync(cancellationToken);
         var locationNames = locations.ToDictionary(x => x.Id, x => x.Name);
@@ -108,6 +111,7 @@ public sealed class BusinessAdministrationService(
             employees,
             roles,
             await BuildCompanySupplierConnectorsAsync(organizationId, cancellationToken),
+            await BuildTimeClockWorkspaceAsync(organization, employeeRows, cancellationToken),
             recentActivity,
             ready ? 100 : CalculateProgress(organization, locations.Count, employees.Count, config),
             ready);
@@ -288,6 +292,283 @@ public sealed class BusinessAdministrationService(
         await dbContext.SaveChangesAsync(cancellationToken);
     }
 
+    public async Task ClockEmployeeAsync(Guid organizationId, Guid userId, ClockEmployeeRequest request, CancellationToken cancellationToken)
+    {
+        await EnsureCompanyAdministratorAsync(organizationId, userId, cancellationToken);
+        var employee = await dbContext.Employees.IgnoreQueryFilters()
+            .Include(x => x.LoginAccount)
+            .SingleAsync(x => x.OrganizationId == organizationId && x.Id == request.EmployeeId && x.DeletedAtUtc == null, cancellationToken);
+        var user = employee.LoginAccount ?? throw new InvalidOperationException("This employee does not have a login account.");
+        var pin = Required(request.Pin, "PIN");
+        if (pin.Length != 4 || pin.Any(x => !char.IsDigit(x)) || user.PinHash != HashPin(organizationId, pin))
+        {
+            throw new InvalidOperationException("PIN did not match this employee.");
+        }
+
+        var action = NormalizeClockAction(request.Action);
+        var openPunch = await dbContext.EmployeeTimePunches.IgnoreQueryFilters()
+            .Where(x => x.OrganizationId == organizationId && x.EmployeeId == employee.Id && x.ClockOutUtc == null && x.DeletedAtUtc == null)
+            .OrderByDescending(x => x.ClockInUtc)
+            .FirstOrDefaultAsync(cancellationToken);
+        var now = dateTimeProvider.UtcNow;
+
+        if (action == "In")
+        {
+            if (openPunch is not null)
+            {
+                throw new InvalidOperationException("This employee is already clocked in.");
+            }
+
+            var punch = new EmployeeTimePunch
+            {
+                OrganizationId = organizationId,
+                EmployeeId = employee.Id,
+                ClockInUtc = now,
+                Source = "PIN"
+            };
+            dbContext.EmployeeTimePunches.Add(punch);
+            await RecordAdminChangeAsync(organizationId, userId, "EmployeeClockedIn", "EmployeeTimePunch", punch.Id.ToString(), null, new { employee.DisplayName, punch.ClockInUtc }, cancellationToken);
+        }
+        else
+        {
+            if (openPunch is null)
+            {
+                throw new InvalidOperationException("This employee is not clocked in.");
+            }
+
+            openPunch.ClockOutUtc = now;
+            openPunch.Hours = CalculateHours(openPunch.ClockInUtc, openPunch.ClockOutUtc.Value);
+            await RecordAdminChangeAsync(organizationId, userId, "EmployeeClockedOut", "EmployeeTimePunch", openPunch.Id.ToString(), null, new { employee.DisplayName, openPunch.ClockInUtc, openPunch.ClockOutUtc, openPunch.Hours }, cancellationToken);
+        }
+
+        await dbContext.SaveChangesAsync(cancellationToken);
+    }
+
+    public async Task AddTimePunchAsync(Guid organizationId, Guid userId, AddTimePunchRequest request, CancellationToken cancellationToken)
+    {
+        await EnsureCompanyAdministratorAsync(organizationId, userId, cancellationToken);
+        var organization = await dbContext.Organizations.IgnoreQueryFilters().SingleAsync(x => x.Id == organizationId, cancellationToken);
+        await EnsureEmployeeAsync(organizationId, request.EmployeeId, cancellationToken);
+        var clockInUtc = ToUtc(request.ClockInLocal, organization.TimeZone);
+        DateTimeOffset? clockOutUtc = request.ClockOutLocal is null ? null : ToUtc(request.ClockOutLocal.Value, organization.TimeZone);
+        ValidatePunchTimes(clockInUtc, clockOutUtc);
+
+        var punch = new EmployeeTimePunch
+        {
+            OrganizationId = organizationId,
+            EmployeeId = request.EmployeeId,
+            ClockInUtc = clockInUtc,
+            ClockOutUtc = clockOutUtc,
+            Hours = clockOutUtc is null ? null : CalculateHours(clockInUtc, clockOutUtc.Value),
+            Note = Clean(request.Note),
+            IsManualEntry = true,
+            Source = "Manual"
+        };
+        dbContext.EmployeeTimePunches.Add(punch);
+        await RecordAdminChangeAsync(organizationId, userId, "TimePunchAdded", "EmployeeTimePunch", punch.Id.ToString(), null, PunchSnapshot(punch), cancellationToken);
+        await dbContext.SaveChangesAsync(cancellationToken);
+    }
+
+    public async Task UpdateTimePunchAsync(Guid organizationId, Guid userId, UpdateTimePunchRequest request, CancellationToken cancellationToken)
+    {
+        await EnsureCompanyAdministratorAsync(organizationId, userId, cancellationToken);
+        var organization = await dbContext.Organizations.IgnoreQueryFilters().SingleAsync(x => x.Id == organizationId, cancellationToken);
+        var punch = await dbContext.EmployeeTimePunches.IgnoreQueryFilters()
+            .SingleAsync(x => x.OrganizationId == organizationId && x.Id == request.PunchId && x.DeletedAtUtc == null, cancellationToken);
+        var before = PunchSnapshot(punch);
+        var clockInUtc = ToUtc(request.ClockInLocal, organization.TimeZone);
+        DateTimeOffset? clockOutUtc = request.ClockOutLocal is null ? null : ToUtc(request.ClockOutLocal.Value, organization.TimeZone);
+        ValidatePunchTimes(clockInUtc, clockOutUtc);
+
+        punch.ClockInUtc = clockInUtc;
+        punch.ClockOutUtc = clockOutUtc;
+        punch.Hours = clockOutUtc is null ? null : CalculateHours(clockInUtc, clockOutUtc.Value);
+        punch.Note = Clean(request.Note);
+        punch.IsManualEntry = true;
+        await RecordAdminChangeAsync(organizationId, userId, "TimePunchUpdated", "EmployeeTimePunch", punch.Id.ToString(), before, PunchSnapshot(punch), cancellationToken);
+        await dbContext.SaveChangesAsync(cancellationToken);
+    }
+
+    public async Task DeleteTimePunchAsync(Guid organizationId, Guid userId, DeleteTimePunchRequest request, CancellationToken cancellationToken)
+    {
+        await EnsureCompanyAdministratorAsync(organizationId, userId, cancellationToken);
+        var punch = await dbContext.EmployeeTimePunches.IgnoreQueryFilters()
+            .SingleAsync(x => x.OrganizationId == organizationId && x.Id == request.PunchId && x.DeletedAtUtc == null, cancellationToken);
+        punch.DeletedAtUtc = dateTimeProvider.UtcNow;
+        await RecordAdminChangeAsync(organizationId, userId, "TimePunchDeleted", "EmployeeTimePunch", punch.Id.ToString(), PunchSnapshot(punch), null, cancellationToken);
+        await dbContext.SaveChangesAsync(cancellationToken);
+    }
+
+    public async Task AddScheduleShiftAsync(Guid organizationId, Guid userId, AddScheduleShiftRequest request, CancellationToken cancellationToken)
+    {
+        await EnsureCompanyAdministratorAsync(organizationId, userId, cancellationToken);
+        await EnsureEmployeeAsync(organizationId, request.EmployeeId, cancellationToken);
+        if (request.EndTime <= request.StartTime)
+        {
+            throw new InvalidOperationException("Shift end time must be after start time.");
+        }
+
+        var shift = new EmployeeScheduleShift
+        {
+            OrganizationId = organizationId,
+            EmployeeId = request.EmployeeId,
+            ShiftDate = request.ShiftDate,
+            StartTime = request.StartTime,
+            EndTime = request.EndTime,
+            Note = Clean(request.Note)
+        };
+        dbContext.EmployeeScheduleShifts.Add(shift);
+        await RecordAdminChangeAsync(organizationId, userId, "ScheduleShiftAdded", "EmployeeScheduleShift", shift.Id.ToString(), null, ShiftSnapshot(shift), cancellationToken);
+        await dbContext.SaveChangesAsync(cancellationToken);
+    }
+
+    public async Task DeleteScheduleShiftAsync(Guid organizationId, Guid userId, DeleteScheduleShiftRequest request, CancellationToken cancellationToken)
+    {
+        await EnsureCompanyAdministratorAsync(organizationId, userId, cancellationToken);
+        var shift = await dbContext.EmployeeScheduleShifts.IgnoreQueryFilters()
+            .SingleAsync(x => x.OrganizationId == organizationId && x.Id == request.ShiftId && x.DeletedAtUtc == null, cancellationToken);
+        shift.DeletedAtUtc = dateTimeProvider.UtcNow;
+        await RecordAdminChangeAsync(organizationId, userId, "ScheduleShiftDeleted", "EmployeeScheduleShift", shift.Id.ToString(), ShiftSnapshot(shift), null, cancellationToken);
+        await dbContext.SaveChangesAsync(cancellationToken);
+    }
+
+    public async Task AddTimeOffAsync(Guid organizationId, Guid userId, AddTimeOffRequest request, CancellationToken cancellationToken)
+    {
+        await EnsureCompanyAdministratorAsync(organizationId, userId, cancellationToken);
+        await EnsureEmployeeAsync(organizationId, request.EmployeeId, cancellationToken);
+        if (request.EndDate < request.StartDate)
+        {
+            throw new InvalidOperationException("Time off end date must be on or after start date.");
+        }
+
+        if (request.HoursPerDay <= 0 || request.HoursPerDay > 24)
+        {
+            throw new InvalidOperationException("Hours per day must be between 0 and 24.");
+        }
+
+        var timeOff = new EmployeeTimeOffRequest
+        {
+            OrganizationId = organizationId,
+            EmployeeId = request.EmployeeId,
+            Type = Required(request.Type, "Time off type"),
+            StartDate = request.StartDate,
+            EndDate = request.EndDate,
+            HoursPerDay = request.HoursPerDay,
+            Note = Clean(request.Note),
+            Status = "Pending"
+        };
+        dbContext.EmployeeTimeOffRequests.Add(timeOff);
+        await RecordAdminChangeAsync(organizationId, userId, "TimeOffRequested", "EmployeeTimeOffRequest", timeOff.Id.ToString(), null, TimeOffSnapshot(timeOff), cancellationToken);
+        await dbContext.SaveChangesAsync(cancellationToken);
+    }
+
+    public async Task SetTimeOffStatusAsync(Guid organizationId, Guid userId, SetTimeOffStatusRequest request, CancellationToken cancellationToken)
+    {
+        await EnsureCompanyAdministratorAsync(organizationId, userId, cancellationToken);
+        var timeOff = await dbContext.EmployeeTimeOffRequests.IgnoreQueryFilters()
+            .SingleAsync(x => x.OrganizationId == organizationId && x.Id == request.TimeOffRequestId && x.DeletedAtUtc == null, cancellationToken);
+        var before = TimeOffSnapshot(timeOff);
+        timeOff.Status = NormalizeTimeOffStatus(request.Status);
+        timeOff.ReviewedAtUtc = dateTimeProvider.UtcNow;
+        timeOff.ReviewedByUserId = userId.ToString();
+        await RecordAdminChangeAsync(organizationId, userId, "TimeOffStatusUpdated", "EmployeeTimeOffRequest", timeOff.Id.ToString(), before, TimeOffSnapshot(timeOff), cancellationToken);
+        await dbContext.SaveChangesAsync(cancellationToken);
+    }
+
+    public async Task DeleteTimeOffAsync(Guid organizationId, Guid userId, DeleteTimeOffRequest request, CancellationToken cancellationToken)
+    {
+        await EnsureCompanyAdministratorAsync(organizationId, userId, cancellationToken);
+        var timeOff = await dbContext.EmployeeTimeOffRequests.IgnoreQueryFilters()
+            .SingleAsync(x => x.OrganizationId == organizationId && x.Id == request.TimeOffRequestId && x.DeletedAtUtc == null, cancellationToken);
+        timeOff.DeletedAtUtc = dateTimeProvider.UtcNow;
+        await RecordAdminChangeAsync(organizationId, userId, "TimeOffDeleted", "EmployeeTimeOffRequest", timeOff.Id.ToString(), TimeOffSnapshot(timeOff), null, cancellationToken);
+        await dbContext.SaveChangesAsync(cancellationToken);
+    }
+
+    public async Task AddCompanyAssetAsync(Guid organizationId, Guid userId, AddCompanyAssetRequest request, CancellationToken cancellationToken)
+    {
+        await EnsureCompanyAdministratorAsync(organizationId, userId, cancellationToken);
+        await EnsureEmployeeAsync(organizationId, request.EmployeeId, cancellationToken);
+        if (request.ReturnedDate is not null && request.IssuedDate is not null && request.ReturnedDate < request.IssuedDate)
+        {
+            throw new InvalidOperationException("Returned date cannot be before issued date.");
+        }
+
+        var asset = new EmployeeCompanyAsset
+        {
+            OrganizationId = organizationId,
+            EmployeeId = request.EmployeeId,
+            Name = Required(request.Name, "Asset name"),
+            AssetTag = Clean(request.AssetTag),
+            SerialNumber = Clean(request.SerialNumber),
+            IssuedDate = request.IssuedDate,
+            ReturnedDate = request.ReturnedDate,
+            Status = request.ReturnedDate is null ? "Issued" : "Returned",
+            Note = Clean(request.Note)
+        };
+        dbContext.EmployeeCompanyAssets.Add(asset);
+        await RecordAdminChangeAsync(organizationId, userId, "CompanyAssetIssued", "EmployeeCompanyAsset", asset.Id.ToString(), null, AssetSnapshot(asset), cancellationToken);
+        await dbContext.SaveChangesAsync(cancellationToken);
+    }
+
+    public async Task ReturnCompanyAssetAsync(Guid organizationId, Guid userId, ReturnCompanyAssetRequest request, CancellationToken cancellationToken)
+    {
+        await EnsureCompanyAdministratorAsync(organizationId, userId, cancellationToken);
+        var asset = await dbContext.EmployeeCompanyAssets.IgnoreQueryFilters()
+            .SingleAsync(x => x.OrganizationId == organizationId && x.Id == request.AssetId && x.DeletedAtUtc == null, cancellationToken);
+        if (asset.IssuedDate is not null && request.ReturnedDate < asset.IssuedDate)
+        {
+            throw new InvalidOperationException("Returned date cannot be before issued date.");
+        }
+
+        var before = AssetSnapshot(asset);
+        asset.ReturnedDate = request.ReturnedDate;
+        asset.Status = "Returned";
+        asset.Note = Clean(request.Note) ?? asset.Note;
+        await RecordAdminChangeAsync(organizationId, userId, "CompanyAssetReturned", "EmployeeCompanyAsset", asset.Id.ToString(), before, AssetSnapshot(asset), cancellationToken);
+        await dbContext.SaveChangesAsync(cancellationToken);
+    }
+
+    public async Task DeleteCompanyAssetAsync(Guid organizationId, Guid userId, DeleteCompanyAssetRequest request, CancellationToken cancellationToken)
+    {
+        await EnsureCompanyAdministratorAsync(organizationId, userId, cancellationToken);
+        var asset = await dbContext.EmployeeCompanyAssets.IgnoreQueryFilters()
+            .SingleAsync(x => x.OrganizationId == organizationId && x.Id == request.AssetId && x.DeletedAtUtc == null, cancellationToken);
+        asset.DeletedAtUtc = dateTimeProvider.UtcNow;
+        await RecordAdminChangeAsync(organizationId, userId, "CompanyAssetDeleted", "EmployeeCompanyAsset", asset.Id.ToString(), AssetSnapshot(asset), null, cancellationToken);
+        await dbContext.SaveChangesAsync(cancellationToken);
+    }
+
+    public async Task AddSafetyIncidentAsync(Guid organizationId, Guid userId, AddSafetyIncidentRequest request, CancellationToken cancellationToken)
+    {
+        await EnsureCompanyAdministratorAsync(organizationId, userId, cancellationToken);
+        if (request.EmployeeId is Guid employeeId)
+        {
+            await EnsureEmployeeAsync(organizationId, employeeId, cancellationToken);
+        }
+
+        if (request.LostTimeHours < 0)
+        {
+            throw new InvalidOperationException("Lost time hours cannot be negative.");
+        }
+
+        var incident = new EmployeeSafetyIncident
+        {
+            OrganizationId = organizationId,
+            EmployeeId = request.EmployeeId,
+            IncidentDate = request.IncidentDate,
+            IncidentType = Required(request.IncidentType, "Incident type"),
+            Severity = Clean(request.Severity),
+            LostTimeHours = request.LostTimeHours,
+            IsOshaRecordable = request.IsOshaRecordable,
+            ReportedToOsha = request.ReportedToOsha,
+            Description = Clean(request.Description)
+        };
+        dbContext.EmployeeSafetyIncidents.Add(incident);
+        await RecordAdminChangeAsync(organizationId, userId, "SafetyIncidentLogged", "EmployeeSafetyIncident", incident.Id.ToString(), null, SafetyIncidentSnapshot(incident), cancellationToken);
+        await dbContext.SaveChangesAsync(cancellationToken);
+    }
+
     public async Task SaveWpsConnectorAsync(Guid organizationId, Guid userId, SaveWpsConnectorRequest request, CancellationToken cancellationToken)
     {
         await EnsureCompanyAdministratorAsync(organizationId, userId, cancellationToken);
@@ -339,6 +620,188 @@ public sealed class BusinessAdministrationService(
         config.ConnectorPlaceholdersJson = JsonSerializer.Serialize(connectors, ConnectorJsonOptions);
         await RecordAdminChangeAsync(organizationId, userId, "WpsConnectorUpdated", "BusinessConfiguration", config.Id.ToString(), before, updated, cancellationToken);
         await dbContext.SaveChangesAsync(cancellationToken);
+    }
+
+    private async Task<TimeClockWorkspace> BuildTimeClockWorkspaceAsync(Organization organization, IReadOnlyCollection<Employee> employeeRows, CancellationToken cancellationToken)
+    {
+        var nowUtc = dateTimeProvider.UtcNow;
+        var today = ToLocalDate(nowUtc, organization.TimeZone);
+        var payrollPeriod = CurrentPayrollPeriod(today);
+        var employeeLookup = employeeRows.ToDictionary(x => x.Id, x => x.DisplayName);
+        var employeeOptions = employeeRows
+            .Where(x => x.Status.Equals("Active", StringComparison.OrdinalIgnoreCase))
+            .OrderBy(x => x.DisplayName)
+            .Select(x => new TimeClockEmployeeOption(x.Id, x.DisplayName, !string.IsNullOrWhiteSpace(x.LoginAccount?.PinHash), x.Status))
+            .ToList();
+
+        var openPunchRows = await dbContext.EmployeeTimePunches.IgnoreQueryFilters()
+            .AsNoTracking()
+            .Where(x => x.OrganizationId == organization.Id && x.DeletedAtUtc == null && x.ClockOutUtc == null)
+            .OrderBy(x => x.ClockInUtc)
+            .ToListAsync(cancellationToken);
+        var openPunches = openPunchRows
+            .Where(x => employeeLookup.ContainsKey(x.EmployeeId))
+            .Select(x => new TimeClockOpenPunchDto(
+                x.Id,
+                x.EmployeeId,
+                employeeLookup[x.EmployeeId],
+                x.ClockInUtc,
+                CalculateHours(x.ClockInUtc, nowUtc)))
+            .ToList();
+
+        var recentStartUtc = nowUtc.AddDays(-30);
+        var recentPunchRows = await dbContext.EmployeeTimePunches.IgnoreQueryFilters()
+            .AsNoTracking()
+            .Where(x => x.OrganizationId == organization.Id && x.DeletedAtUtc == null && x.ClockInUtc >= recentStartUtc)
+            .OrderByDescending(x => x.ClockInUtc)
+            .Take(40)
+            .ToListAsync(cancellationToken);
+        var recentPunches = recentPunchRows
+            .Where(x => employeeLookup.ContainsKey(x.EmployeeId))
+            .Select(x => ToPunchDto(x, employeeLookup[x.EmployeeId], nowUtc))
+            .ToList();
+
+        var scheduleEnd = today.AddDays(21);
+        var shiftRows = await dbContext.EmployeeScheduleShifts.IgnoreQueryFilters()
+            .AsNoTracking()
+            .Where(x => x.OrganizationId == organization.Id && x.DeletedAtUtc == null && x.ShiftDate >= today && x.ShiftDate <= scheduleEnd)
+            .OrderBy(x => x.ShiftDate)
+            .ThenBy(x => x.StartTime)
+            .ToListAsync(cancellationToken);
+        var shifts = shiftRows
+            .Where(x => employeeLookup.ContainsKey(x.EmployeeId))
+            .Select(x => ToShiftDto(x, employeeLookup[x.EmployeeId]))
+            .ToList();
+
+        var timeOffStart = today.AddDays(-30);
+        var timeOffRows = await dbContext.EmployeeTimeOffRequests.IgnoreQueryFilters()
+            .AsNoTracking()
+            .Where(x => x.OrganizationId == organization.Id && x.DeletedAtUtc == null && x.EndDate >= timeOffStart)
+            .OrderByDescending(x => x.StartDate)
+            .Take(40)
+            .ToListAsync(cancellationToken);
+        var timeOff = timeOffRows
+            .Where(x => employeeLookup.ContainsKey(x.EmployeeId))
+            .Select(x => ToTimeOffDto(x, employeeLookup[x.EmployeeId]))
+            .ToList();
+
+        var assetRows = await dbContext.EmployeeCompanyAssets.IgnoreQueryFilters()
+            .AsNoTracking()
+            .Where(x => x.OrganizationId == organization.Id && x.DeletedAtUtc == null)
+            .OrderBy(x => x.ReturnedDate == null ? 0 : 1)
+            .ThenByDescending(x => x.IssuedDate)
+            .Take(80)
+            .ToListAsync(cancellationToken);
+        var assets = assetRows
+            .Where(x => employeeLookup.ContainsKey(x.EmployeeId))
+            .Select(x => ToAssetDto(x, employeeLookup[x.EmployeeId]))
+            .ToList();
+
+        var safetyStart = today.AddMonths(-12);
+        var incidentRows = await dbContext.EmployeeSafetyIncidents.IgnoreQueryFilters()
+            .AsNoTracking()
+            .Where(x => x.OrganizationId == organization.Id && x.DeletedAtUtc == null && x.IncidentDate >= safetyStart)
+            .OrderByDescending(x => x.IncidentDate)
+            .Take(80)
+            .ToListAsync(cancellationToken);
+        var incidents = incidentRows
+            .Select(x => ToSafetyIncidentDto(x, x.EmployeeId is Guid employeeId && employeeLookup.TryGetValue(employeeId, out var name) ? name : "Company-wide"))
+            .ToList();
+        var safetySummary = new SafetySummaryDto(
+            incidents.Count,
+            incidents.Count(x => x.IsOshaRecordable),
+            incidents.Count(x => x.ReportedToOsha),
+            Math.Round(incidents.Sum(x => x.LostTimeHours), 2));
+
+        var payrollStartUtc = StartOfLocalDateUtc(payrollPeriod.Start, organization.TimeZone);
+        var payrollEndUtc = StartOfLocalDateUtc(payrollPeriod.End.AddDays(1), organization.TimeZone);
+        var payrollPunches = await dbContext.EmployeeTimePunches.IgnoreQueryFilters()
+            .AsNoTracking()
+            .Where(x => x.OrganizationId == organization.Id && x.DeletedAtUtc == null && x.ClockOutUtc != null && x.ClockInUtc >= payrollStartUtc && x.ClockInUtc < payrollEndUtc)
+            .ToListAsync(cancellationToken);
+        var payrollShifts = await dbContext.EmployeeScheduleShifts.IgnoreQueryFilters()
+            .AsNoTracking()
+            .Where(x => x.OrganizationId == organization.Id && x.DeletedAtUtc == null && x.ShiftDate >= payrollPeriod.Start && x.ShiftDate <= payrollPeriod.End)
+            .ToListAsync(cancellationToken);
+        var payrollTimeOff = await dbContext.EmployeeTimeOffRequests.IgnoreQueryFilters()
+            .AsNoTracking()
+            .Where(x => x.OrganizationId == organization.Id && x.DeletedAtUtc == null && x.Status == "Approved" && x.EndDate >= payrollPeriod.Start && x.StartDate <= payrollPeriod.End)
+            .ToListAsync(cancellationToken);
+        var payroll = BuildPayrollSummary(employeeRows, payrollPunches, payrollShifts, payrollTimeOff, payrollPeriod.Start, payrollPeriod.End);
+
+        return new TimeClockWorkspace(employeeOptions, openPunches, recentPunches, shifts, timeOff, assets, incidents, safetySummary, payroll, payrollPeriod.Start, payrollPeriod.End);
+    }
+
+    private static TimeClockPayrollSummary BuildPayrollSummary(
+        IReadOnlyCollection<Employee> employees,
+        IReadOnlyCollection<EmployeeTimePunch> punches,
+        IReadOnlyCollection<EmployeeScheduleShift> shifts,
+        IReadOnlyCollection<EmployeeTimeOffRequest> timeOff,
+        DateOnly periodStart,
+        DateOnly periodEnd)
+    {
+        var activeEmployeeIds = employees
+            .Where(x => x.Status.Equals("Active", StringComparison.OrdinalIgnoreCase))
+            .Select(x => x.Id)
+            .ToHashSet();
+        var employeeNames = employees.ToDictionary(x => x.Id, x => x.DisplayName);
+        var employeeIds = punches.Select(x => x.EmployeeId)
+            .Concat(shifts.Select(x => x.EmployeeId))
+            .Concat(timeOff.Select(x => x.EmployeeId))
+            .Concat(activeEmployeeIds)
+            .Distinct()
+            .Where(employeeNames.ContainsKey)
+            .OrderBy(id => employeeNames[id])
+            .ToList();
+        var rows = employeeIds.Select(employeeId =>
+        {
+            var employee = employees.Single(x => x.Id == employeeId);
+            var compensation = EffectiveHourlyCompensation(employee, periodEnd);
+            var hourlyRate = compensation?.HourlyRate;
+            var payrollType = compensation?.PayrollType ?? "Hourly";
+            var workedHours = punches
+                .Where(x => x.EmployeeId == employeeId)
+                .Sum(x => x.Hours ?? (x.ClockOutUtc is DateTimeOffset outUtc ? CalculateHours(x.ClockInUtc, outUtc) : 0m));
+            var scheduledHours = shifts
+                .Where(x => x.EmployeeId == employeeId)
+                .Sum(ShiftHours);
+            var timeOffHours = timeOff
+                .Where(x => x.EmployeeId == employeeId)
+                .Sum(x => OverlapDays(x.StartDate, x.EndDate, periodStart, periodEnd) * x.HoursPerDay);
+            var paidTimeOffHours = timeOff
+                .Where(x => x.EmployeeId == employeeId && IsPaidTimeOffType(x.Type))
+                .Sum(x => OverlapDays(x.StartDate, x.EndDate, periodStart, periodEnd) * x.HoursPerDay);
+            var paidHours = workedHours + paidTimeOffHours;
+            var grossPay = hourlyRate is decimal rate ? paidHours * rate : 0m;
+            return new TimeClockPayrollEmployeeSummary(
+                employeeId,
+                employeeNames[employeeId],
+                payrollType,
+                hourlyRate,
+                Math.Round(workedHours, 2),
+                Math.Round(scheduledHours, 2),
+                Math.Round(timeOffHours, 2),
+                Math.Round(paidTimeOffHours, 2),
+                Math.Round(paidHours, 2),
+                Math.Round(workedHours + timeOffHours - scheduledHours, 2),
+                Math.Round(grossPay, 2));
+        }).ToList();
+
+        return new TimeClockPayrollSummary(
+            rows,
+            Math.Round(rows.Sum(x => x.WorkedHours), 2),
+            Math.Round(rows.Sum(x => x.ScheduledHours), 2),
+            Math.Round(rows.Sum(x => x.TimeOffHours), 2),
+            Math.Round(rows.Sum(x => x.PaidHours), 2),
+            Math.Round(rows.Sum(x => x.GrossPay), 2));
+    }
+
+    private async Task EnsureEmployeeAsync(Guid organizationId, Guid employeeId, CancellationToken cancellationToken)
+    {
+        if (!await dbContext.Employees.IgnoreQueryFilters().AnyAsync(x => x.OrganizationId == organizationId && x.Id == employeeId && x.DeletedAtUtc == null, cancellationToken))
+        {
+            throw new InvalidOperationException("Employee was not found.");
+        }
     }
 
     private async Task EnsureCompanyAdministratorAsync(Guid organizationId, Guid userId, CancellationToken cancellationToken)
@@ -741,6 +1204,233 @@ public sealed class BusinessAdministrationService(
         location.DefaultTaxRegion,
         location.Status
     };
+
+    private static TimeClockPunchDto ToPunchDto(EmployeeTimePunch punch, string employeeName, DateTimeOffset nowUtc) => new(
+        punch.Id,
+        punch.EmployeeId,
+        employeeName,
+        punch.ClockInUtc,
+        punch.ClockOutUtc,
+        punch.Hours ?? (punch.ClockOutUtc is DateTimeOffset clockOutUtc ? CalculateHours(punch.ClockInUtc, clockOutUtc) : CalculateHours(punch.ClockInUtc, nowUtc)),
+        punch.Note,
+        punch.ClockOutUtc is null);
+
+    private static TimeClockScheduleShiftDto ToShiftDto(EmployeeScheduleShift shift, string employeeName) => new(
+        shift.Id,
+        shift.EmployeeId,
+        employeeName,
+        shift.ShiftDate,
+        shift.StartTime,
+        shift.EndTime,
+        ShiftHours(shift),
+        shift.Note);
+
+    private static TimeClockTimeOffDto ToTimeOffDto(EmployeeTimeOffRequest timeOff, string employeeName) => new(
+        timeOff.Id,
+        timeOff.EmployeeId,
+        employeeName,
+        timeOff.Type,
+        timeOff.StartDate,
+        timeOff.EndDate,
+        timeOff.HoursPerDay,
+        InclusiveDays(timeOff.StartDate, timeOff.EndDate) * timeOff.HoursPerDay,
+        timeOff.Status,
+        timeOff.Note);
+
+    private static EmployeeCompanyAssetDto ToAssetDto(EmployeeCompanyAsset asset, string employeeName) => new(
+        asset.Id,
+        asset.EmployeeId,
+        employeeName,
+        asset.Name,
+        asset.AssetTag,
+        asset.SerialNumber,
+        asset.IssuedDate,
+        asset.ReturnedDate,
+        asset.Status,
+        asset.Note);
+
+    private static EmployeeSafetyIncidentDto ToSafetyIncidentDto(EmployeeSafetyIncident incident, string employeeName) => new(
+        incident.Id,
+        incident.EmployeeId,
+        employeeName,
+        incident.IncidentDate,
+        incident.IncidentType,
+        incident.Severity,
+        incident.LostTimeHours,
+        incident.IsOshaRecordable,
+        incident.ReportedToOsha,
+        incident.Description);
+
+    private static object PunchSnapshot(EmployeeTimePunch punch) => new
+    {
+        punch.EmployeeId,
+        punch.ClockInUtc,
+        punch.ClockOutUtc,
+        punch.Hours,
+        punch.Note,
+        punch.IsManualEntry,
+        punch.Source
+    };
+
+    private static object ShiftSnapshot(EmployeeScheduleShift shift) => new
+    {
+        shift.EmployeeId,
+        shift.ShiftDate,
+        shift.StartTime,
+        shift.EndTime,
+        Hours = ShiftHours(shift),
+        shift.Note
+    };
+
+    private static object TimeOffSnapshot(EmployeeTimeOffRequest timeOff) => new
+    {
+        timeOff.EmployeeId,
+        timeOff.Type,
+        timeOff.StartDate,
+        timeOff.EndDate,
+        timeOff.HoursPerDay,
+        TotalHours = InclusiveDays(timeOff.StartDate, timeOff.EndDate) * timeOff.HoursPerDay,
+        timeOff.Status,
+        timeOff.Note
+    };
+
+    private static object AssetSnapshot(EmployeeCompanyAsset asset) => new
+    {
+        asset.EmployeeId,
+        asset.Name,
+        asset.AssetTag,
+        asset.SerialNumber,
+        asset.IssuedDate,
+        asset.ReturnedDate,
+        asset.Status,
+        asset.Note
+    };
+
+    private static object SafetyIncidentSnapshot(EmployeeSafetyIncident incident) => new
+    {
+        incident.EmployeeId,
+        incident.IncidentDate,
+        incident.IncidentType,
+        incident.Severity,
+        incident.LostTimeHours,
+        incident.IsOshaRecordable,
+        incident.ReportedToOsha,
+        incident.Description
+    };
+
+    private static decimal CalculateHours(DateTimeOffset startUtc, DateTimeOffset endUtc) =>
+        Math.Max(0m, Math.Round((decimal)(endUtc - startUtc).TotalHours, 2));
+
+    private static decimal ShiftHours(EmployeeScheduleShift shift) =>
+        Math.Max(0m, Math.Round((decimal)(shift.EndTime - shift.StartTime).TotalHours, 2));
+
+    private static int InclusiveDays(DateOnly start, DateOnly end) => end.DayNumber - start.DayNumber + 1;
+
+    private static int OverlapDays(DateOnly start, DateOnly end, DateOnly periodStart, DateOnly periodEnd)
+    {
+        var overlapStart = start > periodStart ? start : periodStart;
+        var overlapEnd = end < periodEnd ? end : periodEnd;
+        return overlapEnd < overlapStart ? 0 : InclusiveDays(overlapStart, overlapEnd);
+    }
+
+    private static EmployeeCompensation? EffectiveHourlyCompensation(Employee employee, DateOnly periodEnd)
+    {
+        return employee.CompensationRecords
+            .Where(x =>
+                x.DeletedAtUtc == null &&
+                x.PayrollType == "Hourly" &&
+                x.HourlyRate is not null &&
+                x.EffectiveStartDate <= periodEnd &&
+                (x.EffectiveEndDate == null || x.EffectiveEndDate >= periodEnd))
+            .OrderByDescending(x => x.EffectiveStartDate)
+            .FirstOrDefault();
+    }
+
+    private static bool IsPaidTimeOffType(string type)
+    {
+        return type.Trim().ToUpperInvariant() is "PTO" or "VACATION" or "SICK" or "HOLIDAY";
+    }
+
+    private static (DateOnly Start, DateOnly End) CurrentPayrollPeriod(DateOnly localDate)
+    {
+        if (localDate.Day <= 15)
+        {
+            return (new DateOnly(localDate.Year, localDate.Month, 1), new DateOnly(localDate.Year, localDate.Month, 15));
+        }
+
+        return (new DateOnly(localDate.Year, localDate.Month, 16), new DateOnly(localDate.Year, localDate.Month, DateTime.DaysInMonth(localDate.Year, localDate.Month)));
+    }
+
+    private static DateOnly ToLocalDate(DateTimeOffset utc, string timeZoneId)
+    {
+        var local = TimeZoneInfo.ConvertTime(utc, FindTimeZone(timeZoneId));
+        return DateOnly.FromDateTime(local.DateTime);
+    }
+
+    private static DateTimeOffset ToUtc(DateTime localDateTime, string timeZoneId)
+    {
+        var unspecified = DateTime.SpecifyKind(localDateTime, DateTimeKind.Unspecified);
+        var offset = FindTimeZone(timeZoneId).GetUtcOffset(unspecified);
+        return new DateTimeOffset(unspecified, offset).ToUniversalTime();
+    }
+
+    private static DateTimeOffset StartOfLocalDateUtc(DateOnly localDate, string timeZoneId) => ToUtc(localDate.ToDateTime(TimeOnly.MinValue), timeZoneId);
+
+    private static TimeZoneInfo FindTimeZone(string? timeZoneId)
+    {
+        if (!string.IsNullOrWhiteSpace(timeZoneId))
+        {
+            try
+            {
+                return TimeZoneInfo.FindSystemTimeZoneById(timeZoneId);
+            }
+            catch (TimeZoneNotFoundException)
+            {
+            }
+            catch (InvalidTimeZoneException)
+            {
+            }
+        }
+
+        return TimeZoneInfo.Utc;
+    }
+
+    private static void ValidatePunchTimes(DateTimeOffset clockInUtc, DateTimeOffset? clockOutUtc)
+    {
+        if (clockOutUtc is not null && clockOutUtc <= clockInUtc)
+        {
+            throw new InvalidOperationException("Clock out must be after clock in.");
+        }
+    }
+
+    private static string NormalizeClockAction(string? value)
+    {
+        var normalized = Required(value ?? string.Empty, "Clock action").Trim().ToUpperInvariant();
+        return normalized switch
+        {
+            "IN" => "In",
+            "OUT" => "Out",
+            _ => throw new InvalidOperationException("Clock action must be In or Out.")
+        };
+    }
+
+    private static string NormalizeTimeOffStatus(string? value)
+    {
+        var normalized = Required(value ?? string.Empty, "Time off status").Trim().ToUpperInvariant();
+        return normalized switch
+        {
+            "APPROVE" or "APPROVED" => "Approved",
+            "DECLINE" or "DECLINED" => "Declined",
+            "PENDING" => "Pending",
+            _ => throw new InvalidOperationException("Time off status must be Pending, Approved, or Declined.")
+        };
+    }
+
+    private static string HashPin(Guid organizationId, string pin)
+    {
+        var bytes = SHA256.HashData(Encoding.UTF8.GetBytes($"{organizationId:N}:{pin}"));
+        return Convert.ToHexString(bytes);
+    }
 
     private static int CalculateProgress(Organization organization, int locationCount, int employeeCount, BusinessConfiguration config)
     {

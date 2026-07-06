@@ -18,6 +18,7 @@ public sealed class WpsDealerPricingImportService(
     private const string WpsSupplierCode = "WPS";
     private const string DealerPricingPath = "/dealer-pricing";
     private const int DealerPricingFileMaxPollAttempts = 60;
+    private const int ProgressSaveIntervalRows = 1000;
     private static readonly TimeSpan DealerPricingFilePollDelay = TimeSpan.FromSeconds(10);
 
     public async Task<WpsDealerPricingImportResult> ImportAsync(WpsDealerPricingImportRequest request, CancellationToken cancellationToken)
@@ -56,6 +57,7 @@ public sealed class WpsDealerPricingImportService(
             PriceFileDownloadedAtUtc = now
         });
         var counters = new Counters();
+        var pricesBySupplierProductId = new Dictionary<Guid, CompanySupplierPrice>();
 
         foreach (var row in pricingRows)
         {
@@ -81,9 +83,13 @@ public sealed class WpsDealerPricingImportService(
                 continue;
             }
 
-            var price = await dbContext.CompanySupplierPrices
-                .IgnoreQueryFilters()
-                .SingleOrDefaultAsync(x => x.OrganizationId == importRun.OrganizationId && x.SupplierProductId == supplierProduct.Id, cancellationToken);
+            if (!pricesBySupplierProductId.TryGetValue(supplierProduct.Id, out var price))
+            {
+                price = await dbContext.CompanySupplierPrices
+                    .IgnoreQueryFilters()
+                    .SingleOrDefaultAsync(x => x.OrganizationId == importRun.OrganizationId && x.SupplierProductId == supplierProduct.Id, cancellationToken);
+            }
+
             if (price is null)
             {
                 price = new CompanySupplierPrice
@@ -99,6 +105,7 @@ public sealed class WpsDealerPricingImportService(
                 dbContext.CompanySupplierPrices.Add(price);
             }
 
+            pricesBySupplierProductId[supplierProduct.Id] = price;
             price.SupplierSku = supplierProduct.SupplierSku;
             price.SourceSupplierProductId = supplierProduct.SourceSupplierProductId;
             price.ActualDealerCost = row.ActualDealerCost.Value;
@@ -114,7 +121,7 @@ public sealed class WpsDealerPricingImportService(
                 break;
             }
 
-            if (counters.RowsProcessed % 100 == 0)
+            if (counters.RowsProcessed % ProgressSaveIntervalRows == 0)
             {
                 importRun.ProgressProcessed = counters.RowsProcessed;
                 await dbContext.SaveChangesAsync(cancellationToken);
@@ -170,7 +177,7 @@ public sealed class WpsDealerPricingImportService(
             using var request = new HttpRequestMessage(HttpMethod.Get, requestUri);
             request.Headers.Authorization = new("Bearer", apiKey);
             using var response = await client.SendAsync(request, cancellationToken);
-            if ((int)response.StatusCode == 202)
+            if (IsPricingFilePending(response))
             {
                 if (attempt == DealerPricingFileMaxPollAttempts)
                 {
@@ -219,10 +226,19 @@ public sealed class WpsDealerPricingImportService(
         throw new InvalidOperationException("WPS dealer pricing file was not available after the polling window. The next scheduled sync will retry.");
     }
 
+    private static bool IsPricingFilePending(HttpResponseMessage response)
+    {
+        var statusCode = (int)response.StatusCode;
+        return statusCode == 202 ||
+            statusCode == 408 ||
+            statusCode == 429 ||
+            statusCode >= 500;
+    }
+
     private static TimeSpan PollDelay(HttpResponseMessage response)
     {
         var retryAfter = response.Headers.RetryAfter;
-        if (retryAfter?.Delta is { } delta && delta > TimeSpan.Zero && delta < TimeSpan.FromMinutes(5))
+        if (retryAfter?.Delta is { } delta && delta >= TimeSpan.Zero && delta < TimeSpan.FromMinutes(5))
         {
             return delta;
         }

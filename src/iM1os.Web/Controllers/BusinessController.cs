@@ -61,7 +61,7 @@ public sealed class BusinessController(
     }
 
     [HttpGet]
-    public async Task<IActionResult> SupplierItemSearch(string? query, string? supplierCode, string? category, string? brand, string? vehicleType, int? year, string? make, string? model, string? tireBrand, string? tireModelLine, int? tireWidth, int? tireAspectRatio, int? tireRimDiameter, string? tirePosition, bool searchExecuted, CancellationToken cancellationToken)
+    public async Task<IActionResult> SupplierItemSearch(string? query, string? supplierCode, string? category, string? brand, string? vehicleType, int? year, string? make, string? model, string? tireBrand, string? tireModelLine, int? tireWidth, int? tireAspectRatio, int? tireRimDiameter, string? tirePosition, bool useNormalizedCatalog, bool searchExecuted, CancellationToken cancellationToken)
     {
         if (!TryOrganizationId(out var organizationId))
         {
@@ -72,13 +72,13 @@ public sealed class BusinessController(
         await SetCompanySupplierConnectorCodesAsync(organizationId, cancellationToken);
         return View(await supplierItemSearchService.SearchForCompanyAsync(
             organizationId,
-            new SupplierItemSearchRequest(query, supplierCode, vehicleType, year, make, model, SearchExecuted: searchExecuted, Category: category, Brand: brand, TireBrand: tireBrand, TireModelLine: tireModelLine, TireWidth: tireWidth, TireAspectRatio: tireAspectRatio, TireRimDiameter: tireRimDiameter, TirePosition: tirePosition),
+            new SupplierItemSearchRequest(query, supplierCode, vehicleType, year, make, model, SearchExecuted: searchExecuted, Category: category, Brand: brand, TireBrand: tireBrand, TireModelLine: tireModelLine, TireWidth: tireWidth, TireAspectRatio: tireAspectRatio, TireRimDiameter: tireRimDiameter, TirePosition: tirePosition, UseNormalizedCatalog: useNormalizedCatalog),
             SupplierItemSearchPageSize,
             cancellationToken));
     }
 
     [HttpGet]
-    public async Task<IActionResult> SupplierItemSearchResults(string? query, string? supplierCode, string? category, string? brand, string? vehicleType, int? year, string? make, string? model, string? tireBrand, string? tireModelLine, int? tireWidth, int? tireAspectRatio, int? tireRimDiameter, string? tirePosition, bool searchExecuted, int offset, CancellationToken cancellationToken)
+    public async Task<IActionResult> SupplierItemSearchResults(string? query, string? supplierCode, string? category, string? brand, string? vehicleType, int? year, string? make, string? model, string? tireBrand, string? tireModelLine, int? tireWidth, int? tireAspectRatio, int? tireRimDiameter, string? tirePosition, bool useNormalizedCatalog, bool searchExecuted, int offset, CancellationToken cancellationToken)
     {
         if (!TryOrganizationId(out var organizationId))
         {
@@ -87,7 +87,7 @@ public sealed class BusinessController(
 
         var page = await supplierItemSearchService.SearchForCompanyAsync(
             organizationId,
-            new SupplierItemSearchRequest(query, supplierCode, vehicleType, year, make, model, offset, searchExecuted, IncludeFacets: false, Category: category, Brand: brand, TireBrand: tireBrand, TireModelLine: tireModelLine, TireWidth: tireWidth, TireAspectRatio: tireAspectRatio, TireRimDiameter: tireRimDiameter, TirePosition: tirePosition),
+            new SupplierItemSearchRequest(query, supplierCode, vehicleType, year, make, model, offset, searchExecuted, IncludeFacets: false, Category: category, Brand: brand, TireBrand: tireBrand, TireModelLine: tireModelLine, TireWidth: tireWidth, TireAspectRatio: tireAspectRatio, TireRimDiameter: tireRimDiameter, TirePosition: tirePosition, UseNormalizedCatalog: useNormalizedCatalog),
             SupplierItemSearchPageSize,
             cancellationToken);
         return Json(new
@@ -411,6 +411,292 @@ public sealed class BusinessController(
         }
 
         TempData["CompanyAdminStatus"] = "Supplier preferences saved.";
+        return RedirectToAdministration(organizationId);
+    }
+
+    [HttpPost]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> TimeClockPunch(ClockEmployeeRequest request, CancellationToken cancellationToken)
+    {
+        var organizationId = OrganizationId();
+        try
+        {
+            if (!await RunOwnerActionAsync(() => businessAdministrationService.ClockEmployeeAsync(organizationId, UserId(), request, cancellationToken)))
+            {
+                return View("AccessDenied");
+            }
+        }
+        catch (InvalidOperationException ex)
+        {
+            TempData["CompanyAdminError"] = ex.Message;
+            return RedirectToAdministration(organizationId);
+        }
+
+        TempData["CompanyAdminStatus"] = request.Action.Equals("out", StringComparison.OrdinalIgnoreCase) ? "Employee clocked out." : "Employee clocked in.";
+        return RedirectToAdministration(organizationId);
+    }
+
+    [HttpPost]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> TimeClockAddPunch(AddTimePunchRequest request, CancellationToken cancellationToken)
+    {
+        var organizationId = OrganizationId();
+        try
+        {
+            if (!await RunOwnerActionAsync(() => businessAdministrationService.AddTimePunchAsync(organizationId, UserId(), request, cancellationToken)))
+            {
+                return View("AccessDenied");
+            }
+        }
+        catch (InvalidOperationException ex)
+        {
+            TempData["CompanyAdminError"] = ex.Message;
+            return RedirectToAdministration(organizationId);
+        }
+
+        TempData["CompanyAdminStatus"] = "Manual time punch added.";
+        return RedirectToAdministration(organizationId);
+    }
+
+    [HttpPost]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> TimeClockUpdatePunch(UpdateTimePunchRequest request, CancellationToken cancellationToken)
+    {
+        var organizationId = OrganizationId();
+        try
+        {
+            if (!await RunOwnerActionAsync(() => businessAdministrationService.UpdateTimePunchAsync(organizationId, UserId(), request, cancellationToken)))
+            {
+                return View("AccessDenied");
+            }
+        }
+        catch (InvalidOperationException ex)
+        {
+            TempData["CompanyAdminError"] = ex.Message;
+            return RedirectToAdministration(organizationId);
+        }
+
+        TempData["CompanyAdminStatus"] = "Time punch updated.";
+        return RedirectToAdministration(organizationId);
+    }
+
+    [HttpPost]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> TimeClockDeletePunch(DeleteTimePunchRequest request, CancellationToken cancellationToken)
+    {
+        var organizationId = OrganizationId();
+        try
+        {
+            if (!await RunOwnerActionAsync(() => businessAdministrationService.DeleteTimePunchAsync(organizationId, UserId(), request, cancellationToken)))
+            {
+                return View("AccessDenied");
+            }
+        }
+        catch (InvalidOperationException ex)
+        {
+            TempData["CompanyAdminError"] = ex.Message;
+            return RedirectToAdministration(organizationId);
+        }
+
+        TempData["CompanyAdminStatus"] = "Time punch deleted.";
+        return RedirectToAdministration(organizationId);
+    }
+
+    [HttpPost]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> TimeClockSchedule(AddScheduleShiftRequest request, CancellationToken cancellationToken)
+    {
+        var organizationId = OrganizationId();
+        try
+        {
+            if (!await RunOwnerActionAsync(() => businessAdministrationService.AddScheduleShiftAsync(organizationId, UserId(), request, cancellationToken)))
+            {
+                return View("AccessDenied");
+            }
+        }
+        catch (InvalidOperationException ex)
+        {
+            TempData["CompanyAdminError"] = ex.Message;
+            return RedirectToAdministration(organizationId);
+        }
+
+        TempData["CompanyAdminStatus"] = "Shift scheduled.";
+        return RedirectToAdministration(organizationId);
+    }
+
+    [HttpPost]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> TimeClockDeleteSchedule(DeleteScheduleShiftRequest request, CancellationToken cancellationToken)
+    {
+        var organizationId = OrganizationId();
+        try
+        {
+            if (!await RunOwnerActionAsync(() => businessAdministrationService.DeleteScheduleShiftAsync(organizationId, UserId(), request, cancellationToken)))
+            {
+                return View("AccessDenied");
+            }
+        }
+        catch (InvalidOperationException ex)
+        {
+            TempData["CompanyAdminError"] = ex.Message;
+            return RedirectToAdministration(organizationId);
+        }
+
+        TempData["CompanyAdminStatus"] = "Shift deleted.";
+        return RedirectToAdministration(organizationId);
+    }
+
+    [HttpPost]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> TimeClockTimeOff(AddTimeOffRequest request, CancellationToken cancellationToken)
+    {
+        var organizationId = OrganizationId();
+        try
+        {
+            if (!await RunOwnerActionAsync(() => businessAdministrationService.AddTimeOffAsync(organizationId, UserId(), request, cancellationToken)))
+            {
+                return View("AccessDenied");
+            }
+        }
+        catch (InvalidOperationException ex)
+        {
+            TempData["CompanyAdminError"] = ex.Message;
+            return RedirectToAdministration(organizationId);
+        }
+
+        TempData["CompanyAdminStatus"] = "Time off request added.";
+        return RedirectToAdministration(organizationId);
+    }
+
+    [HttpPost]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> TimeClockSetTimeOffStatus(SetTimeOffStatusRequest request, CancellationToken cancellationToken)
+    {
+        var organizationId = OrganizationId();
+        try
+        {
+            if (!await RunOwnerActionAsync(() => businessAdministrationService.SetTimeOffStatusAsync(organizationId, UserId(), request, cancellationToken)))
+            {
+                return View("AccessDenied");
+            }
+        }
+        catch (InvalidOperationException ex)
+        {
+            TempData["CompanyAdminError"] = ex.Message;
+            return RedirectToAdministration(organizationId);
+        }
+
+        TempData["CompanyAdminStatus"] = "Time off status updated.";
+        return RedirectToAdministration(organizationId);
+    }
+
+    [HttpPost]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> TimeClockDeleteTimeOff(DeleteTimeOffRequest request, CancellationToken cancellationToken)
+    {
+        var organizationId = OrganizationId();
+        try
+        {
+            if (!await RunOwnerActionAsync(() => businessAdministrationService.DeleteTimeOffAsync(organizationId, UserId(), request, cancellationToken)))
+            {
+                return View("AccessDenied");
+            }
+        }
+        catch (InvalidOperationException ex)
+        {
+            TempData["CompanyAdminError"] = ex.Message;
+            return RedirectToAdministration(organizationId);
+        }
+
+        TempData["CompanyAdminStatus"] = "Time off request deleted.";
+        return RedirectToAdministration(organizationId);
+    }
+
+    [HttpPost]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> TimeClockCompanyAsset(AddCompanyAssetRequest request, CancellationToken cancellationToken)
+    {
+        var organizationId = OrganizationId();
+        try
+        {
+            if (!await RunOwnerActionAsync(() => businessAdministrationService.AddCompanyAssetAsync(organizationId, UserId(), request, cancellationToken)))
+            {
+                return View("AccessDenied");
+            }
+        }
+        catch (InvalidOperationException ex)
+        {
+            TempData["CompanyAdminError"] = ex.Message;
+            return RedirectToAdministration(organizationId);
+        }
+
+        TempData["CompanyAdminStatus"] = "Company asset assigned.";
+        return RedirectToAdministration(organizationId);
+    }
+
+    [HttpPost]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> TimeClockReturnCompanyAsset(ReturnCompanyAssetRequest request, CancellationToken cancellationToken)
+    {
+        var organizationId = OrganizationId();
+        try
+        {
+            if (!await RunOwnerActionAsync(() => businessAdministrationService.ReturnCompanyAssetAsync(organizationId, UserId(), request, cancellationToken)))
+            {
+                return View("AccessDenied");
+            }
+        }
+        catch (InvalidOperationException ex)
+        {
+            TempData["CompanyAdminError"] = ex.Message;
+            return RedirectToAdministration(organizationId);
+        }
+
+        TempData["CompanyAdminStatus"] = "Company asset returned.";
+        return RedirectToAdministration(organizationId);
+    }
+
+    [HttpPost]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> TimeClockDeleteCompanyAsset(DeleteCompanyAssetRequest request, CancellationToken cancellationToken)
+    {
+        var organizationId = OrganizationId();
+        try
+        {
+            if (!await RunOwnerActionAsync(() => businessAdministrationService.DeleteCompanyAssetAsync(organizationId, UserId(), request, cancellationToken)))
+            {
+                return View("AccessDenied");
+            }
+        }
+        catch (InvalidOperationException ex)
+        {
+            TempData["CompanyAdminError"] = ex.Message;
+            return RedirectToAdministration(organizationId);
+        }
+
+        TempData["CompanyAdminStatus"] = "Company asset deleted.";
+        return RedirectToAdministration(organizationId);
+    }
+
+    [HttpPost]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> TimeClockSafetyIncident(AddSafetyIncidentRequest request, CancellationToken cancellationToken)
+    {
+        var organizationId = OrganizationId();
+        try
+        {
+            if (!await RunOwnerActionAsync(() => businessAdministrationService.AddSafetyIncidentAsync(organizationId, UserId(), request, cancellationToken)))
+            {
+                return View("AccessDenied");
+            }
+        }
+        catch (InvalidOperationException ex)
+        {
+            TempData["CompanyAdminError"] = ex.Message;
+            return RedirectToAdministration(organizationId);
+        }
+
+        TempData["CompanyAdminStatus"] = "Safety incident logged.";
         return RedirectToAdministration(organizationId);
     }
 

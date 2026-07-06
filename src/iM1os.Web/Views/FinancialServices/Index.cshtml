@@ -1,0 +1,76 @@
+@model iM1os.Application.FinancialServices.FinancialServicesWorkspace
+@{
+    ViewData["Title"] = "Payments & Finance";
+
+    var hero = new IM1WorkspaceHeroModel(
+        "Payments & Finance",
+        "Company financial operations",
+        "Merchant account, transactions, wallet, payment links, ACH, subscriptions, ledger, deposits, statements, reports, and settings for this company.",
+        new[]
+        {
+            new IM1WorkspaceStatModel("Active", Model.ActiveModules.ToString("N0"), "Usable financial surfaces"),
+            new IM1WorkspaceStatModel("Placeholders", Model.PlaceholderModules.ToString("N0"), "Framework modules"),
+            new IM1WorkspaceStatModel("Planned", Model.PlannedModules.ToString("N0"), "Future company finance"),
+            new IM1WorkspaceStatModel("Ledger", "Active", "Operational financial backbone")
+        },
+        new[]
+        {
+            new IM1ActionModel("Payments", Url.Action("Index", "Payments"), "primary"),
+            new IM1ActionModel("Transactions", Url.Action("Module", "FinancialServices", new { moduleKey = "transaction-center" }), "secondary"),
+            new IM1ActionModel("Financial Ledger", Url.Action("FinancialLedger", "FinancialServices"), "secondary")
+        },
+        "Company scope");
+}
+
+@await Html.PartialAsync("IM1WorkspaceHero", hero)
+
+<section class="im1-financial-workflow">
+    <header class="im1-section-header">
+        <div>
+            <h2>Shared Payment Engine</h2>
+            <p>Business modules keep their own workflows and call the shared payment service when money moves.</p>
+        </div>
+    </header>
+    <div class="im1-financial-flow">
+        <span>Business Event</span>
+        <span>Payments & Finance</span>
+        <span>Payment Service</span>
+        <span>Gateway Driver</span>
+        <span>Transaction Record</span>
+        <span>Receipt / Reconciliation</span>
+    </div>
+</section>
+
+@foreach (var group in Model.Modules.GroupBy(x => x.Category).OrderBy(x => x.Key))
+{
+    <section class="im1-financial-module-section">
+        <header class="im1-section-header">
+            <div>
+                <h2>@group.Key</h2>
+                <p>Company financial capabilities. Business workflow payment actions stay in their owning modules.</p>
+            </div>
+        </header>
+        <div class="im1-financial-module-grid">
+            @foreach (var module in group)
+            {
+                var url = !string.IsNullOrWhiteSpace(module.Controller) && !string.IsNullOrWhiteSpace(module.Action)
+                    ? Url.Action(module.Action, module.Controller)
+                    : Url.Action("Module", "FinancialServices", new { moduleKey = module.Key });
+                <article class="im1-financial-module-card">
+                    <header>
+                        <span class="im1-financial-status @module.Status.ToLowerInvariant()">@module.Status</span>
+                        <h3>@module.Name</h3>
+                    </header>
+                    <p>@module.Summary</p>
+                    <dl>
+                        <div>
+                            <dt>Workflow</dt>
+                            <dd>@module.WorkflowStage</dd>
+                        </div>
+                    </dl>
+                    <a class="im1-button im1-button-secondary" href="@url">Open</a>
+                </article>
+            }
+        </div>
+    </section>
+}

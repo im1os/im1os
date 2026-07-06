@@ -1,0 +1,51 @@
+@model iM1os.Application.FinancialServices.PlatformFinancialServicesWorkspace
+@{
+    ViewData["Title"] = "Platform Financial Services";
+
+    var hero = new IM1WorkspaceHeroModel(
+        "Financial Services",
+        "Platform business operations",
+        "Internal workspace for running the iM1 merchant services business: applications, underwriting, providers, risk, hardware, residuals, settlements, and support.",
+        new[]
+        {
+            new IM1WorkspaceStatModel("Platform Modules", Model.Modules.Count.ToString("N0"), "Internal operating surfaces"),
+            new IM1WorkspaceStatModel("Placeholders", Model.PlaceholderModules.ToString("N0"), "Reserved workflows"),
+            new IM1WorkspaceStatModel("Boundary", "Internal", "Customers never see this workspace"),
+            new IM1WorkspaceStatModel("Provider Layer", "Managed", "Credentials and routing live here")
+        },
+        Array.Empty<IM1ActionModel>(),
+        "Platform only");
+}
+
+@await Html.PartialAsync("IM1WorkspaceHero", hero)
+
+@foreach (var group in Model.Modules.GroupBy(x => x.Category).OrderBy(x => x.Key))
+{
+    <section class="im1-financial-module-section">
+        <header class="im1-section-header">
+            <div>
+                <h2>@group.Key</h2>
+                <p>Internal iM1 Financial Services business capabilities.</p>
+            </div>
+        </header>
+        <div class="im1-financial-module-grid">
+            @foreach (var module in group)
+            {
+                <article class="im1-financial-module-card">
+                    <header>
+                        <span class="im1-financial-status @module.Status.ToLowerInvariant()">@module.Status</span>
+                        <h3>@module.Name</h3>
+                    </header>
+                    <p>@module.Summary</p>
+                    <dl>
+                        <div>
+                            <dt>Workflow</dt>
+                            <dd>@module.WorkflowStage</dd>
+                        </div>
+                    </dl>
+                    <a class="im1-button im1-button-secondary" asp-controller="PlatformFinancialServices" asp-action="Module" asp-route-moduleKey="@module.Key">Open</a>
+                </article>
+            }
+        </div>
+    </section>
+}

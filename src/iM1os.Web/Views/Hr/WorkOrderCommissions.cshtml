@@ -1,0 +1,30 @@
+@model HrWorkspacePage
+
+@{
+    ViewData["Title"] = "Work Order Commissions";
+    var employees = Model.Employees.Employees;
+}
+
+@await Html.PartialAsync("_HrHeader", Model)
+
+<section class="im1-workspace-grid">
+    <article class="im1-workspace-card span-12">
+        <header class="im1-section-header"><div><h2>Work Order Commission Setup</h2><p>Open employee compensation records to manage work order commission rates.</p></div></header>
+        <div class="table-scroll">
+            <table class="data-table">
+                <thead><tr><th>Employee</th><th>Job Title</th><th>Status</th><th>Action</th></tr></thead>
+                <tbody>
+                @foreach (var employee in employees)
+                {
+                    <tr>
+                        <td>@employee.Name</td>
+                        <td>@(employee.JobTitle ?? "-")</td>
+                        <td>@employee.Status</td>
+                        <td><a class="im1-button im1-button-secondary" asp-controller="Employees" asp-action="Edit" asp-route-employeeId="@employee.Id" asp-fragment="compensation">Compensation</a></td>
+                    </tr>
+                }
+                </tbody>
+            </table>
+        </div>
+    </article>
+</section>

@@ -1,5 +1,6 @@
 using iM1os.Application.Common;
 using iM1os.Infrastructure;
+using iM1os.Infrastructure.Configuration;
 using iM1os.Infrastructure.Persistence;
 using iM1os.Web.Security;
 using iM1os.Web.Services;
@@ -8,6 +9,7 @@ using Microsoft.Extensions.FileProviders;
 using Serilog;
 
 var builder = WebApplication.CreateBuilder(args);
+builder.Configuration.AddLocalDotEnvFile();
 
 builder.Host.UseSerilog((context, logger) =>
 {
@@ -151,6 +153,14 @@ app.MapControllerRoute(
     pattern: "platform/operations",
     defaults: new { controller = "Platform", action = "Operations" });
 app.MapControllerRoute(
+    name: "platform-financial-services-module",
+    pattern: "platform/financial-services/modules/{moduleKey}",
+    defaults: new { controller = "PlatformFinancialServices", action = "Module" });
+app.MapControllerRoute(
+    name: "platform-financial-services",
+    pattern: "platform/financial-services/{action=Index}",
+    defaults: new { controller = "PlatformFinancialServices" });
+app.MapControllerRoute(
     name: "platform-supplier-wps-inventory",
     pattern: "platform/suppliers/wps/inventory",
     defaults: new { controller = "Platform", action = "WpsInventory" });
@@ -218,6 +228,26 @@ app.MapControllerRoute(
     name: "company-inventory",
     pattern: "company/inventory/{action=Index}",
     defaults: new { controller = "Inventory" });
+app.MapControllerRoute(
+    name: "company-financial-services-module",
+    pattern: "company/financial-services/modules/{moduleKey}",
+    defaults: new { controller = "FinancialServices", action = "Module" });
+app.MapControllerRoute(
+    name: "company-payments-finance-module",
+    pattern: "company/payments-finance/modules/{moduleKey}",
+    defaults: new { controller = "FinancialServices", action = "Module" });
+app.MapControllerRoute(
+    name: "company-payments-finance",
+    pattern: "company/payments-finance/{action=Index}",
+    defaults: new { controller = "FinancialServices" });
+app.MapControllerRoute(
+    name: "company-financial-services",
+    pattern: "company/financial-services/{action=Index}",
+    defaults: new { controller = "FinancialServices" });
+app.MapControllerRoute(
+    name: "company-payments",
+    pattern: "company/payments/{action=Index}",
+    defaults: new { controller = "Payments" });
 app.MapControllerRoute(
     name: "company-supplier-search",
     pattern: "company/suppliers/catalog/item-search",
@@ -326,6 +356,10 @@ app.MapControllerRoute(
     name: "company-work-order-item-lookup",
     pattern: "company/work-orders/item-lookup",
     defaults: new { controller = "WorkOrders", action = "ItemLookup" });
+app.MapControllerRoute(
+    name: "company-work-order-item-lookup-facets",
+    pattern: "company/work-orders/item-lookup/facets",
+    defaults: new { controller = "WorkOrders", action = "ItemLookupFacets" });
 app.MapControllerRoute(
     name: "company-work-order-fitment-count",
     pattern: "company/work-orders/fitment-count",

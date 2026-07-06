@@ -1,0 +1,63 @@
+@model HrWorkspacePage
+
+@{
+    ViewData["Title"] = "Company Assets";
+    var admin = Model.Administration;
+    var timeClock = admin.TimeClock;
+}
+
+@await Html.PartialAsync("_HrHeader", Model)
+
+<section class="im1-workspace-grid">
+    <article class="im1-workspace-card span-5">
+        <header class="im1-section-header"><div><h2>Assign Asset</h2><p>Track tools, keys, devices, and other issued property.</p></div></header>
+        <form asp-controller="Hr" asp-action="AddCompanyAsset" method="post" class="form-grid">
+            <input type="hidden" name="organizationId" value="@admin.OrganizationId" />
+            <label>
+                Employee
+                <select name="EmployeeId" required>
+                    <option value="">Select employee</option>
+                    @foreach (var employee in timeClock.Employees)
+                    {
+                        <option value="@employee.Id">@employee.Name</option>
+                    }
+                </select>
+            </label>
+            <label>Name <input name="Name" required /></label>
+            <label>Asset Tag <input name="AssetTag" /></label>
+            <label>Serial <input name="SerialNumber" /></label>
+            <label>Issued <input name="IssuedDate" type="date" /></label>
+            <label>Returned <input name="ReturnedDate" type="date" /></label>
+            <label>Note <input name="Note" /></label>
+            <button class="primary-action" type="submit">Assign Asset</button>
+        </form>
+    </article>
+
+    <article class="im1-workspace-card span-7">
+        <header class="im1-section-header"><div><h2>Assigned Assets</h2><p>Current and returned property.</p></div></header>
+        <div class="compact-list">
+            @foreach (var asset in timeClock.CompanyAssets)
+            {
+                <div class="timeoff-row">
+                    <span><strong>@asset.EmployeeName</strong> @asset.Name @(string.IsNullOrWhiteSpace(asset.AssetTag) ? "" : $"#{asset.AssetTag}") <em>@asset.Status</em></span>
+                    <form asp-controller="Hr" asp-action="ReturnCompanyAsset" method="post" class="inline-row-form">
+                        <input type="hidden" name="organizationId" value="@admin.OrganizationId" />
+                        <input type="hidden" name="AssetId" value="@asset.Id" />
+                        <input name="ReturnedDate" type="date" value="@DateTime.UtcNow.ToString("yyyy-MM-dd")" required />
+                        <input name="Note" value="@asset.Note" placeholder="Return note" />
+                        <button class="im1-button im1-button-secondary" type="submit">Return</button>
+                    </form>
+                    <form asp-controller="Hr" asp-action="DeleteCompanyAsset" method="post">
+                        <input type="hidden" name="organizationId" value="@admin.OrganizationId" />
+                        <input type="hidden" name="AssetId" value="@asset.Id" />
+                        <button class="im1-button im1-button-danger" type="submit">Delete</button>
+                    </form>
+                </div>
+            }
+            @if (timeClock.CompanyAssets.Count == 0)
+            {
+                <p class="im1-empty-state">No company assets assigned.</p>
+            }
+        </div>
+    </article>
+</section>

@@ -72,6 +72,12 @@
             Model.Year is not null ||
             !string.IsNullOrWhiteSpace(Model.Make) ||
             !string.IsNullOrWhiteSpace(Model.Model));
+    var hasRideSelection = Model.Year is not null &&
+        !string.IsNullOrWhiteSpace(Model.Make) &&
+        !string.IsNullOrWhiteSpace(Model.Model);
+    var rideSelectionText = hasRideSelection
+        ? $"{Model.Year} {Model.Make} {Model.Model}"
+        : "Choose Type / Year / Make / Model";
 }
 
 <nav class="im1-breadcrumbs" aria-label="Breadcrumb">
@@ -110,94 +116,26 @@
     {
         <div class="im1-search-active-indicator">
             <span class="im1-status-pill im1-status-success">Search active</span>
-            <span>@Model.TotalResults.ToString("N0") results matching the current filters</span>
+            <span>@Model.TotalResults.ToString("N0") results matching the current filters in @Model.SearchElapsedMilliseconds.ToString("N0") ms</span>
         </div>
     }
 
-    <form class="im1-item-search-layout im1-item-search-form-ymm" asp-action="ItemSearch" method="get">
+    @Html.AntiForgeryToken()
+    <form class="im1-item-search-form-ymm" asp-action="ItemSearch" method="get">
         <input type="hidden" name="searchExecuted" value="true" />
-        <aside class="im1-item-filter-panel" aria-label="Item filters">
-            <div class="im1-item-filter-group">
-                <h3>Category</h3>
-                <label class="im1-field">
-                    <span>Category</span>
-                    <select name="category">
-                        <option value="">All categories</option>
-                        @if (!string.IsNullOrWhiteSpace(Model.Category) && !Model.AvailableCategories.Any(x => string.Equals(x, Model.Category, StringComparison.OrdinalIgnoreCase)))
-                        {
-                            <option value="@Model.Category" selected="selected">@Model.Category</option>
-                        }
-                        @foreach (var category in Model.AvailableCategories)
-                        {
-                            <option value="@category" selected="@(string.Equals(Model.Category, category, StringComparison.OrdinalIgnoreCase))">@category</option>
-                        }
-                    </select>
-                </label>
-                <label class="im1-field">
-                    <span>Brand</span>
-                    <select name="brand">
-                        <option value="">All brands</option>
-                        @if (!string.IsNullOrWhiteSpace(Model.Brand) && !Model.AvailableBrands.Any(x => string.Equals(x, Model.Brand, StringComparison.OrdinalIgnoreCase)))
-                        {
-                            <option value="@Model.Brand" selected="selected">@Model.Brand</option>
-                        }
-                        @foreach (var brand in Model.AvailableBrands)
-                        {
-                            <option value="@brand" selected="@(string.Equals(Model.Brand, brand, StringComparison.OrdinalIgnoreCase))">@brand</option>
-                        }
-                    </select>
-                </label>
+
+        <div class="im1-ride-selection-bar"
+             data-current-ymm
+             data-current-vehicle-type="@Model.VehicleType"
+             data-current-year="@Model.Year"
+             data-current-make="@Model.Make"
+             data-current-model="@Model.Model">
+            <div class="im1-ride-selection-summary">
+                <span>Ride Selection</span>
+                <strong>@rideSelectionText</strong>
             </div>
-            <div class="im1-item-filter-group">
-                <h3>Attributes</h3>
-                <label class="im1-field">
-                    <span>Width</span>
-                    <select name="tireWidth">
-                        <option value="">Any width</option>
-                        @foreach (var width in tireWidths)
-                        {
-                            <option value="@width" selected="@(Model.TireWidth == width)">@width</option>
-                        }
-                    </select>
-                </label>
-                <label class="im1-field">
-                    <span>Ratio</span>
-                    <select name="tireAspectRatio">
-                        <option value="">Any ratio</option>
-                        @foreach (var ratio in tireRatios)
-                        {
-                            <option value="@ratio" selected="@(Model.TireAspectRatio == ratio)">@ratio</option>
-                        }
-                    </select>
-                </label>
-                <label class="im1-field">
-                    <span>Rim</span>
-                    <select name="tireRimDiameter">
-                        <option value="">Any rim</option>
-                        @foreach (var rim in tireRims)
-                        {
-                            <option value="@rim" selected="@(Model.TireRimDiameter == rim)">@rim</option>
-                        }
-                    </select>
-                </label>
-            </div>
-        </aside>
-        <div class="im1-item-search-main">
-            <div class="im1-item-search-form im1-item-search-main-controls">
-                <label class="im1-field im1-field-wide">
-                    <span>Search</span>
-                    <input name="query" value="@Model.Query" placeholder="SKU, MFG Part#, title, or UPC" autocomplete="off" />
-                </label>
-                <label class="im1-field">
-                    <span>Supplier</span>
-                    <select name="supplierCode">
-                        <option value="">All suppliers</option>
-                        @foreach (var supplier in Model.AvailableSuppliers)
-                        {
-                            <option value="@supplier.Code" selected="@(string.Equals(Model.SupplierCode, supplier.Code, StringComparison.OrdinalIgnoreCase))">@supplier.Name</option>
-                        }
-                    </select>
-                </label>
+            <button class="im1-button im1-button-danger im1-button-sm" type="button" data-clear-ride disabled="@(!hasRideSelection)">Clear Ride</button>
+            <div class="im1-ride-selection-controls">
                 <label class="im1-field">
                     <span>Type</span>
                     <select name="vehicleType" data-ymm-parent>
@@ -230,7 +168,7 @@
                 </label>
                 <label class="im1-field">
                     <span>Model</span>
-                    <select name="model" disabled="@(Model.Year is null || string.IsNullOrWhiteSpace(Model.Make))">
+                    <select name="model" data-ymm-parent disabled="@(Model.Year is null || string.IsNullOrWhiteSpace(Model.Make))">
                         <option value="">Any model</option>
                         @foreach (var vehicleModel in Model.AvailableModels)
                         {
@@ -238,21 +176,135 @@
                         }
                     </select>
                 </label>
-                <button class="im1-button im1-button-primary" type="submit">Search</button>
-                <a class="im1-button im1-button-secondary" asp-action="ItemSearch">Reset</a>
             </div>
         </div>
-    </form>
-</section>
 
-<section class="im1-settings-panel">
-    @Html.AntiForgeryToken()
-    <header class="im1-section-header">
-        <div>
-            <h2>Items</h2>
-            <p>Read-only supplier catalog matches.</p>
+        <div class="im1-recent-ymm" data-recent-ymm hidden>
+            <span>Previous YMM</span>
+            <div class="im1-recent-ymm-list" data-recent-ymm-list></div>
         </div>
-    </header>
+
+        <div class="im1-item-search-query-row">
+            <label class="im1-field im1-category-field">
+                <span>Category</span>
+                <select name="category">
+                    <option value="">All categories</option>
+                    @if (!string.IsNullOrWhiteSpace(Model.Category) && !Model.AvailableCategories.Any(x => string.Equals(x, Model.Category, StringComparison.OrdinalIgnoreCase)))
+                    {
+                        <option value="@Model.Category" selected="selected">@Model.Category</option>
+                    }
+                    @foreach (var category in Model.AvailableCategories)
+                    {
+                        <option value="@category" selected="@(string.Equals(Model.Category, category, StringComparison.OrdinalIgnoreCase))">@category</option>
+                    }
+                </select>
+            </label>
+            <label class="im1-field im1-field-wide">
+                <span>Search</span>
+                <input name="query" value="@Model.Query" placeholder="SKU, MFG Part#, title, or UPC" autocomplete="off" />
+            </label>
+            <label class="im1-field im1-checkbox-field im1-normalized-toggle">
+                <input type="checkbox" name="useNormalizedCatalog" value="true" checked="@Model.UseNormalizedCatalog" />
+                <span>Use normalized catalog</span>
+            </label>
+            <button class="im1-button im1-button-primary" type="submit">Search</button>
+            <a class="im1-button im1-button-secondary" asp-action="ItemSearch">Reset</a>
+        </div>
+
+        <div class="im1-item-search-results-layout @(Model.IsSearchExecuted ? "im1-item-search-results-layout-active" : "im1-item-search-results-layout-empty")">
+            @if (Model.IsSearchExecuted)
+            {
+                <aside class="im1-item-filter-panel" aria-label="Item filters">
+                    <div class="im1-item-filter-group">
+                        <h3>Filters</h3>
+                        <label class="im1-field">
+                            <span>Supplier</span>
+                            <select name="supplierCode">
+                                <option value="">All suppliers</option>
+                                @foreach (var supplier in Model.AvailableSuppliers)
+                                {
+                                    <option value="@supplier.Code" selected="@(string.Equals(Model.SupplierCode, supplier.Code, StringComparison.OrdinalIgnoreCase))">@supplier.Name</option>
+                                }
+                            </select>
+                        </label>
+                        <label class="im1-field">
+                            <span>Brand</span>
+                            <select name="brand">
+                                <option value="">All brands</option>
+                                @if (!string.IsNullOrWhiteSpace(Model.Brand) && !Model.AvailableBrands.Any(x => string.Equals(x, Model.Brand, StringComparison.OrdinalIgnoreCase)))
+                                {
+                                    <option value="@Model.Brand" selected="selected">@Model.Brand</option>
+                                }
+                                @foreach (var brand in Model.AvailableBrands)
+                                {
+                                    <option value="@brand" selected="@(string.Equals(Model.Brand, brand, StringComparison.OrdinalIgnoreCase))">@brand</option>
+                                }
+                            </select>
+                        </label>
+                    </div>
+                    <div class="im1-item-filter-group">
+                        <h3>Tire Attributes</h3>
+                        <label class="im1-field">
+                            <span>Tire Brand</span>
+                            <input name="tireBrand" value="@Model.TireBrand" autocomplete="off" />
+                        </label>
+                        <label class="im1-field">
+                            <span>Tire Line</span>
+                            <input name="tireModelLine" value="@Model.TireModelLine" autocomplete="off" />
+                        </label>
+                        <label class="im1-field">
+                            <span>Width</span>
+                            <select name="tireWidth">
+                                <option value="">Any width</option>
+                                @foreach (var width in tireWidths)
+                                {
+                                    <option value="@width" selected="@(Model.TireWidth == width)">@width</option>
+                                }
+                            </select>
+                        </label>
+                        <label class="im1-field">
+                            <span>Ratio</span>
+                            <select name="tireAspectRatio">
+                                <option value="">Any ratio</option>
+                                @foreach (var ratio in tireRatios)
+                                {
+                                    <option value="@ratio" selected="@(Model.TireAspectRatio == ratio)">@ratio</option>
+                                }
+                            </select>
+                        </label>
+                <label class="im1-field">
+                    <span>Rim</span>
+                    <select name="tireRimDiameter">
+                        <option value="">Any rim</option>
+                        @foreach (var rim in tireRims)
+                        {
+                            <option value="@rim" selected="@(Model.TireRimDiameter == rim)">@rim</option>
+                        }
+                    </select>
+                </label>
+                <label class="im1-field">
+                    <span>Position</span>
+                    <select name="tirePosition">
+                        <option value="">Any position</option>
+                        <option value="front" selected="@(string.Equals(Model.TirePosition, "front", StringComparison.OrdinalIgnoreCase))">Front</option>
+                        <option value="rear" selected="@(string.Equals(Model.TirePosition, "rear", StringComparison.OrdinalIgnoreCase))">Rear</option>
+                    </select>
+                </label>
+                    </div>
+                    <div class="im1-item-filter-actions">
+                        <button class="im1-button im1-button-primary" type="submit">Apply</button>
+                        <a class="im1-button im1-button-secondary" asp-action="ItemSearch">Clear</a>
+                    </div>
+                </aside>
+            }
+
+            <section class="im1-item-search-results-panel">
+                <header class="im1-section-header">
+                    <div>
+                        <h2>Items</h2>
+                        <p>Read-only supplier catalog matches.</p>
+                    </div>
+                </header>
 
     @if (!Model.IsSearchExecuted)
     {
@@ -398,6 +450,10 @@
                                     @foreach (var offer in item.Offers!)
                                     {
                                         var supplierIconSrc = SupplierIconSrc(offer.SupplierCode, offer.SupplierName);
+                                        var caseQuantity = offer.CaseQuantity.GetValueOrDefault();
+                                        var retailEachPrice = offer.Msrp.HasValue && caseQuantity > 0
+                                            ? offer.Msrp.Value / caseQuantity
+                                            : (decimal?)null;
                                         <article class="im1-supplier-offer @(offer.IsDefaultOffer ? "im1-supplier-offer-selected" : string.Empty)" data-offer-row data-offer-supplier-product-id="@offer.SupplierProductId" data-offer-cost="@(offer.ActualCost ?? offer.DealerCost ?? decimal.MaxValue)" data-has-inventory="@offer.HasCachedInventory.ToString().ToLowerInvariant()">
                                             <div class="im1-supplier-offer-media">
                                                 @if (!string.IsNullOrWhiteSpace(offer.ImageUrl))
@@ -425,7 +481,16 @@
                                             <dl>
                                                 <div><dt>SKU</dt><dd>@offer.SupplierSku</dd></div>
                                                 <div><dt>MFG Part#</dt><dd>@(offer.ManufacturerPartNumber ?? "-")</dd></div>
-                                                <div><dt>Retail</dt><dd>@FormatCurrency(offer.Msrp)</dd></div>
+                                                @if (caseQuantity > 0)
+                                                {
+                                                    <div><dt>Case Qty</dt><dd>@caseQuantity.ToString("N0")</dd></div>
+                                                    <div><dt>Retail /ea</dt><dd>@FormatCurrency(retailEachPrice)</dd></div>
+                                                    <div><dt>Retail /case</dt><dd>@FormatCurrency(offer.Msrp)</dd></div>
+                                                }
+                                                else
+                                                {
+                                                    <div><dt>Retail</dt><dd>@FormatCurrency(offer.Msrp)</dd></div>
+                                                }
                                             </dl>
                                             @if (offer.SupplierCode == "WPS")
                                             {
@@ -462,6 +527,9 @@
         </div>
         <script type="application/json" id="initial-supplier-item-results">@Html.Raw(initialResultsJson)</script>
     }
+            </section>
+        </div>
+    </form>
 </section>
 
 <dialog class="im1-image-popout-dialog" data-image-popout>
@@ -500,6 +568,92 @@
                     if (model) model.value = "";
                     searchForm.submit();
                 });
+                model?.addEventListener("change", () => {
+                    searchForm.submit();
+                });
+
+                const recentYmmKey = "im1.platform.itemSearch.recentYmm.v1";
+                const recentYmmHost = searchForm.querySelector("[data-recent-ymm]");
+                const recentYmmList = searchForm.querySelector("[data-recent-ymm-list]");
+                const currentYmm = searchForm.querySelector("[data-current-ymm]");
+                const clearRideButton = searchForm.querySelector("[data-clear-ride]");
+                const readRecentYmm = () => {
+                    try {
+                        const value = window.localStorage.getItem(recentYmmKey);
+                        const parsed = value ? JSON.parse(value) : [];
+                        return Array.isArray(parsed) ? parsed : [];
+                    } catch {
+                        return [];
+                    }
+                };
+                const writeRecentYmm = entries => {
+                    try {
+                        window.localStorage.setItem(recentYmmKey, JSON.stringify(entries.slice(0, 10)));
+                    } catch {
+                        // Storage can be unavailable in locked-down browser modes.
+                    }
+                };
+                const cleanYmmEntry = entry => ({
+                    vehicleType: (entry?.vehicleType || "").trim(),
+                    year: (entry?.year || "").trim(),
+                    make: (entry?.make || "").trim(),
+                    model: (entry?.model || "").trim()
+                });
+                const hasCompleteYmm = entry => entry.year && entry.make && entry.model;
+                const ymmKey = entry => `${entry.vehicleType}|${entry.year}|${entry.make}|${entry.model}`.toLowerCase();
+                const ymmLabel = entry => [entry.year, entry.make, entry.model].filter(Boolean).join(" ");
+                const navigateToYmm = entry => {
+                    const url = new URL(window.location.href);
+                    [["vehicleType", entry.vehicleType], ["year", entry.year], ["make", entry.make], ["model", entry.model]].forEach(([key, value]) => {
+                        if (value) {
+                            url.searchParams.set(key, value);
+                        } else {
+                            url.searchParams.delete(key);
+                        }
+                    });
+                    url.searchParams.set("searchExecuted", "true");
+                    url.searchParams.delete("offset");
+                    window.location.href = url.toString();
+                };
+                const renderRecentYmm = () => {
+                    if (!recentYmmHost || !recentYmmList) return;
+                    const entries = readRecentYmm().map(cleanYmmEntry).filter(hasCompleteYmm);
+                    recentYmmList.innerHTML = "";
+                    if (entries.length === 0) {
+                        recentYmmHost.hidden = true;
+                        return;
+                    }
+
+                    entries.forEach(entry => {
+                        const button = document.createElement("button");
+                        button.type = "button";
+                        button.className = "im1-recent-ymm-button";
+                        button.textContent = ymmLabel(entry);
+                        button.addEventListener("click", () => navigateToYmm(entry));
+                        recentYmmList.append(button);
+                    });
+                    recentYmmHost.hidden = false;
+                };
+
+                if (currentYmm) {
+                    const activeYmm = cleanYmmEntry({
+                        vehicleType: currentYmm.dataset.currentVehicleType,
+                        year: currentYmm.dataset.currentYear,
+                        make: currentYmm.dataset.currentMake,
+                        model: currentYmm.dataset.currentModel
+                    });
+                    if (hasCompleteYmm(activeYmm)) {
+                        const existing = readRecentYmm().map(cleanYmmEntry).filter(hasCompleteYmm);
+                        writeRecentYmm([activeYmm, ...existing.filter(entry => ymmKey(entry) !== ymmKey(activeYmm))]);
+                    }
+                }
+
+                clearRideButton?.addEventListener("click", () => {
+                    const url = new URL(window.location.href);
+                    ["vehicleType", "year", "make", "model", "offset"].forEach(key => url.searchParams.delete(key));
+                    window.location.href = url.toString();
+                });
+                renderRecentYmm();
             }
 
             const formatCurrency = (value) => {
@@ -1401,11 +1555,19 @@
                     supplier.append(document.createTextNode(offer.supplierName || offer.supplierCode || "-"));
                     header.append(supplier);
                     const metrics = document.createElement("dl");
+                    const caseQuantity = Number(offer.caseQuantity || 0);
+                    const retailEachPrice = offer.msrp != null && caseQuantity > 0 ? offer.msrp / caseQuantity : null;
                     const metricRows = [
                         createMetric("SKU", createCopyableValue(offer.supplierSku, "SKU")),
-                        createMetric("MFG Part#", createCopyableValue(offer.manufacturerPartNumber, "MFG Part#")),
-                        createMetric("Retail", formatCurrency(offer.msrp))
+                        createMetric("MFG Part#", createCopyableValue(offer.manufacturerPartNumber, "MFG Part#"))
                     ];
+                    if (caseQuantity > 0) {
+                        metricRows.push(createMetric("Case Qty", caseQuantity.toLocaleString()));
+                        metricRows.push(createMetric("Retail /ea", formatCurrency(retailEachPrice)));
+                        metricRows.push(createMetric("Retail /case", formatCurrency(offer.msrp)));
+                    } else {
+                        metricRows.push(createMetric("Retail", formatCurrency(offer.msrp)));
+                    }
                     if (!isPlatformCatalog) {
                         metricRows.push(createMetric("Actual", formatCurrency(offer.actualCost)));
                     }

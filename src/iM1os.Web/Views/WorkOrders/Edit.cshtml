@@ -293,13 +293,23 @@
 
         <fieldset class="im1-form-section">
             <legend>Estimate Line Items</legend>
-            <div class="im1-item-lookup-panel" data-workorder-item-lookup data-lookup-url="@Url.Action("ItemLookup", "WorkOrders")">
+            <div class="im1-item-lookup-panel" data-workorder-item-lookup data-lookup-url="@Url.Action("ItemLookup", "WorkOrders")" data-facet-url="@Url.Action("ItemLookupFacets", "WorkOrders")">
                 <div class="im1-form-grid">
                     <label class="im1-full-span">Search Items
                         <span class="im1-inline-field">
                             <input data-item-query placeholder="SKU, MFG Part#, UPC, title, or supplier description" autocomplete="off" />
                             <button class="im1-button im1-button-secondary" type="button" data-item-search>Search</button>
                         </span>
+                    </label>
+                    <label>Category
+                        <select data-item-category>
+                            <option value="">All categories</option>
+                        </select>
+                    </label>
+                    <label>Brand
+                        <select data-item-brand>
+                            <option value="">All brands</option>
+                        </select>
                     </label>
                     <label class="im1-checkbox">
                         <input type="checkbox" data-use-unit-fitment checked="@(selectedVehicle?.Year is not null && !string.IsNullOrWhiteSpace(selectedVehicle?.Make) && !string.IsNullOrWhiteSpace(selectedVehicle?.Model))" />
@@ -309,9 +319,9 @@
                         <input type="checkbox" data-labor-only />
                         Search Only Labor SKUs
                     </label>
-                    <div class="im1-workorder-tire-search" aria-label="Advanced tire search">
+                    <div class="im1-workorder-tire-search im1-full-span" data-tire-filter-panel aria-label="Advanced tire search" hidden>
                         <label>Width
-                            <select data-tire-width>
+                            <select data-tire-width disabled>
                                 <option value="">Any</option>
                                 @foreach (var width in tireWidths)
                                 {
@@ -320,7 +330,7 @@
                             </select>
                         </label>
                         <label>Ratio
-                            <select data-tire-ratio>
+                            <select data-tire-ratio disabled>
                                 <option value="">Any</option>
                                 @foreach (var ratio in tireRatios)
                                 {
@@ -329,7 +339,7 @@
                             </select>
                         </label>
                         <label>Diameter
-                            <select data-tire-diameter>
+                            <select data-tire-diameter disabled>
                                 <option value="">Any</option>
                                 @foreach (var rim in tireRims)
                                 {
@@ -460,6 +470,9 @@
             const technicianList = document.querySelector("[data-technician-list]");
             const technicianFields = document.querySelector("[data-technician-fields]");
             const saveWorkOrderButton = document.querySelector("[data-save-workorder]");
+            const itemCategory = lookup?.querySelector("[data-item-category]");
+            const itemBrand = lookup?.querySelector("[data-item-brand]");
+            const tireFilterPanel = lookup?.querySelector("[data-tire-filter-panel]");
             const fitmentCountUrl = "@Url.Action("FitmentItemCount", "WorkOrders")";
             const defaultLaborRate = @Model.DefaultLaborRate.ToString(System.Globalization.CultureInfo.InvariantCulture);
             const laborLineItemsTaxable = @Model.LaborLineItemsTaxable.ToString().ToLowerInvariant();
@@ -2035,11 +2048,75 @@
                 }
             });
 
+            const populateLookupSelect = (select, values, placeholder, selectedValue) => {
+                if (!select) {
+                    return;
+                }
+
+                select.replaceChildren();
+                const all = document.createElement("option");
+                all.value = "";
+                all.textContent = placeholder;
+                select.append(all);
+                values.forEach(value => {
+                    const option = document.createElement("option");
+                    option.value = value;
+                    option.textContent = value;
+                    select.append(option);
+                });
+                select.value = values.includes(selectedValue) ? selectedValue : "";
+            };
+
+            const isTireCategory = value => {
+                const clean = (value || "").trim().toLowerCase();
+                return clean === "tires" || clean.split(/[\/>]/).some(part => part.trim() === "tires");
+            };
+
+            const updateTireFilterVisibility = () => {
+                const laborOnly = lookup?.querySelector("[data-labor-only]")?.checked;
+                const showTires = !laborOnly && isTireCategory(itemCategory?.value);
+                if (tireFilterPanel) {
+                    tireFilterPanel.hidden = !showTires;
+                }
+
+                lookup?.querySelectorAll("[data-tire-width], [data-tire-ratio], [data-tire-diameter]").forEach(select => {
+                    select.disabled = !showTires;
+                    if (!showTires) {
+                        select.value = "";
+                    }
+                });
+            };
+
+            const loadItemLookupFacets = async () => {
+                if (!lookup?.dataset.facetUrl || !itemCategory || !itemBrand) {
+                    return;
+                }
+
+                const selectedCategory = itemCategory.value;
+                const selectedBrand = itemBrand.value;
+                const url = new URL(lookup.dataset.facetUrl, window.location.origin);
+                if (selectedCategory) {
+                    url.searchParams.set("category", selectedCategory);
+                }
+
+                const response = await fetch(url.toString(), { credentials: "same-origin", headers: { "Accept": "application/json" } });
+                if (!response.ok) {
+                    return;
+                }
+
+                const facets = await response.json();
+                populateLookupSelect(itemCategory, facets.categories || [], "All categories", selectedCategory);
+                populateLookupSelect(itemBrand, facets.brands || [], "All brands", selectedBrand);
+                updateTireFilterVisibility();
+            };
+
             const runItemSearch = async () => {
                 const url = new URL(lookup.dataset.lookupUrl, window.location.origin);
                 const query = lookup.querySelector("[data-item-query]").value.trim();
                 const useFitment = lookup.querySelector("[data-use-unit-fitment]")?.checked;
                 const laborOnly = lookup.querySelector("[data-labor-only]")?.checked;
+                const category = itemCategory?.value;
+                const brand = itemBrand?.value;
                 const tireWidth = lookup.querySelector("[data-tire-width]")?.value;
                 const tireRatio = lookup.querySelector("[data-tire-ratio]")?.value;
                 const tireDiameter = lookup.querySelector("[data-tire-diameter]")?.value;
@@ -2052,13 +2129,19 @@
                 if (laborOnly) {
                     url.searchParams.set("laborOnly", "true");
                 }
-                if (!laborOnly && tireWidth) {
+                if (!laborOnly && category) {
+                    url.searchParams.set("category", category);
+                }
+                if (!laborOnly && brand) {
+                    url.searchParams.set("brand", brand);
+                }
+                if (!laborOnly && isTireCategory(category) && tireWidth) {
                     url.searchParams.set("tireWidth", tireWidth);
                 }
-                if (!laborOnly && tireRatio) {
+                if (!laborOnly && isTireCategory(category) && tireRatio) {
                     url.searchParams.set("tireAspectRatio", tireRatio);
                 }
-                if (!laborOnly && tireDiameter) {
+                if (!laborOnly && isTireCategory(category) && tireDiameter) {
                     url.searchParams.set("tireRimDiameter", tireDiameter);
                 }
                 if (!laborOnly && useFitment && fitmentYear && fitmentMake && fitmentModel) {
@@ -2112,14 +2195,24 @@
                 if (fitment) {
                     fitment.disabled = event.target.checked;
                 }
-                lookup.querySelectorAll("[data-tire-width], [data-tire-ratio], [data-tire-diameter]").forEach(select => {
-                    select.disabled = event.target.checked;
-                });
+                if (itemCategory) {
+                    itemCategory.disabled = event.target.checked;
+                }
+                if (itemBrand) {
+                    itemBrand.disabled = event.target.checked;
+                }
+                updateTireFilterVisibility();
             });
+            itemCategory?.addEventListener("change", async () => {
+                await loadItemLookupFacets();
+                runItemSearch();
+            });
+            itemBrand?.addEventListener("change", runItemSearch);
             lookup?.querySelectorAll("[data-tire-width], [data-tire-ratio], [data-tire-diameter]").forEach(select => {
                 select.addEventListener("change", runItemSearch);
             });
             lookup?.querySelector("[data-use-unit-fitment]")?.addEventListener("change", updateFitmentCount);
+            loadItemLookupFacets();
             renderTechnicianSplits();
             updateFitmentCount();
         })();

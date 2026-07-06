@@ -2,6 +2,16 @@ using iM1os.Domain.Audit;
 using iM1os.Domain.Configuration;
 using iM1os.Domain.Customers;
 using iM1os.Domain.Employees;
+using iM1os.Domain.FinancialServices.Accounting;
+using iM1os.Domain.FinancialServices.Banking;
+using iM1os.Domain.FinancialServices.Billing;
+using iM1os.Domain.FinancialServices.Hardware;
+using iM1os.Domain.FinancialServices.Ledger;
+using iM1os.Domain.FinancialServices.Lending;
+using iM1os.Domain.FinancialServices.Merchant;
+using iM1os.Domain.FinancialServices.Payments;
+using iM1os.Domain.FinancialServices.Providers;
+using iM1os.Domain.FinancialServices.Wallet;
 using iM1os.Domain.GlobalCatalog;
 using iM1os.Domain.Identity;
 using iM1os.Domain.Marketing;
@@ -27,6 +37,16 @@ public interface IApplicationDbContext
     DbSet<EmployeeCompensation> EmployeeCompensations { get; }
 
     DbSet<EmployeeDocument> EmployeeDocuments { get; }
+
+    DbSet<EmployeeTimePunch> EmployeeTimePunches { get; }
+
+    DbSet<EmployeeScheduleShift> EmployeeScheduleShifts { get; }
+
+    DbSet<EmployeeTimeOffRequest> EmployeeTimeOffRequests { get; }
+
+    DbSet<EmployeeSafetyIncident> EmployeeSafetyIncidents { get; }
+
+    DbSet<EmployeeCompanyAsset> EmployeeCompanyAssets { get; }
 
     DbSet<UserInvitation> UserInvitations { get; }
 
@@ -147,6 +167,32 @@ public interface IApplicationDbContext
     DbSet<CompanyInventoryLocationStock> CompanyInventoryLocationStocks { get; }
 
     DbSet<CompanyInventoryMovement> CompanyInventoryMovements { get; }
+
+    DbSet<PaymentTransaction> PaymentTransactions { get; }
+
+    DbSet<FinancialLedgerEntry> FinancialLedgerEntries { get; }
+
+    DbSet<MerchantAccount> MerchantAccounts { get; }
+
+    DbSet<MerchantProviderRelationship> MerchantProviderRelationships { get; }
+
+    DbSet<MerchantAccountStatusHistory> MerchantAccountStatusHistories { get; }
+
+    DbSet<CustomerWallet> CustomerWallets { get; }
+
+    DbSet<WalletPaymentMethod> WalletPaymentMethods { get; }
+
+    DbSet<PaymentTerminal> PaymentTerminals { get; }
+
+    DbSet<FinancialProviderConnection> FinancialProviderConnections { get; }
+
+    DbSet<SubscriptionAgreement> SubscriptionAgreements { get; }
+
+    DbSet<BankingConnection> BankingConnections { get; }
+
+    DbSet<FinancingApplication> FinancingApplications { get; }
+
+    DbSet<AccountingExportBatch> AccountingExportBatches { get; }
 
     DbSet<PlatformUser> PlatformUsers { get; }
 

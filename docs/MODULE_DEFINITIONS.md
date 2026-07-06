@@ -486,6 +486,43 @@ Scope:
 - Payments boundary
 - Customer receipts
 
+### Financial Services / Payments & Finance
+
+Owns the financial operating layer for money movement inside iM1.
+
+Scope:
+
+- Platform merchant applications and underwriting
+- Platform merchant portfolio, risk, provider, residual, settlement, chargeback, hardware, fulfillment, pricing, and support operations
+- Company merchant account status
+- Payment engine
+- Gateway driver abstraction
+- Terminal management
+- Transaction center
+- Customer wallet tokens
+- Payment links
+- ACH processing
+- Subscription billing
+- Settlement visibility
+- Refunds, voids, disputes, and chargebacks
+- Operational financial ledger
+- Company deposits, statements, reports, and settings
+- Certified payment hardware
+
+Financial Services is not a gateway. Gateway providers are infrastructure drivers behind iM1 Payments. Product modules should call iM1 payment abstractions and should not integrate directly with NMI, Authorize.net, Stripe, or future providers. Tenant-facing navigation should be named Payments & Finance. Platform navigation remains Financial Services because it represents iM1's internal merchant services business.
+
+Business workflow payment actions stay in the owning modules:
+
+- POS collects payment inside Sales/POS.
+- Work orders collect deposits or pickup payments inside Service.
+- Invoices collect payment inside Invoicing.
+- Ecommerce checkout stays inside Ecommerce.
+- Customer portal payment stays inside Customer Portal.
+
+Formal specification:
+
+- `docs/specs/IM1_FINANCIAL_SERVICES_VISION.md`
+
 ### Financial Intelligence
 
 Owns payment, settlement, profitability, and benchmark-safe financial recommendations.

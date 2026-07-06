@@ -1,0 +1,219 @@
+@model iM1os.Application.FinancialServices.Merchant.CompanyMerchantAccountWorkspace
+@{
+    ViewData["Title"] = "Merchant Account";
+    var account = Model.Account;
+    var app = Model.Application;
+    var canEdit = app.CanEdit;
+    var saveLabel = app.Status is "Submitted" or "Approved" ? "Save Changes" : "Save Draft";
+    var hero = new IM1WorkspaceHeroModel(
+        "Merchant Account",
+        "Payments & Finance",
+        "Complete the merchant application, track approval, and confirm payment readiness.",
+        new[]
+        {
+            new IM1WorkspaceStatModel("Status", account?.Status ?? "Not Started", "Merchant account"),
+            new IM1WorkspaceStatModel("Provider", account?.ProviderDisplayName ?? "Pending", "Gateway"),
+            new IM1WorkspaceStatModel("Payments", Model.IsProcessingReady ? "Enabled" : "Disabled", "Processing readiness"),
+            new IM1WorkspaceStatModel("Relationship", account?.ProviderRelationshipStatus ?? "Pending", "Provider state")
+        },
+        new[]
+        {
+            new IM1ActionModel("Payments & Finance", Url.Action("Index", "FinancialServices"), "secondary"),
+            new IM1ActionModel("Edit Application", Url.Action("MerchantApplication", "FinancialServices") + "#merchant-application", canEdit ? "secondary" : "quiet"),
+            new IM1ActionModel("Test Payment", Url.Action("Index", "Payments"), "primary")
+        },
+        Model.IsProcessingReady ? "Active" : "Setup needed");
+}
+
+@await Html.PartialAsync("IM1WorkspaceHero", hero)
+
+@if (TempData["MerchantStatus"] is string status)
+{
+    <div class="im1-alert im1-alert-success">@status</div>
+}
+@if (TempData["MerchantError"] is string error)
+{
+    <div class="im1-alert im1-alert-error">@error</div>
+}
+
+<section class="im1-workspace-grid">
+    <article class="im1-workspace-card span-4">
+        <header class="im1-section-header">
+            <div>
+                <h2>Status</h2>
+                <p>Company-facing payment account state.</p>
+            </div>
+        </header>
+        <div class="im1-key-value-list">
+            <div><dt>Merchant status</dt><dd>@(account?.Status ?? "Not Started")</dd></div>
+            <div><dt>Provider</dt><dd>@(account?.ProviderDisplayName ?? "Pending")</dd></div>
+            <div><dt>Merchant ID</dt><dd>@(account?.HasProviderMerchant == true ? "Configured" : "Pending")</dd></div>
+            <div><dt>Gateway status</dt><dd>@(account?.ProviderRelationshipStatus ?? "Pending")</dd></div>
+            <div><dt>Environment</dt><dd>Sandbox</dd></div>
+            <div><dt>Payments enabled</dt><dd>@(account?.PaymentsEnabled == true ? "Yes" : "No")</dd></div>
+        </div>
+    </article>
+
+    <article class="im1-workspace-card span-8">
+        <header class="im1-section-header">
+            <div>
+                <h2>Next Steps</h2>
+                <p>What must happen before payments can run.</p>
+            </div>
+        </header>
+        @if (Model.RequiredNextSteps.Count == 0)
+        {
+            <p class="im1-empty-state">Merchant account is active and ready for test payments.</p>
+        }
+        else
+        {
+            <ul class="event-list">
+                @foreach (var step in Model.RequiredNextSteps)
+                {
+                    <li>@step</li>
+                }
+            </ul>
+        }
+    </article>
+</section>
+
+<section class="im1-workspace-grid">
+    <article id="merchant-application" class="im1-workspace-card span-12">
+        <header class="im1-section-header">
+            <div>
+                <h2>Merchant Application</h2>
+                <p>@(canEdit ? "Edit the application details and save before approval or activation." : "Application details are locked for this status.")</p>
+            </div>
+            @if (canEdit)
+            {
+                <form method="post" asp-controller="FinancialServices" asp-action="FillMerchantApplicationDemoData">
+                    @Html.AntiForgeryToken()
+                    <button class="im1-button im1-button-secondary" type="submit">Fill Demo Data</button>
+                </form>
+            }
+        </header>
+        <form class="im1-form-grid" method="post">
+            @Html.AntiForgeryToken()
+            <label>
+                Business Name
+                <input name="BusinessName" value="@app.BusinessName" maxlength="200" required @(canEdit ? null : "readonly") />
+            </label>
+            <label>
+                DBA
+                <input name="Dba" value="@app.Dba" maxlength="200" @(canEdit ? null : "readonly") />
+            </label>
+            <label>
+                EIN
+                <input name="Ein" value="@app.Ein" maxlength="20" @(canEdit ? null : "readonly") />
+            </label>
+            <label>
+                Tax ID
+                <input name="TaxId" value="@app.TaxId" maxlength="20" @(canEdit ? null : "readonly") />
+            </label>
+            <label>
+                Business Type
+                <input name="BusinessType" value="@app.BusinessType" maxlength="120" placeholder="LLC, corporation, sole proprietor" @(canEdit ? null : "readonly") />
+            </label>
+            <label>
+                Website
+                <input name="Website" value="@app.Website" maxlength="300" @(canEdit ? null : "readonly") />
+            </label>
+            <label>
+                MCC
+                <input name="Mcc" value="@app.Mcc" maxlength="10" @(canEdit ? null : "readonly") />
+            </label>
+            <label>
+                Expected Monthly Volume
+                <input name="ExpectedMonthlyVolume" type="number" min="0" step="0.01" value="@app.ExpectedMonthlyVolume" @(canEdit ? null : "readonly") />
+            </label>
+            <label>
+                Average Ticket
+                <input name="AverageTicket" type="number" min="0" step="0.01" value="@app.AverageTicket" @(canEdit ? null : "readonly") />
+            </label>
+            <label>
+                Physical Address
+                <input name="PhysicalAddressLine1" value="@app.PhysicalAddressLine1" maxlength="200" required @(canEdit ? null : "readonly") />
+            </label>
+            <label>
+                Address 2
+                <input name="PhysicalAddressLine2" value="@app.PhysicalAddressLine2" maxlength="200" @(canEdit ? null : "readonly") />
+            </label>
+            <label>
+                City
+                <input name="PhysicalCity" value="@app.PhysicalCity" maxlength="120" required @(canEdit ? null : "readonly") />
+            </label>
+            <label>
+                State
+                <input name="PhysicalRegion" value="@app.PhysicalRegion" maxlength="80" required @(canEdit ? null : "readonly") />
+            </label>
+            <label>
+                ZIP
+                <input name="PhysicalPostalCode" value="@app.PhysicalPostalCode" maxlength="20" required @(canEdit ? null : "readonly") />
+            </label>
+            <input type="hidden" name="PhysicalCountry" value="US" />
+            <label>
+                Mailing Address
+                <input name="MailingAddressLine1" value="@app.MailingAddressLine1" maxlength="200" @(canEdit ? null : "readonly") />
+            </label>
+            <label>
+                Mailing City
+                <input name="MailingCity" value="@app.MailingCity" maxlength="120" @(canEdit ? null : "readonly") />
+            </label>
+            <label>
+                Mailing State
+                <input name="MailingRegion" value="@app.MailingRegion" maxlength="80" @(canEdit ? null : "readonly") />
+            </label>
+            <label>
+                Mailing ZIP
+                <input name="MailingPostalCode" value="@app.MailingPostalCode" maxlength="20" @(canEdit ? null : "readonly") />
+            </label>
+            <input type="hidden" name="MailingCountry" value="US" />
+            <label>
+                Owner Name
+                <input name="OwnerName" value="@app.OwnerName" maxlength="200" required @(canEdit ? null : "readonly") />
+            </label>
+            <label>
+                Owner Email
+                <input name="OwnerEmail" type="email" value="@app.OwnerEmail" maxlength="320" required @(canEdit ? null : "readonly") />
+            </label>
+            <label>
+                Owner Phone
+                <input name="OwnerPhone" value="@app.OwnerPhone" maxlength="40" required @(canEdit ? null : "readonly") />
+            </label>
+            <label>
+                Bank Name
+                <input name="BankName" value="@app.BankName" maxlength="160" @(canEdit ? null : "readonly") />
+            </label>
+            <label>
+                Routing Number
+                <input name="BankRoutingNumber" value="@app.BankRoutingLastFour" maxlength="20" @(canEdit ? null : "readonly") />
+            </label>
+            <label>
+                Account Number
+                <input name="BankAccountNumber" value="@app.BankAccountLastFour" maxlength="30" @(canEdit ? null : "readonly") />
+            </label>
+            @if (canEdit)
+            {
+                <div class="span-2">
+                    <button class="im1-button im1-button-secondary" formaction="@Url.Action("SaveMerchantApplication", "FinancialServices")" type="submit">@saveLabel</button>
+                    @if (app.CanSubmit)
+                    {
+                        <button class="im1-button im1-button-primary" formaction="@Url.Action("SubmitMerchantApplication", "FinancialServices")" type="submit">Submit Application</button>
+                    }
+                </div>
+            }
+        </form>
+    </article>
+</section>
+
+<section class="im1-workspace-grid">
+    <article class="im1-workspace-card span-12">
+        <header class="im1-section-header">
+            <div>
+                <h2>Payment History</h2>
+                <p>Use Test Payment to process a sandbox transaction and view it in transaction history.</p>
+            </div>
+        </header>
+        <a class="im1-button im1-button-primary" href="@Url.Action("Index", "Payments")">Open Test Payment</a>
+    </article>
+</section>

@@ -1,0 +1,256 @@
+@model iM1os.Application.Payments.PaymentsWorkspace
+@{
+    ViewData["Title"] = "Payments";
+    var organizationId = ViewBag.OrganizationId as Guid?;
+
+    static string Money(decimal value, string currency = "USD") => string.Equals(currency, "USD", StringComparison.OrdinalIgnoreCase)
+        ? value.ToString("C2")
+        : $"{value:N2} {currency}";
+
+    var hero = new IM1WorkspaceHeroModel(
+        "iM1 Payments",
+        "Merchant services",
+        "Tokenized card payments and transaction visibility for the company workspace.",
+        new[]
+        {
+            new IM1WorkspaceStatModel("Approved Sales", Model.ApprovedSalesTotal.ToString("C0"), "Last 100 recorded payments"),
+            new IM1WorkspaceStatModel("Approved", Model.ApprovedCount.ToString("N0"), "Payment approvals"),
+            new IM1WorkspaceStatModel("Declined", Model.DeclinedCount.ToString("N0"), "Payment declines"),
+            new IM1WorkspaceStatModel("Pending", Model.PendingCount.ToString("N0"), "Open attempts")
+        },
+        new[]
+        {
+            new IM1ActionModel("Payments & Finance", Url.Action("Index", "FinancialServices"), "secondary")
+        },
+        Model.Configuration.IsConfigured ? $"{Model.Configuration.Environment} active" : "Setup needed");
+}
+
+@await Html.PartialAsync("IM1WorkspaceHero", hero)
+
+@if (TempData["PaymentsStatus"] is string status)
+{
+    <div class="im1-alert im1-alert-success">@status</div>
+}
+@if (TempData["PaymentsError"] is string error)
+{
+    <div class="im1-alert im1-alert-error">@error</div>
+}
+
+<section class="im1-workspace-grid im1-payments-workspace">
+    <article class="im1-workspace-card span-5">
+        <header class="im1-section-header">
+            <div>
+                <h2>New Card Payment</h2>
+                <p>Hosted card fields send iM1 only a single-use payment token.</p>
+            </div>
+        </header>
+
+        @if (!Model.Configuration.IsConfigured)
+        {
+            <div class="im1-alert im1-alert-error">Payment processing credentials are required before payments can run.</div>
+            <div class="im1-key-value-list">
+                <div><dt>Merchant account</dt><dd>@(Model.Configuration.HasActiveMerchant ? "Active" : "Missing")</dd></div>
+                <div><dt>Processing credentials</dt><dd>@(Model.Configuration.HasMerchantPrivateKey ? "Configured" : "Missing")</dd></div>
+                <div><dt>Tokenization key</dt><dd>@(!string.IsNullOrWhiteSpace(Model.Configuration.PublicTokenizationKey) ? "Configured" : "Missing")</dd></div>
+                <div><dt>Platform services</dt><dd>@(Model.Configuration.HasPartnerApiKey ? "Configured" : "Missing")</dd></div>
+            </div>
+        }
+        else
+        {
+            <form id="im1PaymentForm" class="im1-form-grid" asp-controller="Payments" asp-action="CreateSale" method="post">
+                @Html.AntiForgeryToken()
+                @if (organizationId is not null)
+                {
+                    <input type="hidden" name="organizationId" value="@organizationId" />
+                }
+                <input id="im1PaymentToken" type="hidden" name="PaymentToken" />
+                <input id="im1CardBrand" type="hidden" name="CardBrand" />
+                <input id="im1CardLastFour" type="hidden" name="CardLastFour" />
+
+                <label>
+                    Amount
+                    <input id="im1PaymentAmount" name="Amount" type="number" min="1.00" step="0.01" value="1.00" required />
+                </label>
+                <label>
+                    Currency
+                    <select name="Currency">
+                        <option value="USD" selected>USD</option>
+                    </select>
+                </label>
+                <label>
+                    Order ID
+                    <input name="OrderId" maxlength="120" placeholder="Invoice or work order" />
+                </label>
+                <label>
+                    Description
+                    <input name="Description" maxlength="500" placeholder="Parts deposit, invoice payment" />
+                </label>
+                <label>
+                    First name
+                    <input name="FirstName" maxlength="120" autocomplete="given-name" />
+                </label>
+                <label>
+                    Last name
+                    <input name="LastName" maxlength="120" autocomplete="family-name" />
+                </label>
+                <label>
+                    Email
+                    <input name="Email" type="email" maxlength="320" autocomplete="email" />
+                </label>
+                <label>
+                    Phone
+                    <input name="Phone" maxlength="40" autocomplete="tel" />
+                </label>
+                <label>
+                    Address
+                    <input name="AddressLine1" maxlength="200" autocomplete="address-line1" />
+                </label>
+                <label>
+                    City
+                    <input name="City" maxlength="120" autocomplete="address-level2" />
+                </label>
+                <label>
+                    State
+                    <input name="Region" maxlength="80" autocomplete="address-level1" />
+                </label>
+                <label>
+                    ZIP
+                    <input name="PostalCode" maxlength="20" autocomplete="postal-code" />
+                </label>
+                <input type="hidden" name="Country" value="US" />
+                <input type="hidden" name="ReferenceType" value="ManualPayment" />
+
+                <div class="im1-payment-field span-2">
+                    <span>Card number</span>
+                    <div id="im1CcNumber"></div>
+                </div>
+                <div class="im1-payment-field">
+                    <span>Expiration</span>
+                    <div id="im1CcExp"></div>
+                </div>
+                <div class="im1-payment-field">
+                    <span>CVV</span>
+                    <div id="im1Cvv"></div>
+                </div>
+                <button id="im1PayButton" class="im1-button im1-button-primary span-2" type="button">Submit Payment</button>
+                <p id="im1PaymentMessage" class="im1-form-help span-2" aria-live="polite"></p>
+            </form>
+        }
+    </article>
+
+    <article class="im1-workspace-card span-7">
+        <header class="im1-section-header">
+            <div>
+                <h2>Recent Transactions</h2>
+                <p>Latest payment attempts recorded for this company.</p>
+            </div>
+        </header>
+        <div class="im1-table-compact">
+            <table>
+                <thead>
+                <tr>
+                    <th>Time</th>
+                    <th>Customer</th>
+                    <th>Order</th>
+                    <th>Amount</th>
+                    <th>Status</th>
+                    <th>Transaction ID</th>
+                </tr>
+                </thead>
+                <tbody>
+                @if (Model.Transactions.Count == 0)
+                {
+                    <tr>
+                        <td colspan="6">No payment transactions have been recorded.</td>
+                    </tr>
+                }
+                @foreach (var transaction in Model.Transactions)
+                {
+                    <tr>
+                        <td>@transaction.CreatedAtUtc.LocalDateTime.ToString("g")</td>
+                        <td>
+                            <strong>@(transaction.CustomerName ?? "-")</strong>
+                            @if (!string.IsNullOrWhiteSpace(transaction.CustomerEmail))
+                            {
+                                <em>@transaction.CustomerEmail</em>
+                            }
+                        </td>
+                        <td>
+                            @(transaction.OrderId ?? "-")
+                            @if (!string.IsNullOrWhiteSpace(transaction.Description))
+                            {
+                                <em>@transaction.Description</em>
+                            }
+                        </td>
+                        <td>@Money(transaction.Amount, transaction.Currency)</td>
+                        <td><span class="im1-inventory-status @(transaction.IsApproved ? null : "is-low")">@transaction.Status</span></td>
+                        <td>
+                            @(transaction.GatewayTransactionId ?? "-")
+                            @if (!string.IsNullOrWhiteSpace(transaction.AuthorizationCode))
+                            {
+                                <em>Auth @transaction.AuthorizationCode</em>
+                            }
+                        </td>
+                    </tr>
+                }
+                </tbody>
+            </table>
+        </div>
+    </article>
+</section>
+
+@section Head {
+    @if (Model.Configuration.IsConfigured)
+    {
+        <script src="@Model.Configuration.CollectJsUrl"
+                data-tokenization-key="@Model.Configuration.PublicTokenizationKey"
+                data-variant="inline"></script>
+    }
+}
+
+@section Scripts {
+    @if (Model.Configuration.IsConfigured)
+    {
+        <script>
+            (() => {
+                const form = document.getElementById("im1PaymentForm");
+                const button = document.getElementById("im1PayButton");
+                const message = document.getElementById("im1PaymentMessage");
+                const amount = document.getElementById("im1PaymentAmount");
+                const token = document.getElementById("im1PaymentToken");
+                const brand = document.getElementById("im1CardBrand");
+                const lastFour = document.getElementById("im1CardLastFour");
+
+                if (!form || !button || typeof CollectJS === "undefined") return;
+
+                CollectJS.configure({
+                    paymentSelector: "#im1PayButton",
+                    variant: "inline",
+                    price: amount?.value || "1.00",
+                    currency: "USD",
+                    country: "US",
+                    invalidCss: { color: "#b91c1c", "border-color": "#b91c1c" },
+                    validCss: { color: "#111827", "border-color": "#15803d" },
+                    focusCss: { color: "#111827", "border-color": "#2563eb" },
+                    fields: {
+                        ccnumber: { selector: "#im1CcNumber", title: "Card Number", placeholder: "0000 0000 0000 0000" },
+                        ccexp: { selector: "#im1CcExp", title: "Expiration", placeholder: "MM / YY" },
+                        cvv: { display: "show", selector: "#im1Cvv", title: "CVV", placeholder: "123" }
+                    },
+                    callback: response => {
+                        token.value = response.token || "";
+                        brand.value = response.card?.type || "";
+                        const digits = (response.card?.number || "").replace(/\D/g, "");
+                        lastFour.value = digits.length >= 4 ? digits.slice(-4) : "";
+                        button.disabled = true;
+                        message.textContent = "Submitting payment.";
+                        form.submit();
+                    },
+                    timeoutCallback: () => {
+                        message.textContent = "Payment tokenization timed out.";
+                    }
+                });
+            })();
+        </script>
+    }
+}

@@ -920,6 +920,412 @@ public sealed class SupplierItemSearchServiceTests
         Assert.Contains(page.ConfiguredSuppliers, x => x.Code == "TURN14" && !x.IsEnabled);
     }
 
+    [Fact]
+    public async Task Search_normalized_catalog_returns_canonical_item_with_supplier_offers()
+    {
+        await using var dbContext = CreateContext();
+        var wps = new Supplier { Name = "Western Power Sports", Code = "WPS", ConnectorKey = "WPS" };
+        var partsUnlimited = new Supplier { Name = "Parts Unlimited", Code = "PU", ConnectorKey = "PU" };
+        var canonicalItem = new CanonicalItem
+        {
+            Brand = "NGK",
+            Manufacturer = "NGK",
+            ManufacturerPartNumber = "BR8ES",
+            NormalizedManufacturerPartNumber = "BR8ES",
+            PrimaryUpc = "087295103968",
+            Title = "NGK Spark Plug BR8ES",
+            Category = "Ignition",
+            PrimaryImageUrl = "https://cdn.example.test/br8es.jpg",
+            SearchText = "ngk spark plug br8es",
+            Status = "Active"
+        };
+        var wpsProduct = new GlobalProduct
+        {
+            Brand = "NGK",
+            Manufacturer = "NGK",
+            ManufacturerPartNumber = "BR-8ES",
+            NormalizedManufacturerPartNumber = "BR8ES",
+            Description = "Spark Plug BR-8ES",
+            Status = "Active"
+        };
+        var partsUnlimitedProduct = new GlobalProduct
+        {
+            Brand = "NGK",
+            Manufacturer = "NGK",
+            ManufacturerPartNumber = "BR8ES",
+            NormalizedManufacturerPartNumber = "BR8ES",
+            Description = "NGK Standard Spark Plug",
+            Status = "Active"
+        };
+        var wpsSupplierProduct = new SupplierProduct
+        {
+            SupplierId = wps.Id,
+            GlobalProductId = wpsProduct.Id,
+            SupplierSku = "2103-0010",
+            SupplierDescription = "NGK SPARK PLUG BR-8ES",
+            SupplierPartNumber = "2103-0010",
+            ManufacturerPartNumber = "BR-8ES",
+            NormalizedManufacturerPartNumber = "BR8ES",
+            SupplierStatus = "Active"
+        };
+        var partsUnlimitedSupplierProduct = new SupplierProduct
+        {
+            SupplierId = partsUnlimited.Id,
+            GlobalProductId = partsUnlimitedProduct.Id,
+            SupplierSku = "BR8ES",
+            SupplierDescription = "NGK STANDARD SPARK PLUG",
+            SupplierPartNumber = "BR8ES",
+            ManufacturerPartNumber = "BR8ES",
+            NormalizedManufacturerPartNumber = "BR8ES",
+            SupplierStatus = "Active"
+        };
+
+        dbContext.Suppliers.AddRange(wps, partsUnlimited);
+        dbContext.GlobalProducts.AddRange(wpsProduct, partsUnlimitedProduct);
+        dbContext.SupplierProducts.AddRange(wpsSupplierProduct, partsUnlimitedSupplierProduct);
+        dbContext.CanonicalItems.Add(canonicalItem);
+        dbContext.CanonicalItemSources.AddRange(
+            new CanonicalItemSource
+            {
+                CanonicalItemId = canonicalItem.Id,
+                GlobalProductId = wpsProduct.Id,
+                SupplierId = wps.Id,
+                SupplierProductId = wpsSupplierProduct.Id,
+                SupplierCode = "WPS",
+                SourceTable = "supplier_products",
+                SourceKey = wpsSupplierProduct.Id.ToString(),
+                MatchMethod = "normalized_mpn",
+                MatchConfidence = 1m
+            },
+            new CanonicalItemSource
+            {
+                CanonicalItemId = canonicalItem.Id,
+                GlobalProductId = partsUnlimitedProduct.Id,
+                SupplierId = partsUnlimited.Id,
+                SupplierProductId = partsUnlimitedSupplierProduct.Id,
+                SupplierCode = "PU",
+                SourceTable = "supplier_products",
+                SourceKey = partsUnlimitedSupplierProduct.Id.ToString(),
+                MatchMethod = "normalized_mpn",
+                MatchConfidence = 1m
+            });
+        dbContext.CanonicalItemSupplierOffers.AddRange(
+            new CanonicalItemSupplierOffer
+            {
+                CanonicalItemId = canonicalItem.Id,
+                SupplierId = wps.Id,
+                SupplierProductId = wpsSupplierProduct.Id,
+                SupplierCode = "WPS",
+                SupplierSku = "2103-0010",
+                SupplierPartNumber = "BR-8ES",
+                SupplierTitle = "NGK SPARK PLUG BR-8ES",
+                ListPrice = 4.99m,
+                DealerCost = 3.25m,
+                Status = "Active"
+            },
+            new CanonicalItemSupplierOffer
+            {
+                CanonicalItemId = canonicalItem.Id,
+                SupplierId = partsUnlimited.Id,
+                SupplierProductId = partsUnlimitedSupplierProduct.Id,
+                SupplierCode = "PU",
+                SupplierSku = "BR8ES",
+                SupplierPartNumber = "BR8ES",
+                SupplierTitle = "NGK STANDARD SPARK PLUG",
+                ListPrice = 4.99m,
+                DealerCost = 3.15m,
+                Status = "Active"
+            });
+        await dbContext.SaveChangesAsync();
+
+        var service = CreateService(dbContext);
+
+        var page = await service.SearchAsync(
+            new SupplierItemSearchRequest("BR-8ES", null, null, null, null, null, SearchExecuted: true, UseNormalizedCatalog: true),
+            10,
+            CancellationToken.None);
+
+        Assert.True(page.UseNormalizedCatalog);
+        var item = Assert.Single(page.Results);
+        Assert.Equal("NGK Spark Plug BR8ES", item.Title);
+        Assert.Equal("BR8ES", item.ManufacturerPartNumber);
+        Assert.Equal("087295103968", item.Upc);
+        Assert.NotNull(item.Offers);
+        Assert.Equal(2, item.Offers!.Count);
+        Assert.Contains(item.Offers, offer => offer.SupplierCode == "WPS" && offer.SupplierSku == "2103-0010");
+        Assert.Contains(item.Offers, offer => offer.SupplierCode == "PU" && offer.SupplierSku == "BR8ES");
+    }
+
+    [Fact]
+    public async Task Search_normalized_catalog_filters_by_ymm_from_supplier_fitment_records()
+    {
+        await using var dbContext = CreateContext();
+        var supplier = new Supplier { Name = "Western Power Sports", Code = "WPS", ConnectorKey = "WPS" };
+        var matchedCanonicalItem = new CanonicalItem
+        {
+            Brand = "BOLT",
+            Manufacturer = "BOLT",
+            ManufacturerPartNumber = "TC-M6M8",
+            NormalizedManufacturerPartNumber = "TCM6M8",
+            Title = "Thread Chasers",
+            Status = "Active"
+        };
+        var otherCanonicalItem = new CanonicalItem
+        {
+            Brand = "BOLT",
+            Manufacturer = "BOLT",
+            ManufacturerPartNumber = "TC-M10",
+            NormalizedManufacturerPartNumber = "TCM10",
+            Title = "Other Thread Chasers",
+            Status = "Active"
+        };
+        var matchedProduct = new GlobalProduct
+        {
+            Brand = "BOLT",
+            Manufacturer = "BOLT",
+            ManufacturerPartNumber = "TC-M6M8",
+            NormalizedManufacturerPartNumber = "TCM6M8",
+            Description = "Thread Chasers",
+            Status = "Active"
+        };
+        var otherProduct = new GlobalProduct
+        {
+            Brand = "BOLT",
+            Manufacturer = "BOLT",
+            ManufacturerPartNumber = "TC-M10",
+            NormalizedManufacturerPartNumber = "TCM10",
+            Description = "Other Thread Chasers",
+            Status = "Active"
+        };
+        var matchedSupplierProduct = new SupplierProduct
+        {
+            SupplierId = supplier.Id,
+            GlobalProductId = matchedProduct.Id,
+            SupplierSku = "020-00104",
+            SupplierDescription = "EURO STYLE TRACK PACK II",
+            SupplierPartNumber = "020-00104",
+            ManufacturerPartNumber = "TC-M6M8",
+            NormalizedManufacturerPartNumber = "TCM6M8",
+            SupplierStatus = "STK"
+        };
+        var otherSupplierProduct = new SupplierProduct
+        {
+            SupplierId = supplier.Id,
+            GlobalProductId = otherProduct.Id,
+            SupplierSku = "020-00999",
+            SupplierDescription = "OTHER PART",
+            SupplierPartNumber = "020-00999",
+            ManufacturerPartNumber = "TC-M10",
+            NormalizedManufacturerPartNumber = "TCM10",
+            SupplierStatus = "STK"
+        };
+
+        dbContext.Suppliers.Add(supplier);
+        dbContext.GlobalProducts.AddRange(matchedProduct, otherProduct);
+        dbContext.SupplierProducts.AddRange(matchedSupplierProduct, otherSupplierProduct);
+        dbContext.CanonicalItems.AddRange(matchedCanonicalItem, otherCanonicalItem);
+        dbContext.CanonicalItemSupplierOffers.AddRange(
+            new CanonicalItemSupplierOffer
+            {
+                CanonicalItemId = matchedCanonicalItem.Id,
+                SupplierId = supplier.Id,
+                SupplierProductId = matchedSupplierProduct.Id,
+                SupplierCode = "WPS",
+                SupplierSku = "020-00104",
+                SupplierPartNumber = "020-00104",
+                SupplierTitle = "EURO STYLE TRACK PACK II",
+                Status = "STK"
+            },
+            new CanonicalItemSupplierOffer
+            {
+                CanonicalItemId = otherCanonicalItem.Id,
+                SupplierId = supplier.Id,
+                SupplierProductId = otherSupplierProduct.Id,
+                SupplierCode = "WPS",
+                SupplierSku = "020-00999",
+                SupplierPartNumber = "020-00999",
+                SupplierTitle = "OTHER PART",
+                Status = "STK"
+            });
+        dbContext.SupplierFitmentRecords.Add(new SupplierFitmentRecord
+        {
+            SupplierId = supplier.Id,
+            SupplierProductId = matchedSupplierProduct.Id,
+            GlobalProductId = matchedProduct.Id,
+            SupplierKey = "WPS",
+            SupplierSku = "020-00104",
+            VehicleClass = "offroad_dirt",
+            VehicleType = "Offroad / Dirt",
+            Year = 2018,
+            Make = "KTM",
+            Model = "125 SX",
+            ResolutionStatus = "Resolved",
+            ImportedAtUtc = new DateTimeOffset(2026, 6, 29, 12, 0, 0, TimeSpan.Zero)
+        });
+        await dbContext.SaveChangesAsync();
+
+        var service = CreateService(dbContext);
+
+        var page = await service.SearchAsync(
+            new SupplierItemSearchRequest(null, null, "Offroad / Dirt", 2018, "KTM", "125 SX", SearchExecuted: true, UseNormalizedCatalog: true),
+            10,
+            CancellationToken.None);
+
+        Assert.True(page.UseNormalizedCatalog);
+        var item = Assert.Single(page.Results);
+        Assert.Equal("020-00104", item.SupplierSku);
+        Assert.Equal(1, item.FitmentRecordCount);
+    }
+
+    [Fact]
+    public async Task Search_normalized_catalog_groups_alias_brands_by_normalized_mfg_part()
+    {
+        await using var dbContext = CreateContext();
+        var wps = new Supplier { Name = "Western Power Sports", Code = "WPS", ConnectorKey = "WPS" };
+        var partsUnlimited = new Supplier { Name = "Parts Unlimited", Code = "PU", ConnectorKey = "PU" };
+        var turn14 = new Supplier { Name = "Turn 14 Distribution", Code = "TURN14", ConnectorKey = "TURN14" };
+        var maximaCanonicalItem = new CanonicalItem
+        {
+            Brand = "MAXIMA",
+            Manufacturer = "MAXIMA",
+            ManufacturerPartNumber = "30-02901",
+            NormalizedManufacturerPartNumber = "3002901",
+            Title = "MAXIMA PROPLUS OIL 4T 10W40 1L - 30-02901",
+            Category = "Chemicals",
+            Status = "Active"
+        };
+        var maximaRacingCanonicalItem = new CanonicalItem
+        {
+            Brand = "MAXIMA RACING OIL",
+            Manufacturer = "MAXIMA RACING OIL",
+            ManufacturerPartNumber = "3002901",
+            NormalizedManufacturerPartNumber = "3002901",
+            Title = "OIL 4T PRO PLUS+ 10W40 L - 3002901",
+            Category = "A",
+            Status = "Active"
+        };
+        var wpsProduct = new GlobalProduct
+        {
+            Brand = "MAXIMA",
+            Manufacturer = "MAXIMA",
+            ManufacturerPartNumber = "30-02901",
+            NormalizedManufacturerPartNumber = "3002901",
+            Description = "Pro Plus Oil",
+            Status = "Active"
+        };
+        var partsUnlimitedProduct = new GlobalProduct
+        {
+            Brand = "MAXIMA RACING OIL",
+            Manufacturer = "MAXIMA RACING OIL",
+            ManufacturerPartNumber = "3002901",
+            NormalizedManufacturerPartNumber = "3002901",
+            Description = "OIL 4T PRO PLUS+ 10W40 L",
+            Status = "Active"
+        };
+        var turn14Product = new GlobalProduct
+        {
+            Brand = "Maxima",
+            Manufacturer = "MAXIMA",
+            ManufacturerPartNumber = "30-02901",
+            NormalizedManufacturerPartNumber = "3002901",
+            Description = "MXA Pro Plus+ Oil",
+            Status = "Active"
+        };
+        var wpsSupplierProduct = new SupplierProduct
+        {
+            SupplierId = wps.Id,
+            GlobalProductId = wpsProduct.Id,
+            SupplierSku = "78-98686",
+            SupplierDescription = "MAXIMA PRO PLUS OIL",
+            SupplierPartNumber = "78-98686",
+            ManufacturerPartNumber = "30-02901",
+            NormalizedManufacturerPartNumber = "3002901",
+            SupplierStatus = "STK"
+        };
+        var partsUnlimitedSupplierProduct = new SupplierProduct
+        {
+            SupplierId = partsUnlimited.Id,
+            GlobalProductId = partsUnlimitedProduct.Id,
+            SupplierSku = "36010269",
+            SupplierDescription = "OIL 4T PRO PLUS+ 10W40 L",
+            SupplierPartNumber = "3601-0269",
+            ManufacturerPartNumber = "3002901",
+            NormalizedManufacturerPartNumber = "3002901",
+            SupplierStatus = "Active"
+        };
+        var turn14SupplierProduct = new SupplierProduct
+        {
+            SupplierId = turn14.Id,
+            GlobalProductId = turn14Product.Id,
+            SupplierSku = "mxa30-02901",
+            SupplierDescription = "MXA Pro Plus+ Oil",
+            SupplierPartNumber = "mxa30-02901",
+            ManufacturerPartNumber = "30-02901",
+            NormalizedManufacturerPartNumber = "3002901",
+            SupplierStatus = "Active"
+        };
+
+        dbContext.Suppliers.AddRange(wps, partsUnlimited, turn14);
+        dbContext.GlobalProducts.AddRange(wpsProduct, partsUnlimitedProduct, turn14Product);
+        dbContext.SupplierProducts.AddRange(wpsSupplierProduct, partsUnlimitedSupplierProduct, turn14SupplierProduct);
+        dbContext.CanonicalItems.AddRange(maximaCanonicalItem, maximaRacingCanonicalItem);
+        dbContext.CanonicalItemSupplierOffers.AddRange(
+            new CanonicalItemSupplierOffer
+            {
+                CanonicalItemId = maximaCanonicalItem.Id,
+                SupplierId = wps.Id,
+                SupplierProductId = wpsSupplierProduct.Id,
+                SupplierCode = "WPS",
+                SupplierSku = "78-98686",
+                SupplierPartNumber = "78-98686",
+                SupplierTitle = "MAXIMA PRO PLUS OIL",
+                ListPrice = 18.99m,
+                DealerCost = 12.99m,
+                Status = "STK"
+            },
+            new CanonicalItemSupplierOffer
+            {
+                CanonicalItemId = maximaRacingCanonicalItem.Id,
+                SupplierId = partsUnlimited.Id,
+                SupplierProductId = partsUnlimitedSupplierProduct.Id,
+                SupplierCode = "PU",
+                SupplierSku = "36010269",
+                SupplierPartNumber = "3601-0269",
+                SupplierTitle = "OIL 4T PRO PLUS+ 10W40 L",
+                ListPrice = 18.99m,
+                DealerCost = 12.99m,
+                Status = "Active"
+            },
+            new CanonicalItemSupplierOffer
+            {
+                CanonicalItemId = maximaCanonicalItem.Id,
+                SupplierId = turn14.Id,
+                SupplierProductId = turn14SupplierProduct.Id,
+                SupplierCode = "TURN14",
+                SupplierSku = "mxa30-02901",
+                SupplierPartNumber = "mxa30-02901",
+                SupplierTitle = "MXA Pro Plus+ Oil",
+                ListPrice = 227.88m,
+                DealerCost = 120m,
+                Status = "Active"
+            });
+        await dbContext.SaveChangesAsync();
+
+        var service = CreateService(dbContext);
+
+        var page = await service.SearchAsync(
+            new SupplierItemSearchRequest("30-02901", null, null, null, null, null, SearchExecuted: true, UseNormalizedCatalog: true),
+            10,
+            CancellationToken.None);
+
+        var item = Assert.Single(page.Results);
+        Assert.NotNull(item.Offers);
+        Assert.Equal(3, item.Offers!.Count);
+        Assert.Contains(item.Offers, offer => offer.SupplierCode == "WPS" && offer.SupplierSku == "78-98686" && offer.ManufacturerPartNumber == "30-02901");
+        Assert.Contains(item.Offers, offer => offer.SupplierCode == "PU" && offer.SupplierSku == "36010269" && offer.ManufacturerPartNumber == "3002901");
+        Assert.Contains(item.Offers, offer => offer.SupplierCode == "TURN14" && offer.SupplierSku == "mxa30-02901" && offer.ManufacturerPartNumber == "30-02901");
+    }
+
     private static ApplicationDbContext CreateContext()
     {
         var options = new DbContextOptionsBuilder<ApplicationDbContext>()

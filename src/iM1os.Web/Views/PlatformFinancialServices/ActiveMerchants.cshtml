@@ -1,0 +1,82 @@
+@model iM1os.Application.FinancialServices.Merchant.PlatformActiveMerchantsWorkspace
+@{
+    ViewData["Title"] = "Active Merchants";
+    var hero = new IM1WorkspaceHeroModel(
+        "Active Merchants",
+        "Platform Financial Services",
+        "Internal merchant portfolio view for processing state, provider relationships, support notes, and lifecycle history.",
+        new[]
+        {
+            new IM1WorkspaceStatModel("Active", Model.ActiveCount.ToString("N0"), "Processing enabled"),
+            new IM1WorkspaceStatModel("Suspended", Model.SuspendedCount.ToString("N0"), "Processing blocked"),
+            new IM1WorkspaceStatModel("Closed", Model.ClosedCount.ToString("N0"), "No longer processing"),
+            new IM1WorkspaceStatModel("Portfolio", Model.Merchants.Count.ToString("N0"), "Merchant records")
+        },
+        new[]
+        {
+            new IM1ActionModel("Merchant Applications", Url.Action("MerchantApplications", "PlatformFinancialServices"), "secondary")
+        },
+        "Platform only");
+}
+
+@await Html.PartialAsync("IM1WorkspaceHero", hero)
+
+<section class="im1-workspace-grid">
+    <article class="im1-workspace-card span-12">
+        <header class="im1-section-header">
+            <div>
+                <h2>Merchant Portfolio</h2>
+                <p>Provider-specific identifiers and support notes remain in the platform workspace.</p>
+            </div>
+        </header>
+        <div class="im1-table-compact">
+            <table>
+                <thead>
+                <tr>
+                    <th>Company</th>
+                    <th>Status</th>
+                    <th>Provider</th>
+                    <th>Provider Merchant ID</th>
+                    <th>Gateway User</th>
+                    <th>Credentials</th>
+                    <th>Relationship</th>
+                    <th>Updated</th>
+                    <th>Support</th>
+                </tr>
+                </thead>
+                <tbody>
+                @if (Model.Merchants.Count == 0)
+                {
+                    <tr><td colspan="9">No active merchant portfolio records were found.</td></tr>
+                }
+                @foreach (var merchant in Model.Merchants)
+                {
+                    <tr>
+                        <td>
+                            <strong>@(merchant.CompanyName ?? merchant.CompanyId.ToString())</strong>
+                            <em>@(merchant.LegalBusinessName ?? "-")</em>
+                        </td>
+                        <td>@merchant.Status</td>
+                        <td>@(merchant.ProviderCode ?? "-")</td>
+                        <td>@(merchant.ProviderMerchantId ?? "-")</td>
+                        <td>@(merchant.GatewayUsername ?? "-")</td>
+                        <td>
+                            <span>Payment: @(merchant.HasPaymentApiKey ? "Yes" : "No")</span>
+                            <em>Tokenization: @(merchant.HasPublicTokenizationKey ? "Yes" : "No")</em>
+                        </td>
+                        <td>@(merchant.ProviderRelationshipStatus ?? "-")</td>
+                        <td>@((merchant.UpdatedAtUtc ?? merchant.CreatedAtUtc).LocalDateTime.ToString("g"))</td>
+                        <td>
+                            @(merchant.SupportNotes ?? "-")
+                            @if (!string.IsNullOrWhiteSpace(merchant.LastProviderError))
+                            {
+                                <em>@merchant.LastProviderError</em>
+                            }
+                        </td>
+                    </tr>
+                }
+                </tbody>
+            </table>
+        </div>
+    </article>
+</section>

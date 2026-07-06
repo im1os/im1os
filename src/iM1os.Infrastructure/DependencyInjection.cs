@@ -6,15 +6,21 @@ using iM1os.Application.CompanySuppliers;
 using iM1os.Application.Configuration;
 using iM1os.Application.Customers;
 using iM1os.Application.Employees;
+using iM1os.Application.FinancialServices.Merchant;
+using iM1os.Application.FinancialServices.Payments;
+using iM1os.Application.FinancialServices.Providers;
 using iM1os.Application.GlobalCatalog;
 using iM1os.Application.Inventory;
 using iM1os.Application.Marketing;
+using iM1os.Application.Payments;
 using iM1os.Application.Platform;
 using iM1os.Application.Tenancy;
 using iM1os.Application.TenantIdentity;
 using iM1os.Application.WorkOrders;
 using iM1os.Domain.Identity;
 using iM1os.Domain.Platform;
+using iM1os.Infrastructure.Configuration;
+using iM1os.Infrastructure.FinancialServices.Providers;
 using iM1os.Infrastructure.Persistence;
 using iM1os.Infrastructure.Security;
 using iM1os.Infrastructure.Services;
@@ -30,6 +36,7 @@ public static class DependencyInjection
     public static IServiceCollection AddInfrastructure(this IServiceCollection services, IConfiguration configuration)
     {
         services.Configure<JwtOptions>(configuration.GetSection(JwtOptions.SectionName));
+        services.Configure<NmiPaymentOptions>(configuration.GetSection(NmiPaymentOptions.SectionName));
 
         services.AddDbContext<ApplicationDbContext>(options =>
             options.UseNpgsql(configuration.GetConnectionString("DefaultConnection")));
@@ -82,6 +89,17 @@ public static class DependencyInjection
         services.AddScoped<IWorkOrderService, WorkOrderService>();
         services.AddScoped<ICompanyInventoryService, CompanyInventoryService>();
         services.AddScoped<IMarketingCmsService, MarketingCmsService>();
+        services.AddScoped<IMerchantAccountService, MerchantAccountService>();
+        services.AddScoped<IPaymentService, PaymentService>();
+        services.AddScoped<IIm1PaymentsService>(sp => sp.GetRequiredService<IPaymentService>() as IIm1PaymentsService
+            ?? throw new InvalidOperationException("Payment service must implement the legacy iM1 payments facade."));
+        services.AddScoped<IPaymentProvider, NmiPaymentProvider>();
+        services.AddScoped<IPartnerProvider, NmiPartnerProvider>();
+        services.AddScoped<IMerchantProvider, NmiMerchantProvider>();
+        services.AddScoped<ITerminalProvider, NmiTerminalProvider>();
+        services.AddScoped<ICustomerVaultProvider, NmiCustomerVaultProvider>();
+        services.AddScoped<IACHProvider, NmiAchProvider>();
+        services.AddScoped<ISubscriptionProvider, NmiSubscriptionProvider>();
         services.AddScoped<ITenantProfileService, TenantProfileService>();
         services.AddScoped<IWelcomeEmailSender, NoOpWelcomeEmailSender>();
         services.AddScoped<ITenantProvider, TenantProvider>();
@@ -111,9 +129,35 @@ public static class DependencyInjection
             client.Timeout = TimeSpan.FromMinutes(20);
             client.DefaultRequestHeaders.UserAgent.ParseAdd("iM1os-PartsUnlimited-Importer/1.0");
         });
+        services.AddHttpClient("NmiPayments", client =>
+        {
+            var options = configuration.GetSection(NmiPaymentOptions.SectionName).Get<NmiPaymentOptions>() ?? new NmiPaymentOptions();
+            client.BaseAddress = new Uri(EnsureTrailingSlash(options.PaymentsBaseUrl));
+            client.Timeout = TimeSpan.FromSeconds(45);
+            client.DefaultRequestHeaders.UserAgent.ParseAdd("iM1os-NMI-Payments/1.0");
+        });
+        services.AddHttpClient("NmiPartner", client =>
+        {
+            var options = configuration.GetSection(NmiPaymentOptions.SectionName).Get<NmiPaymentOptions>() ?? new NmiPaymentOptions();
+            client.BaseAddress = new Uri(EnsureTrailingSlash(options.AccountManagementBaseUrl));
+            client.Timeout = TimeSpan.FromSeconds(45);
+            client.DefaultRequestHeaders.UserAgent.ParseAdd("iM1os-NMI-Partner/1.0");
+        });
+        services.AddHttpClient("NmiSignup", client =>
+        {
+            var options = configuration.GetSection(NmiPaymentOptions.SectionName).Get<NmiPaymentOptions>() ?? new NmiPaymentOptions();
+            client.BaseAddress = new Uri(EnsureTrailingSlash(options.SignUpBaseUrl));
+            client.Timeout = TimeSpan.FromSeconds(45);
+            client.DefaultRequestHeaders.UserAgent.ParseAdd("iM1os-NMI-Signup/1.0");
+        });
         services.AddScoped<IPasswordHasher<ApplicationUser>, PasswordHasher<ApplicationUser>>();
         services.AddScoped<IPasswordHasher<PlatformUser>, PasswordHasher<PlatformUser>>();
 
         return services;
+    }
+
+    private static string EnsureTrailingSlash(string value)
+    {
+        return value.EndsWith("/", StringComparison.Ordinal) ? value : $"{value}/";
     }
 }

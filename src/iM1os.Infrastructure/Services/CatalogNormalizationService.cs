@@ -9,6 +9,12 @@ namespace iM1os.Infrastructure.Services;
 public sealed class CatalogNormalizationService(IApplicationDbContext dbContext) : ICatalogNormalizationService
 {
     private const string SupplierProductsSourceTable = "supplier_products";
+    private const int NormalizationWriteBatchSize = 10000;
+    private static readonly IReadOnlyDictionary<string, string> DefaultBrandAliases = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+    {
+        ["ALLBALLSRACING"] = "ALLBALLS",
+        ["MAXIMARACINGOIL"] = "MAXIMA"
+    };
 
     public async Task<CatalogNormalizationResult> NormalizeAsync(CatalogNormalizationRequest request, CancellationToken cancellationToken)
     {
@@ -184,10 +190,25 @@ public sealed class CatalogNormalizationService(IApplicationDbContext dbContext)
             var matchMethod = normalizedPartNumber is null ? "supplier_sku_fallback" : "new_canonical";
 
             CanonicalItem? canonicalItem = null;
-            if (sourceMap.TryGetValue(sourceKey, out var existingSource))
+            sourceMap.TryGetValue(sourceKey, out var existingSource);
+            if (existingSource is not null)
             {
                 canonicalById.TryGetValue(existingSource.CanonicalItemId, out canonicalItem);
                 matchMethod = "existing_source_link";
+                if (canonicalItem is not null && ShouldRefreshExistingSource(canonicalItem, canonicalKey))
+                {
+                    var refreshedMatch = FindCanonicalMatch(row, normalizedPartNumber, canonicalKey, canonicalByUpc, canonicalByPartAndBrand, supplierCodesByCanonicalId, out var refreshedMatchMethod, preferPartAndBrand: true);
+                    if (refreshedMatch is not null && refreshedMatch.Id != canonicalItem.Id)
+                    {
+                        if (supplierCodesByCanonicalId.TryGetValue(canonicalItem.Id, out var previousSupplierCodes))
+                        {
+                            previousSupplierCodes.Remove(row.SupplierCode);
+                        }
+
+                        canonicalItem = refreshedMatch;
+                        matchMethod = $"refreshed_{refreshedMatchMethod}";
+                    }
+                }
             }
 
             if (canonicalItem is null)
@@ -245,7 +266,7 @@ public sealed class CatalogNormalizationService(IApplicationDbContext dbContext)
                 updatedCanonicalItems++;
             }
 
-            if (!sourceMap.ContainsKey(sourceKey))
+            if (existingSource is null)
             {
                 var source = new CanonicalItemSource
                 {
@@ -262,6 +283,16 @@ public sealed class CatalogNormalizationService(IApplicationDbContext dbContext)
                 dbContext.CanonicalItemSources.Add(source);
                 sourceMap[sourceKey] = source;
                 addedSources++;
+            }
+            else
+            {
+                existingSource.CanonicalItemId = canonicalItem.Id;
+                existingSource.GlobalProductId = row.GlobalProductId;
+                existingSource.SupplierId = row.SupplierId;
+                existingSource.SupplierProductId = row.SupplierProductId;
+                existingSource.SupplierCode = Limit(row.SupplierCode, 80);
+                existingSource.MatchMethod = Limit(matchMethod, 120) ?? matchMethod;
+                existingSource.MatchConfidence = MatchConfidence(matchMethod);
             }
 
             latestPrices.TryGetValue(row.SupplierProductId, out var price);
@@ -309,6 +340,11 @@ public sealed class CatalogNormalizationService(IApplicationDbContext dbContext)
                     $"Catalog normalization resolving canonical items. Processed {processed:N0} / {sourceRows.Count:N0}; created {createdCanonicalItems:N0}, updated {updatedCanonicalItems:N0}, offers {upsertedOffers:N0}.",
                     cancellationToken);
             }
+
+            if (processed % NormalizationWriteBatchSize == 0)
+            {
+                await dbContext.SaveChangesAsync(cancellationToken);
+            }
         }
 
         await UpdateRunProgressAsync(
@@ -328,11 +364,23 @@ public sealed class CatalogNormalizationService(IApplicationDbContext dbContext)
         var linkedSupplierProducts = await dbContext.SupplierProducts
             .Where(x => supplierProductIds.Contains(x.Id))
             .ToListAsync(cancellationToken);
+        var linkedSupplierProductsUpdated = 0;
         foreach (var supplierProduct in linkedSupplierProducts)
         {
             if (canonicalLinksBySupplierProductId.TryGetValue(supplierProduct.Id, out var canonicalItemId))
             {
                 supplierProduct.CanonicalItemId = canonicalItemId;
+                linkedSupplierProductsUpdated++;
+                if (linkedSupplierProductsUpdated % NormalizationWriteBatchSize == 0)
+                {
+                    await dbContext.SaveChangesAsync(cancellationToken);
+                    await UpdateRunProgressAsync(
+                        request.ImportRunId,
+                        processed,
+                        sourceRows.Count,
+                        $"Catalog normalization linked {linkedSupplierProductsUpdated:N0} / {linkedSupplierProducts.Count:N0} supplier products to canonical items.",
+                        cancellationToken);
+                }
             }
         }
 
@@ -346,14 +394,14 @@ public sealed class CatalogNormalizationService(IApplicationDbContext dbContext)
             sourceRows.Count,
             "Catalog normalization adding item identifiers.",
             cancellationToken);
-        var addedIdentifiers = await AddIdentifiersAsync(sourceRows, sourceMap, canonicalItemIds, cancellationToken);
+        var addedIdentifiers = await AddIdentifiersAsync(sourceRows, sourceMap, canonicalItemIds, request.ImportRunId, cancellationToken);
         await UpdateRunProgressAsync(
             request.ImportRunId,
             processed,
             sourceRows.Count,
             $"Catalog normalization adding canonical fitment rows. Added {addedIdentifiers:N0} identifiers.",
             cancellationToken);
-        var addedFitments = await AddFitmentsAsync(sourceRows, sourceMap, canonicalItemIds, cancellationToken);
+        var addedFitments = await AddFitmentsAsync(sourceRows, sourceMap, canonicalItemIds, request.ImportRunId, cancellationToken);
         await UpdateRunProgressAsync(
             request.ImportRunId,
             processed,
@@ -376,19 +424,36 @@ public sealed class CatalogNormalizationService(IApplicationDbContext dbContext)
 
     private async Task UpdateRunProgressAsync(Guid importRunId, int processed, int total, string message, CancellationToken cancellationToken)
     {
-        await dbContext.SupplierConnectorImportRuns
-            .Where(x => x.Id == importRunId)
-            .ExecuteUpdateAsync(setters => setters
-                .SetProperty(x => x.ProgressProcessed, processed)
-                .SetProperty(x => x.ProgressTotal, total)
-                .SetProperty(x => x.Message, message),
-                cancellationToken);
+        try
+        {
+            await dbContext.SupplierConnectorImportRuns
+                .Where(x => x.Id == importRunId)
+                .ExecuteUpdateAsync(setters => setters
+                    .SetProperty(x => x.ProgressProcessed, processed)
+                    .SetProperty(x => x.ProgressTotal, total)
+                    .SetProperty(x => x.Message, message),
+                    cancellationToken);
+        }
+        catch (InvalidOperationException ex) when (ex.Message.Contains("ExecuteUpdate", StringComparison.OrdinalIgnoreCase))
+        {
+            var importRun = await dbContext.SupplierConnectorImportRuns
+                .SingleOrDefaultAsync(x => x.Id == importRunId, cancellationToken);
+            if (importRun is null)
+            {
+                return;
+            }
+
+            importRun.ProgressProcessed = processed;
+            importRun.ProgressTotal = total;
+            importRun.Message = message;
+        }
     }
 
     private async Task<int> AddIdentifiersAsync(
         IReadOnlyCollection<NormalizationSourceRow> sourceRows,
         IReadOnlyDictionary<string, CanonicalItemSource> sourceMap,
         IReadOnlyCollection<Guid> canonicalItemIds,
+        Guid importRunId,
         CancellationToken cancellationToken)
     {
         var existing = await dbContext.CanonicalItemIdentifiers
@@ -406,13 +471,28 @@ public sealed class CatalogNormalizationService(IApplicationDbContext dbContext)
             .ToHashSet(StringComparer.OrdinalIgnoreCase);
 
         var added = 0;
+        var processed = 0;
+        var nextSaveAt = NormalizationWriteBatchSize;
         foreach (var row in sourceRows)
         {
+            processed++;
             var canonicalItemId = sourceMap[row.SupplierProductId.ToString("N")].CanonicalItemId;
             added += AddIdentifier(existingKeys, canonicalItemId, "supplier_sku", row.SupplierSku, row.SupplierSku, row, false);
             added += AddIdentifier(existingKeys, canonicalItemId, "supplier_part_number", row.SupplierPartNumber, ProductMatchingService.NormalizeManufacturerPartNumber(row.SupplierPartNumber), row, false);
             added += AddIdentifier(existingKeys, canonicalItemId, "manufacturer_part_number", row.ManufacturerPartNumber ?? row.GlobalManufacturerPartNumber, row.NormalizedManufacturerPartNumber, row, true);
             added += AddIdentifier(existingKeys, canonicalItemId, "upc", row.Upc, CleanUpc(row.Upc), row, true);
+
+            if (added >= nextSaveAt)
+            {
+                await dbContext.SaveChangesAsync(cancellationToken);
+                await UpdateRunProgressAsync(
+                    importRunId,
+                    processed,
+                    sourceRows.Count,
+                    $"Catalog normalization adding item identifiers. Added {added:N0} identifiers.",
+                    cancellationToken);
+                nextSaveAt = added + NormalizationWriteBatchSize;
+            }
         }
 
         return added;
@@ -425,10 +505,12 @@ public sealed class CatalogNormalizationService(IApplicationDbContext dbContext)
         IReadOnlyDictionary<string, List<CanonicalItem>> canonicalByUpc,
         IReadOnlyDictionary<string, List<CanonicalItem>> canonicalByPartAndBrand,
         IReadOnlyDictionary<Guid, HashSet<string>> supplierCodesByCanonicalId,
-        out string matchMethod)
+        out string matchMethod,
+        bool preferPartAndBrand = false)
     {
         var upc = CleanUpc(row.Upc);
-        if (upc is not null &&
+        if (!preferPartAndBrand &&
+            upc is not null &&
             canonicalByUpc.TryGetValue(upc, out var upcMatches) &&
             upcMatches.Count == 1)
         {
@@ -440,6 +522,15 @@ public sealed class CatalogNormalizationService(IApplicationDbContext dbContext)
             !canonicalByPartAndBrand.TryGetValue(canonicalKey, out var partMatches) ||
             partMatches.Count == 0)
         {
+            if (preferPartAndBrand &&
+                upc is not null &&
+                canonicalByUpc.TryGetValue(upc, out var fallbackUpcMatches) &&
+                fallbackUpcMatches.Count == 1)
+            {
+                matchMethod = "upc";
+                return fallbackUpcMatches[0];
+            }
+
             matchMethod = "new_canonical";
             return null;
         }
@@ -478,8 +569,11 @@ public sealed class CatalogNormalizationService(IApplicationDbContext dbContext)
         {
             "existing_source_link" => 1.00m,
             "upc" => 0.99m,
+            "refreshed_upc" => 0.99m,
             "cross_supplier_brand_raw_mfg_part" => 0.97m,
+            "refreshed_cross_supplier_brand_raw_mfg_part" => 0.97m,
             "cross_supplier_brand_normalized_mfg_part" => 0.92m,
+            "refreshed_cross_supplier_brand_normalized_mfg_part" => 0.92m,
             "same_supplier_normalized_part_not_merged" => 0.70m,
             _ => 0.60m
         };
@@ -526,6 +620,7 @@ public sealed class CatalogNormalizationService(IApplicationDbContext dbContext)
         IReadOnlyCollection<NormalizationSourceRow> sourceRows,
         IReadOnlyDictionary<string, CanonicalItemSource> sourceMap,
         IReadOnlyCollection<Guid> canonicalItemIds,
+        Guid importRunId,
         CancellationToken cancellationToken)
     {
         var supplierProductIds = sourceRows.Select(x => x.SupplierProductId).ToList();
@@ -556,8 +651,10 @@ public sealed class CatalogNormalizationService(IApplicationDbContext dbContext)
             .ToHashSet(StringComparer.OrdinalIgnoreCase);
 
         var added = 0;
+        var processed = 0;
         foreach (var fitment in sourceFitments)
         {
+            processed++;
             Guid? canonicalItemId = null;
             if (fitment.SupplierProductId is Guid supplierProductId &&
                 canonicalBySupplierProductId.TryGetValue(supplierProductId, out var supplierCanonicalItemId))
@@ -601,6 +698,17 @@ public sealed class CatalogNormalizationService(IApplicationDbContext dbContext)
                 Notes = Limit(fitment.Notes, 1000)
             });
             added++;
+
+            if (added % NormalizationWriteBatchSize == 0)
+            {
+                await dbContext.SaveChangesAsync(cancellationToken);
+                await UpdateRunProgressAsync(
+                    importRunId,
+                    processed,
+                    sourceFitments.Count,
+                    $"Catalog normalization adding canonical fitment rows. Added {added:N0} fitments.",
+                    cancellationToken);
+            }
         }
 
         return added;
@@ -618,6 +726,19 @@ public sealed class CatalogNormalizationService(IApplicationDbContext dbContext)
         item.SearchText = BuildSearchText(row, canonicalBrand);
         item.Status = Limit(Clean(row.GlobalStatus) ?? Clean(row.SupplierStatus) ?? item.Status, 80) ?? item.Status;
         item.IsActive = item.IsActive || row.IsActive;
+    }
+
+    private static bool ShouldRefreshExistingSource(CanonicalItem item, string currentCanonicalKey)
+    {
+        if (string.IsNullOrWhiteSpace(currentCanonicalKey) || currentCanonicalKey == "|")
+        {
+            return false;
+        }
+
+        return !string.Equals(
+            CanonicalKey(item.Brand, item.NormalizedManufacturerPartNumber),
+            currentCanonicalKey,
+            StringComparison.OrdinalIgnoreCase);
     }
 
     private static string BuildTitle(NormalizationSourceRow row, string? canonicalBrand)
@@ -736,7 +857,7 @@ public sealed class CatalogNormalizationService(IApplicationDbContext dbContext)
             .ToList();
         if (brandKeys.Count == 0)
         {
-            return new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+            return DefaultBrandAliases;
         }
 
         var aliases = await dbContext.CanonicalBrandAliases
@@ -745,7 +866,13 @@ public sealed class CatalogNormalizationService(IApplicationDbContext dbContext)
             .Select(x => new { x.NormalizedBrand, x.CanonicalBrand })
             .ToListAsync(cancellationToken);
 
-        return aliases.ToDictionary(x => x.NormalizedBrand, x => x.CanonicalBrand, StringComparer.OrdinalIgnoreCase);
+        var result = new Dictionary<string, string>(DefaultBrandAliases, StringComparer.OrdinalIgnoreCase);
+        foreach (var alias in aliases)
+        {
+            result[alias.NormalizedBrand] = alias.CanonicalBrand;
+        }
+
+        return result;
     }
 
     private static string? CanonicalBrand(NormalizationSourceRow row, IReadOnlyDictionary<string, string> brandAliasesByKey)

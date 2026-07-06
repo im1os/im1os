@@ -1,0 +1,49 @@
+@model iM1os.Application.FinancialServices.PlatformFinancialServicesModuleDefinition
+@{
+    ViewData["Title"] = Model.Name;
+
+    var hero = new IM1WorkspaceHeroModel(
+        Model.Name,
+        "Platform Financial Services placeholder",
+        Model.Summary,
+        new[]
+        {
+            new IM1WorkspaceStatModel("Status", Model.Status, "Implementation state"),
+            new IM1WorkspaceStatModel("Category", Model.Category, "Platform area"),
+            new IM1WorkspaceStatModel("Workflow", Model.WorkflowStage, "Primary step"),
+            new IM1WorkspaceStatModel("Audience", "iM1 Internal", "Not tenant-facing")
+        },
+        new[]
+        {
+            new IM1ActionModel("Platform Financial Services", Url.Action("Index", "PlatformFinancialServices"), "secondary")
+        },
+        Model.Status);
+}
+
+@await Html.PartialAsync("IM1WorkspaceHero", hero)
+
+<section class="im1-workspace-grid">
+    <article class="im1-workspace-card span-6">
+        <header class="im1-section-header">
+            <div>
+                <h2>Platform Boundary</h2>
+                <p>This area belongs to iM1's internal merchant services operation.</p>
+            </div>
+        </header>
+        <div class="im1-key-value-list">
+            <div><dt>Module key</dt><dd>@Model.Key</dd></div>
+            <div><dt>Category</dt><dd>@Model.Category</dd></div>
+            <div><dt>Workflow stage</dt><dd>@Model.WorkflowStage</dd></div>
+            <div><dt>Status</dt><dd>@Model.Status</dd></div>
+        </div>
+    </article>
+    <article class="im1-workspace-card span-6">
+        <header class="im1-section-header">
+            <div>
+                <h2>Operating Rule</h2>
+                <p>Provider, underwriting, pricing, residual, hardware fulfillment, and risk tooling stays in Platform.</p>
+            </div>
+        </header>
+        <p class="im1-empty-state">Tenant users only see their own Payments & Finance operations.</p>
+    </article>
+</section>

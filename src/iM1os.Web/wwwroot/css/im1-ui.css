@@ -367,6 +367,11 @@
   color: #ffffff;
 }
 
+.im1-button-sm {
+  min-height: 2rem;
+  padding: 0.45rem 0.75rem;
+}
+
 .im1-card {
   background: var(--im1-color-surface);
   border: 1px solid var(--im1-color-border);
@@ -496,8 +501,16 @@
   grid-column: span 4;
 }
 
+.im1-workspace-card.span-5 {
+  grid-column: span 5;
+}
+
 .im1-workspace-card.span-6 {
   grid-column: span 6;
+}
+
+.im1-workspace-card.span-7 {
+  grid-column: span 7;
 }
 
 .im1-workspace-card.span-8 {
@@ -563,6 +576,64 @@
   margin: 0;
 }
 
+.table-scroll {
+  overflow-x: auto;
+}
+
+.data-table {
+  border-collapse: collapse;
+  min-width: 760px;
+  width: 100%;
+}
+
+.data-table th,
+.data-table td {
+  border-bottom: 1px solid var(--im1-color-border);
+  color: var(--im1-color-text);
+  font-size: var(--im1-font-size-label);
+  padding: var(--im1-space-2);
+  text-align: left;
+  vertical-align: middle;
+}
+
+.data-table th {
+  color: var(--im1-color-text-muted);
+  font-size: var(--im1-font-size-caption);
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.inline-edit-form {
+  align-items: center;
+  display: grid;
+  gap: var(--im1-space-2);
+  grid-template-columns: minmax(160px, 1fr) minmax(160px, 1fr) minmax(140px, 1fr) auto auto;
+}
+
+.inline-edit-form input {
+  min-width: 0;
+}
+
+.inline-row-form,
+.timeoff-row {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--im1-space-2);
+  justify-content: space-between;
+}
+
+.timeoff-row {
+  border-bottom: 1px solid var(--im1-color-border);
+  padding-bottom: var(--im1-space-2);
+}
+
+.timeoff-row em {
+  color: var(--im1-color-text-muted);
+  font-style: normal;
+  font-weight: 900;
+}
+
 .im1-empty-state {
   color: var(--im1-color-text-muted);
   font-size: var(--im1-font-size-label);
@@ -617,6 +688,138 @@
   display: grid;
   gap: var(--im1-space-3) var(--im1-space-4);
   grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+}
+
+.im1-form-grid .span-2 {
+  grid-column: 1 / -1;
+}
+
+.im1-payment-field {
+  display: grid;
+  gap: var(--im1-space-1);
+}
+
+.im1-payment-field > span,
+.im1-form-help {
+  color: var(--im1-color-text-muted);
+  font-size: var(--im1-font-size-label);
+  font-weight: 700;
+}
+
+.im1-payment-field iframe {
+  border: 1px solid var(--im1-color-border);
+  border-radius: var(--im1-radius-sm);
+  min-height: 44px;
+  width: 100%;
+}
+
+.im1-financial-workflow,
+.im1-financial-module-section {
+  margin-top: var(--im1-space-6);
+}
+
+.im1-financial-flow {
+  display: grid;
+  gap: var(--im1-space-2);
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+}
+
+.im1-financial-flow span {
+  align-items: center;
+  background: var(--im1-color-surface);
+  border: 1px solid var(--im1-color-border);
+  border-radius: var(--im1-radius-sm);
+  color: var(--im1-color-text);
+  display: flex;
+  font-size: var(--im1-font-size-label);
+  font-weight: 800;
+  justify-content: center;
+  min-height: 54px;
+  padding: var(--im1-space-2);
+  text-align: center;
+}
+
+.im1-financial-module-grid {
+  display: grid;
+  gap: var(--im1-space-4);
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+}
+
+.im1-financial-module-card {
+  background: var(--im1-color-surface);
+  border: 1px solid var(--im1-color-border);
+  border-radius: var(--im1-radius-md);
+  display: grid;
+  gap: var(--im1-space-3);
+  padding: var(--im1-space-4);
+}
+
+.im1-financial-module-card header {
+  display: grid;
+  gap: var(--im1-space-2);
+}
+
+.im1-financial-module-card h3 {
+  color: var(--im1-color-text);
+  font-size: var(--im1-font-size-title);
+  line-height: 1.2;
+  margin: 0;
+}
+
+.im1-financial-module-card p {
+  color: var(--im1-color-text-muted);
+  font-size: var(--im1-font-size-body);
+  line-height: 1.5;
+  margin: 0;
+}
+
+.im1-financial-module-card dl {
+  margin: 0;
+}
+
+.im1-financial-module-card dl div {
+  display: flex;
+  gap: var(--im1-space-2);
+  justify-content: space-between;
+}
+
+.im1-financial-module-card dt,
+.im1-financial-module-card dd {
+  color: var(--im1-color-text-muted);
+  font-size: var(--im1-font-size-label);
+  margin: 0;
+}
+
+.im1-financial-module-card dd {
+  color: var(--im1-color-text);
+  font-weight: 700;
+  text-align: right;
+}
+
+.im1-financial-status {
+  border: 1px solid var(--im1-color-border);
+  border-radius: 999px;
+  color: var(--im1-color-text-muted);
+  font-size: var(--im1-font-size-label);
+  font-weight: 800;
+  justify-self: start;
+  line-height: 1;
+  padding: 6px 10px;
+}
+
+.im1-financial-status.active {
+  border-color: rgba(21, 128, 61, 0.35);
+  color: #15803d;
+}
+
+.im1-financial-status.placeholder {
+  border-color: rgba(37, 99, 235, 0.35);
+  color: #1d4ed8;
+}
+
+.im1-financial-status.planned {
+  border-color: rgba(107, 114, 128, 0.45);
+  color: #4b5563;
 }
 
 .im1-full-span {
@@ -1124,7 +1327,9 @@
 }
 
 .im1-item-search-form-ymm {
-  grid-template-columns: minmax(260px, 1fr) repeat(3, minmax(150px, 190px)) auto auto;
+  display: grid;
+  gap: var(--im1-space-4);
+  grid-template-columns: minmax(0, 1fr);
 }
 
 .im1-item-search-layout {
@@ -1157,6 +1362,108 @@
   font-weight: 700;
   letter-spacing: 0;
   margin: 0;
+}
+
+.im1-item-filter-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--im1-space-2);
+}
+
+.im1-ride-selection-bar {
+  align-items: end;
+  border-bottom: 1px solid var(--im1-color-border);
+  display: grid;
+  gap: var(--im1-space-3);
+  grid-template-columns: minmax(180px, 260px) auto minmax(0, 1fr);
+  padding-bottom: var(--im1-space-4);
+}
+
+.im1-ride-selection-summary {
+  display: grid;
+  gap: 0.15rem;
+}
+
+.im1-ride-selection-summary span,
+.im1-recent-ymm > span {
+  color: var(--im1-color-text-muted);
+  font-size: var(--im1-font-size-label);
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.im1-ride-selection-summary strong {
+  color: var(--im1-color-text);
+  font-size: 1.1rem;
+  line-height: 1.2;
+}
+
+.im1-ride-selection-controls {
+  display: grid;
+  gap: var(--im1-space-3);
+  grid-template-columns: repeat(4, minmax(140px, 1fr));
+}
+
+.im1-recent-ymm {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--im1-space-2);
+}
+
+.im1-recent-ymm-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--im1-space-2);
+}
+
+.im1-recent-ymm-button {
+  background: var(--im1-color-surface);
+  border: 1px solid var(--im1-color-border);
+  border-radius: var(--im1-radius-sm);
+  color: var(--im1-color-text);
+  cursor: pointer;
+  font: inherit;
+  min-height: 2rem;
+  padding: 0.35rem 0.65rem;
+}
+
+.im1-recent-ymm-button:hover,
+.im1-recent-ymm-button:focus-visible {
+  border-color: var(--im1-color-accent);
+  outline: none;
+}
+
+.im1-item-search-query-row {
+  align-items: end;
+  display: grid;
+  gap: var(--im1-space-3);
+  grid-template-columns: minmax(180px, 260px) minmax(280px, 1fr) minmax(170px, auto) auto auto;
+}
+
+.im1-normalized-toggle {
+  min-width: 170px;
+}
+
+.im1-item-search-results-layout {
+  align-items: start;
+  display: grid;
+  gap: var(--im1-space-4);
+  min-width: 0;
+}
+
+.im1-item-search-results-layout-active {
+  grid-template-columns: minmax(220px, 270px) minmax(0, 1fr);
+}
+
+.im1-item-search-results-layout-empty {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.im1-item-search-results-panel {
+  display: grid;
+  gap: var(--im1-space-3);
+  min-width: 0;
 }
 
 .im1-item-search-main {
@@ -3147,6 +3454,10 @@ label.checkbox,
   .im1-scheduler-config-fields-fitment,
   .im1-settings-grid,
   .im1-item-search-layout,
+  .im1-ride-selection-bar,
+  .im1-ride-selection-controls,
+  .im1-item-search-query-row,
+  .im1-item-search-results-layout,
   .im1-inventory-filter-bar,
   .im1-inventory-admin-grid,
   .im1-inventory-item,
@@ -3162,7 +3473,9 @@ label.checkbox,
   }
 
   .im1-workspace-card.span-4,
+  .im1-workspace-card.span-5,
   .im1-workspace-card.span-6,
+  .im1-workspace-card.span-7,
   .im1-workspace-card.span-8,
   .im1-workspace-card.span-12 {
     grid-column: 1 / -1;
@@ -3388,6 +3701,10 @@ label.checkbox,
     display: grid;
     gap: 0.45rem;
     grid-template-columns: repeat(3, minmax(78px, 1fr));
+}
+
+.im1-workorder-tire-search[hidden] {
+    display: none;
 }
 
 .im1-workorder-tire-search label {

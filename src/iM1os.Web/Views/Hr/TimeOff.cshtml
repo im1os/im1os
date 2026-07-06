@@ -1,0 +1,61 @@
+@model HrWorkspacePage
+
+@{
+    ViewData["Title"] = "Time Off";
+    var admin = Model.Administration;
+    var timeClock = admin.TimeClock;
+}
+
+@await Html.PartialAsync("_HrHeader", Model)
+
+<section class="im1-workspace-grid">
+    <article class="im1-workspace-card span-5">
+        <header class="im1-section-header"><div><h2>Add Time Off</h2><p>Record PTO, sick time, unpaid leave, and other requests.</p></div></header>
+        <form asp-controller="Hr" asp-action="AddTimeOff" method="post" class="form-grid">
+            <input type="hidden" name="organizationId" value="@admin.OrganizationId" />
+            <label>
+                Employee
+                <select name="EmployeeId" required>
+                    <option value="">Select employee</option>
+                    @foreach (var employee in timeClock.Employees)
+                    {
+                        <option value="@employee.Id">@employee.Name</option>
+                    }
+                </select>
+            </label>
+            <label>Type <input name="Type" value="PTO" required /></label>
+            <label>Start <input name="StartDate" type="date" required /></label>
+            <label>End <input name="EndDate" type="date" required /></label>
+            <label>Hours / Day <input name="HoursPerDay" type="number" min="0" step="0.25" value="8" required /></label>
+            <label>Note <input name="Note" /></label>
+            <button class="primary-action" type="submit">Add Time Off</button>
+        </form>
+    </article>
+
+    <article class="im1-workspace-card span-7">
+        <header class="im1-section-header"><div><h2>Requests</h2><p>Approve, decline, or delete requests.</p></div></header>
+        <div class="compact-list">
+            @foreach (var item in timeClock.TimeOffRequests)
+            {
+                <div class="timeoff-row">
+                    <span><strong>@item.EmployeeName</strong> @item.Type @item.StartDate.ToString("MMM d")-@item.EndDate.ToString("MMM d") @item.TotalHours.ToString("0.00") hrs <em>@item.Status</em></span>
+                    <form asp-controller="Hr" asp-action="SetTimeOffStatus" method="post" class="inline-row-form">
+                        <input type="hidden" name="organizationId" value="@admin.OrganizationId" />
+                        <input type="hidden" name="TimeOffRequestId" value="@item.Id" />
+                        <button class="im1-button im1-button-secondary" name="Status" value="Approved" type="submit">Approve</button>
+                        <button class="im1-button im1-button-quiet" name="Status" value="Declined" type="submit">Decline</button>
+                    </form>
+                    <form asp-controller="Hr" asp-action="DeleteTimeOff" method="post">
+                        <input type="hidden" name="organizationId" value="@admin.OrganizationId" />
+                        <input type="hidden" name="TimeOffRequestId" value="@item.Id" />
+                        <button class="im1-button im1-button-danger" type="submit">Delete</button>
+                    </form>
+                </div>
+            }
+            @if (timeClock.TimeOffRequests.Count == 0)
+            {
+                <p class="im1-empty-state">No time off requests.</p>
+            }
+        </div>
+    </article>
+</section>

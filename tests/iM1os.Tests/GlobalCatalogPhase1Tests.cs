@@ -220,6 +220,158 @@ public sealed class GlobalCatalogPhase1Tests
     }
 
     [Fact]
+    public async Task Catalog_normalization_refreshes_stale_brand_alias_source_links()
+    {
+        var dbContext = CreateContext();
+        var wps = new Supplier { Name = "Western Power Sports", Code = "WPS" };
+        var pu = new Supplier { Name = "Parts Unlimited", Code = "PU" };
+        var wpsProduct = new GlobalProduct
+        {
+            Brand = "MAXIMA",
+            Manufacturer = "MAXIMA",
+            ManufacturerPartNumber = "78920",
+            NormalizedManufacturerPartNumber = "78920",
+            Description = "SC1 Silicone Spray - 78920",
+            Upc = "51027013030",
+            Status = "Active"
+        };
+        var puProduct = new GlobalProduct
+        {
+            Brand = "MAXIMA RACING OIL",
+            Manufacturer = "MAXIMA RACING OIL",
+            ManufacturerPartNumber = "78920",
+            NormalizedManufacturerPartNumber = "78920",
+            Description = "DETAILER SC1 AERO 13.2OZ - 78920",
+            Upc = "051027013030",
+            Status = "Active"
+        };
+        var wpsSupplierProduct = new SupplierProduct
+        {
+            SupplierId = wps.Id,
+            GlobalProductId = wpsProduct.Id,
+            SupplierSku = "78-9944",
+            SupplierPartNumber = "78-9944",
+            ManufacturerPartNumber = "78920",
+            NormalizedManufacturerPartNumber = "78920",
+            SupplierDescription = "HIGH GLOSS SC1 CLEAR COAT SILICONE SPRAY 18.9OZ",
+            SupplierStatus = "STK"
+        };
+        var puSupplierProduct = new SupplierProduct
+        {
+            SupplierId = pu.Id,
+            GlobalProductId = puProduct.Id,
+            SupplierSku = "37060133",
+            SupplierPartNumber = "3706-0133",
+            ManufacturerPartNumber = "78920",
+            NormalizedManufacturerPartNumber = "78920",
+            SupplierDescription = "DETAILER SC1 AERO 13.2OZ",
+            SupplierStatus = "Active"
+        };
+        var maximaCanonical = new CanonicalItem
+        {
+            Brand = "MAXIMA",
+            Manufacturer = "MAXIMA",
+            ManufacturerPartNumber = "78920",
+            NormalizedManufacturerPartNumber = "78920",
+            Title = "SC1 Silicone Spray - 78920",
+            PrimaryUpc = "51027013030",
+            Status = "Active"
+        };
+        var stalePuCanonical = new CanonicalItem
+        {
+            Brand = "MAXIMA RACING OIL",
+            Manufacturer = "MAXIMA RACING OIL",
+            ManufacturerPartNumber = "78920",
+            NormalizedManufacturerPartNumber = "78920",
+            Title = "DETAILER SC1 AERO 13.2OZ - 78920",
+            PrimaryUpc = "051027013030",
+            Status = "Active"
+        };
+        var configuration = new SupplierConnectorConfiguration
+        {
+            SupplierId = pu.Id,
+            ConnectorKey = "CatalogNormalization",
+            DisplayName = "Catalog normalization",
+            AuthMode = "None",
+            IsEnabled = true
+        };
+        var importRun = new SupplierConnectorImportRun
+        {
+            SupplierConnectorConfigurationId = configuration.Id,
+            ImportType = "CatalogNormalization",
+            Status = "Running",
+            RequestedAtUtc = new DateTimeOffset(2026, 6, 29, 12, 0, 0, TimeSpan.Zero)
+        };
+
+        dbContext.Suppliers.AddRange(wps, pu);
+        dbContext.GlobalProducts.AddRange(wpsProduct, puProduct);
+        dbContext.SupplierProducts.AddRange(wpsSupplierProduct, puSupplierProduct);
+        dbContext.CanonicalItems.AddRange(maximaCanonical, stalePuCanonical);
+        dbContext.SupplierConnectorConfigurations.Add(configuration);
+        dbContext.SupplierConnectorImportRuns.Add(importRun);
+        dbContext.CanonicalItemSources.AddRange(
+            new CanonicalItemSource
+            {
+                CanonicalItemId = maximaCanonical.Id,
+                GlobalProductId = wpsProduct.Id,
+                SupplierId = wps.Id,
+                SupplierProductId = wpsSupplierProduct.Id,
+                SupplierCode = "WPS",
+                SourceTable = "supplier_products",
+                SourceKey = wpsSupplierProduct.Id.ToString("N"),
+                MatchMethod = "cross_supplier_brand_raw_mfg_part"
+            },
+            new CanonicalItemSource
+            {
+                CanonicalItemId = stalePuCanonical.Id,
+                GlobalProductId = puProduct.Id,
+                SupplierId = pu.Id,
+                SupplierProductId = puSupplierProduct.Id,
+                SupplierCode = "PU",
+                SourceTable = "supplier_products",
+                SourceKey = puSupplierProduct.Id.ToString("N"),
+                MatchMethod = "existing_source_link"
+            });
+        dbContext.CanonicalItemSupplierOffers.AddRange(
+            new CanonicalItemSupplierOffer
+            {
+                CanonicalItemId = maximaCanonical.Id,
+                SupplierId = wps.Id,
+                SupplierProductId = wpsSupplierProduct.Id,
+                SupplierCode = "WPS",
+                SupplierSku = "78-9944",
+                SupplierPartNumber = "78-9944",
+                SupplierTitle = "HIGH GLOSS SC1 CLEAR COAT SILICONE SPRAY 18.9OZ",
+                Status = "STK"
+            },
+            new CanonicalItemSupplierOffer
+            {
+                CanonicalItemId = stalePuCanonical.Id,
+                SupplierId = pu.Id,
+                SupplierProductId = puSupplierProduct.Id,
+                SupplierCode = "PU",
+                SupplierSku = "37060133",
+                SupplierPartNumber = "3706-0133",
+                SupplierTitle = "DETAILER SC1 AERO 13.2OZ",
+                Status = "Active"
+            });
+        await dbContext.SaveChangesAsync();
+
+        var service = new CatalogNormalizationService(dbContext);
+
+        await service.NormalizeAsync(new CatalogNormalizationRequest(importRun.Id, null), CancellationToken.None);
+
+        var puSource = await dbContext.CanonicalItemSources.SingleAsync(x => x.SupplierProductId == puSupplierProduct.Id);
+        var puOffer = await dbContext.CanonicalItemSupplierOffers.SingleAsync(x => x.SupplierProductId == puSupplierProduct.Id);
+        var reloadedPuSupplierProduct = await dbContext.SupplierProducts.SingleAsync(x => x.Id == puSupplierProduct.Id);
+
+        Assert.Equal(maximaCanonical.Id, puSource.CanonicalItemId);
+        Assert.Equal("refreshed_cross_supplier_brand_raw_mfg_part", puSource.MatchMethod);
+        Assert.Equal(maximaCanonical.Id, puOffer.CanonicalItemId);
+        Assert.Equal(maximaCanonical.Id, reloadedPuSupplierProduct.CanonicalItemId);
+    }
+
+    [Fact]
     public async Task Product_matching_creates_manual_review_item_when_no_confident_match_exists()
     {
         var dbContext = CreateContext();

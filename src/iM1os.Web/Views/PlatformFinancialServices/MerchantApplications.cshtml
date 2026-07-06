@@ -1,0 +1,149 @@
+@model iM1os.Application.FinancialServices.Merchant.PlatformMerchantApplicationsWorkspace
+@{
+    ViewData["Title"] = "Merchant Applications";
+    var hero = new IM1WorkspaceHeroModel(
+        "Merchant Applications",
+        "Platform Financial Services",
+        "Internal review queue for merchant onboarding records, provider relationships, status history, and support context.",
+        new[]
+        {
+            new IM1WorkspaceStatModel("Submitted", Model.SubmittedCount.ToString("N0"), "Awaiting review"),
+            new IM1WorkspaceStatModel("Under Review", Model.UnderReviewCount.ToString("N0"), "In underwriting"),
+            new IM1WorkspaceStatModel("Approved", Model.ApprovedCount.ToString("N0"), "Ready to activate"),
+            new IM1WorkspaceStatModel("Rejected", Model.RejectedCount.ToString("N0"), "Not approved")
+        },
+        new[]
+        {
+            new IM1ActionModel("Platform Financial Services", Url.Action("Index", "PlatformFinancialServices"), "secondary"),
+            new IM1ActionModel("Active Merchants", Url.Action("ActiveMerchants", "PlatformFinancialServices"), "primary")
+        },
+        "Platform only");
+}
+
+@await Html.PartialAsync("IM1WorkspaceHero", hero)
+
+@if (TempData["MerchantStatus"] is string status)
+{
+    <div class="im1-alert im1-alert-success">@status</div>
+}
+@if (TempData["MerchantError"] is string error)
+{
+    <div class="im1-alert im1-alert-error">@error</div>
+}
+
+<section class="im1-workspace-grid">
+    <article class="im1-workspace-card span-12">
+        <header class="im1-section-header">
+            <div>
+                <h2>Applications</h2>
+                <p>Provider details shown here are support-only records for iM1 staff.</p>
+            </div>
+        </header>
+        <div class="im1-table-compact">
+            <table>
+                <thead>
+                <tr>
+                    <th>Company</th>
+                    <th>Business</th>
+                    <th>Status</th>
+                    <th>Provider</th>
+                    <th>Provider Reference</th>
+                    <th>Credentials</th>
+                    <th>Provider Error</th>
+                    <th>Support Notes</th>
+                    <th>Actions</th>
+                </tr>
+                </thead>
+                <tbody>
+                @if (Model.Applications.Count == 0)
+                {
+                    <tr><td colspan="9">No merchant applications are in the platform queue.</td></tr>
+                }
+                @foreach (var merchant in Model.Applications)
+                {
+                    var canApprove = merchant.Status == "Submitted" ||
+                        ((merchant.Status == "Approved" || merchant.Status == "UnderReview") &&
+                            string.IsNullOrWhiteSpace(merchant.ProviderMerchantId));
+                    <tr>
+                        <td>
+                            <strong>@(merchant.CompanyName ?? merchant.CompanyId.ToString())</strong>
+                            <em>@merchant.CompanyId</em>
+                        </td>
+                        <td>@(merchant.LegalBusinessName ?? "-")</td>
+                        <td>@merchant.Status</td>
+                        <td>@(merchant.ProviderCode ?? "-")</td>
+                        <td>
+                            <span>@(merchant.ProviderMerchantId ?? merchant.ProviderReference ?? "-")</span>
+                            @if (!string.IsNullOrWhiteSpace(merchant.ProviderReference) &&
+                                !string.Equals(merchant.ProviderReference, merchant.ProviderMerchantId, StringComparison.OrdinalIgnoreCase))
+                            {
+                                <em>@merchant.ProviderReference</em>
+                            }
+                        </td>
+                        <td>
+                            <span>Payment: @(merchant.HasPaymentApiKey ? "Yes" : "No")</span>
+                            <em>Tokenization: @(merchant.HasPublicTokenizationKey ? "Yes" : "No")</em>
+                        </td>
+                        <td>@(merchant.LastProviderError ?? "-")</td>
+                        <td>
+                            @if (!string.IsNullOrWhiteSpace(merchant.SupportNotes) &&
+                                Uri.TryCreate(merchant.SupportNotes, UriKind.Absolute, out _))
+                            {
+                                <a href="@merchant.SupportNotes" target="_blank" rel="noopener">Legal consent</a>
+                            }
+                            else
+                            {
+                                @(merchant.SupportNotes ?? "-")
+                            }
+                        </td>
+                        <td>
+                            <a class="im1-button im1-button-secondary"
+                               asp-controller="PlatformFinancialServices"
+                               asp-action="MerchantApplication"
+                               asp-route-organizationId="@merchant.CompanyId"
+                               asp-route-merchantAccountId="@merchant.MerchantAccountId">View</a>
+                            @if (canApprove)
+                            {
+                                <form method="post"
+                                      asp-controller="PlatformFinancialServices"
+                                      asp-action="@(merchant.Status == "UnderReview" ? "RefreshMerchantStatus" : "ApproveMerchant")">
+                                    @Html.AntiForgeryToken()
+                                    <input type="hidden" name="organizationId" value="@merchant.CompanyId" />
+                                    <input type="hidden" name="merchantAccountId" value="@merchant.MerchantAccountId" />
+                                    <button class="im1-button im1-button-primary" type="submit">@(merchant.Status == "Submitted" ? "Approve" : merchant.Status == "UnderReview" ? "Refresh NMI Status" : "Retry Activation")</button>
+                                </form>
+                            }
+                            @if (merchant.Status == "Submitted")
+                            {
+                                <form method="post" asp-controller="PlatformFinancialServices" asp-action="RejectMerchant">
+                                    @Html.AntiForgeryToken()
+                                    <input type="hidden" name="organizationId" value="@merchant.CompanyId" />
+                                    <input type="hidden" name="merchantAccountId" value="@merchant.MerchantAccountId" />
+                                    <input type="hidden" name="reason" value="Rejected by platform review." />
+                                    <button class="im1-button im1-button-secondary" type="submit">Reject</button>
+                                </form>
+                            }
+                        </td>
+                    </tr>
+                    @if (merchant.StatusHistory.Count > 0)
+                    {
+                        <tr>
+                            <td colspan="9">
+                                <div class="im1-key-value-list">
+                                    @foreach (var history in merchant.StatusHistory.Take(4))
+                                    {
+                                        <div>
+                                            <dt>@history.CreatedAt.LocalDateTime.ToString("g")</dt>
+                                            <dd>@(history.OldStatus ?? "-") to @history.NewStatus - @(history.Reason ?? "No reason recorded")</dd>
+                                        </div>
+                                    }
+                                </div>
+                            </td>
+                        </tr>
+                    }
+                }
+                </tbody>
+            </table>
+        </div>
+    </article>
+</section>

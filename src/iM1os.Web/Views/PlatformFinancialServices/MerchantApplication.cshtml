@@ -1,0 +1,175 @@
+@model iM1os.Application.FinancialServices.Merchant.PlatformMerchantApplicationDetail
+@{
+    ViewData["Title"] = "Merchant Application";
+    var merchant = Model.Merchant;
+    var app = Model.Application;
+    var canApprove = merchant.Status == "Submitted" ||
+        ((merchant.Status == "Approved" || merchant.Status == "UnderReview") &&
+            string.IsNullOrWhiteSpace(merchant.ProviderMerchantId));
+    var canReject = merchant.Status == "Submitted";
+    var hero = new IM1WorkspaceHeroModel(
+        "Merchant Application",
+        "Platform Financial Services",
+        "Support-only review of the company's merchant onboarding record and provider relationship.",
+        new[]
+        {
+            new IM1WorkspaceStatModel("Status", merchant.Status, "Application"),
+            new IM1WorkspaceStatModel("Provider", merchant.ProviderCode ?? "Pending", "Gateway"),
+            new IM1WorkspaceStatModel("Credentials", merchant.HasPaymentApiKey && merchant.HasPublicTokenizationKey ? "Ready" : "Missing", "Processing"),
+            new IM1WorkspaceStatModel("Volume", merchant.ExpectedMonthlyVolume?.ToString("C0") ?? "-", "Expected monthly")
+        },
+        new[]
+        {
+            new IM1ActionModel("Merchant Applications", Url.Action("MerchantApplications", "PlatformFinancialServices"), "secondary"),
+            new IM1ActionModel("Active Merchants", Url.Action("ActiveMerchants", "PlatformFinancialServices"), "secondary")
+        },
+        "Platform only");
+}
+
+@await Html.PartialAsync("IM1WorkspaceHero", hero)
+
+@if (TempData["MerchantStatus"] is string status)
+{
+    <div class="im1-alert im1-alert-success">@status</div>
+}
+@if (TempData["MerchantError"] is string error)
+{
+    <div class="im1-alert im1-alert-error">@error</div>
+}
+
+<section class="im1-workspace-grid">
+    <article class="im1-workspace-card span-4">
+        <header class="im1-section-header">
+            <div>
+                <h2>Provider</h2>
+                <p>Support-only provider relationship data.</p>
+            </div>
+        </header>
+        <div class="im1-key-value-list">
+            <div><dt>Company</dt><dd>@(merchant.CompanyName ?? merchant.CompanyId.ToString())</dd></div>
+            <div><dt>Company ID</dt><dd>@merchant.CompanyId</dd></div>
+            <div><dt>Merchant Account ID</dt><dd>@merchant.MerchantAccountId</dd></div>
+            <div><dt>Provider</dt><dd>@(merchant.ProviderCode ?? "-")</dd></div>
+            <div><dt>Provider Merchant ID</dt><dd>@(merchant.ProviderMerchantId ?? "-")</dd></div>
+            <div><dt>Provider Reference</dt><dd>@(merchant.ProviderReference ?? "-")</dd></div>
+            <div><dt>Gateway Username</dt><dd>@(merchant.GatewayUsername ?? "-")</dd></div>
+            <div><dt>Relationship</dt><dd>@(merchant.ProviderRelationshipStatus ?? "-")</dd></div>
+            <div><dt>Provider Error</dt><dd>@(merchant.LastProviderError ?? "-")</dd></div>
+            <div>
+                <dt>Support Notes</dt>
+                <dd>
+                    @if (!string.IsNullOrWhiteSpace(merchant.SupportNotes) &&
+                        Uri.TryCreate(merchant.SupportNotes, UriKind.Absolute, out _))
+                    {
+                        <a href="@merchant.SupportNotes" target="_blank" rel="noopener">Open legal consent</a>
+                    }
+                    else
+                    {
+                        @(merchant.SupportNotes ?? "-")
+                    }
+                </dd>
+            </div>
+        </div>
+        @if (canApprove || canReject)
+        {
+            <div class="im1-action-row">
+                @if (canApprove)
+                {
+                    <form method="post"
+                          asp-controller="PlatformFinancialServices"
+                          asp-action="@(merchant.Status == "UnderReview" ? "RefreshMerchantStatus" : "ApproveMerchant")">
+                        @Html.AntiForgeryToken()
+                        <input type="hidden" name="organizationId" value="@merchant.CompanyId" />
+                        <input type="hidden" name="merchantAccountId" value="@merchant.MerchantAccountId" />
+                        <button class="im1-button im1-button-primary" type="submit">@(merchant.Status == "Submitted" ? "Approve" : merchant.Status == "UnderReview" ? "Refresh NMI Status" : "Retry Activation")</button>
+                    </form>
+                }
+                @if (canReject)
+                {
+                    <form method="post" asp-controller="PlatformFinancialServices" asp-action="RejectMerchant">
+                        @Html.AntiForgeryToken()
+                        <input type="hidden" name="organizationId" value="@merchant.CompanyId" />
+                        <input type="hidden" name="merchantAccountId" value="@merchant.MerchantAccountId" />
+                        <input type="hidden" name="reason" value="Rejected by platform review." />
+                        <button class="im1-button im1-button-secondary" type="submit">Reject</button>
+                    </form>
+                }
+            </div>
+        }
+    </article>
+
+    <article class="im1-workspace-card span-8">
+        <header class="im1-section-header">
+            <div>
+                <h2>Application</h2>
+                <p>Provider-independent merchant application fields submitted by the company.</p>
+            </div>
+        </header>
+        <div class="im1-key-value-list">
+            <div><dt>Business Name</dt><dd>@(NullIfWhiteSpace(app.BusinessName) ?? "-")</dd></div>
+            <div><dt>DBA</dt><dd>@(NullIfWhiteSpace(app.Dba) ?? "-")</dd></div>
+            <div><dt>EIN</dt><dd>@(NullIfWhiteSpace(app.Ein) ?? "-")</dd></div>
+            <div><dt>Tax ID</dt><dd>@(NullIfWhiteSpace(app.TaxId) ?? "-")</dd></div>
+            <div><dt>Business Type</dt><dd>@(NullIfWhiteSpace(app.BusinessType) ?? "-")</dd></div>
+            <div><dt>Website</dt><dd>@(NullIfWhiteSpace(app.Website) ?? "-")</dd></div>
+            <div><dt>MCC</dt><dd>@(NullIfWhiteSpace(app.Mcc) ?? "-")</dd></div>
+            <div><dt>Expected Monthly Volume</dt><dd>@(app.ExpectedMonthlyVolume?.ToString("C") ?? "-")</dd></div>
+            <div><dt>Average Ticket</dt><dd>@(app.AverageTicket?.ToString("C") ?? "-")</dd></div>
+            <div><dt>Physical Address</dt><dd>@app.PhysicalAddressLine1 @app.PhysicalAddressLine2</dd></div>
+            <div><dt>Physical City/State/ZIP</dt><dd>@app.PhysicalCity, @app.PhysicalRegion @app.PhysicalPostalCode</dd></div>
+            <div><dt>Mailing Address</dt><dd>@(NullIfWhiteSpace(app.MailingAddressLine1) ?? "-") @app.MailingAddressLine2</dd></div>
+            <div><dt>Mailing City/State/ZIP</dt><dd>@(NullIfWhiteSpace(app.MailingCity) ?? "-"), @app.MailingRegion @app.MailingPostalCode</dd></div>
+            <div><dt>Owner</dt><dd>@(NullIfWhiteSpace(app.OwnerName) ?? "-")</dd></div>
+            <div><dt>Owner Email</dt><dd>@(NullIfWhiteSpace(app.OwnerEmail) ?? "-")</dd></div>
+            <div><dt>Owner Phone</dt><dd>@(NullIfWhiteSpace(app.OwnerPhone) ?? "-")</dd></div>
+            <div><dt>Bank Name</dt><dd>@(NullIfWhiteSpace(app.BankName) ?? "-")</dd></div>
+            <div><dt>Routing Last Four</dt><dd>@(NullIfWhiteSpace(app.BankRoutingLastFour) ?? "-")</dd></div>
+            <div><dt>Account Last Four</dt><dd>@(NullIfWhiteSpace(app.BankAccountLastFour) ?? "-")</dd></div>
+        </div>
+    </article>
+</section>
+
+<section class="im1-workspace-grid">
+    <article class="im1-workspace-card span-12">
+        <header class="im1-section-header">
+            <div>
+                <h2>Status History</h2>
+                <p>Merchant account lifecycle audit entries.</p>
+            </div>
+        </header>
+        <div class="im1-table-compact">
+            <table>
+                <thead>
+                <tr>
+                    <th>Created</th>
+                    <th>Transition</th>
+                    <th>Reason</th>
+                    <th>Provider</th>
+                    <th>Provider Reference</th>
+                    <th>Created By</th>
+                </tr>
+                </thead>
+                <tbody>
+                @foreach (var history in merchant.StatusHistory)
+                {
+                    <tr>
+                        <td>@history.CreatedAt.LocalDateTime.ToString("g")</td>
+                        <td>@(history.OldStatus ?? "-") to @history.NewStatus</td>
+                        <td>@(history.Reason ?? "-")</td>
+                        <td>@(history.Provider ?? "-")</td>
+                        <td>@(history.ProviderReference ?? "-")</td>
+                        <td>@(history.CreatedBy ?? "-")</td>
+                    </tr>
+                }
+                </tbody>
+            </table>
+        </div>
+    </article>
+</section>
+
+@functions {
+    private static string? NullIfWhiteSpace(string? value)
+    {
+        return string.IsNullOrWhiteSpace(value) ? null : value;
+    }
+}
