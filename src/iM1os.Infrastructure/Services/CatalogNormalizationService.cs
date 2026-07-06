@@ -83,7 +83,7 @@ public sealed class CatalogNormalizationService(IApplicationDbContext dbContext)
             .Distinct(StringComparer.OrdinalIgnoreCase)
             .ToList();
         var upcs = sourceRows
-            .Select(x => Clean(x.Upc))
+            .Select(x => CleanUpc(x.Upc))
             .Where(x => x is not null)
             .Select(x => x!)
             .Distinct(StringComparer.OrdinalIgnoreCase)
@@ -119,8 +119,8 @@ public sealed class CatalogNormalizationService(IApplicationDbContext dbContext)
             .GroupBy(x => CanonicalKey(x.Brand, x.NormalizedManufacturerPartNumber), StringComparer.OrdinalIgnoreCase)
             .ToDictionary(x => x.Key, x => x.ToList(), StringComparer.OrdinalIgnoreCase);
         var canonicalByUpc = existingCanonicalItems
-            .Where(x => Clean(x.PrimaryUpc) is not null)
-            .GroupBy(x => Clean(x.PrimaryUpc)!, StringComparer.OrdinalIgnoreCase)
+            .Where(x => CleanUpc(x.PrimaryUpc) is not null)
+            .GroupBy(x => CleanUpc(x.PrimaryUpc)!, StringComparer.OrdinalIgnoreCase)
             .ToDictionary(x => x.Key, x => x.ToList(), StringComparer.OrdinalIgnoreCase);
         var canonicalById = existingCanonicalItems.ToDictionary(x => x.Id);
         if (existingSources.Count > 0)
@@ -205,7 +205,7 @@ public sealed class CatalogNormalizationService(IApplicationDbContext dbContext)
                     NormalizedManufacturerPartNumber = Limit(normalizedPartNumber, 120),
                     Title = Limit(BuildTitle(row, canonicalBrand), 300) ?? row.SupplierSku,
                     Category = Limit(row.Category, 160),
-                    PrimaryUpc = Limit(row.Upc, 80),
+                    PrimaryUpc = Limit(CleanUpc(row.Upc), 80),
                     PrimaryImageUrl = Limit(FirstImage(row.GlobalImagesJson) ?? FirstImage(row.SupplierImagesJson), 1000),
                     SearchText = BuildSearchText(row, canonicalBrand),
                     Status = Limit(Clean(row.GlobalStatus) ?? Clean(row.SupplierStatus) ?? "Active", 80) ?? "Active",
@@ -224,7 +224,7 @@ public sealed class CatalogNormalizationService(IApplicationDbContext dbContext)
                     canonicalItemsForKey.Add(canonicalItem);
                 }
 
-                var upc = Clean(row.Upc);
+                var upc = CleanUpc(row.Upc);
                 if (upc is not null)
                 {
                     if (!canonicalByUpc.TryGetValue(upc, out var canonicalItemsForUpc))
@@ -412,7 +412,7 @@ public sealed class CatalogNormalizationService(IApplicationDbContext dbContext)
             added += AddIdentifier(existingKeys, canonicalItemId, "supplier_sku", row.SupplierSku, row.SupplierSku, row, false);
             added += AddIdentifier(existingKeys, canonicalItemId, "supplier_part_number", row.SupplierPartNumber, ProductMatchingService.NormalizeManufacturerPartNumber(row.SupplierPartNumber), row, false);
             added += AddIdentifier(existingKeys, canonicalItemId, "manufacturer_part_number", row.ManufacturerPartNumber ?? row.GlobalManufacturerPartNumber, row.NormalizedManufacturerPartNumber, row, true);
-            added += AddIdentifier(existingKeys, canonicalItemId, "upc", row.Upc, Clean(row.Upc), row, true);
+            added += AddIdentifier(existingKeys, canonicalItemId, "upc", row.Upc, CleanUpc(row.Upc), row, true);
         }
 
         return added;
@@ -427,7 +427,7 @@ public sealed class CatalogNormalizationService(IApplicationDbContext dbContext)
         IReadOnlyDictionary<Guid, HashSet<string>> supplierCodesByCanonicalId,
         out string matchMethod)
     {
-        var upc = Clean(row.Upc);
+        var upc = CleanUpc(row.Upc);
         if (upc is not null &&
             canonicalByUpc.TryGetValue(upc, out var upcMatches) &&
             upcMatches.Count == 1)
@@ -613,7 +613,7 @@ public sealed class CatalogNormalizationService(IApplicationDbContext dbContext)
         item.ManufacturerPartNumber ??= Limit(Clean(row.GlobalManufacturerPartNumber) ?? Clean(row.ManufacturerPartNumber), 120);
         item.NormalizedManufacturerPartNumber ??= Limit(normalizedPartNumber, 120);
         item.Category ??= Limit(row.Category, 160);
-        item.PrimaryUpc ??= Limit(row.Upc, 80);
+        item.PrimaryUpc ??= Limit(CleanUpc(row.Upc), 80);
         item.PrimaryImageUrl ??= Limit(FirstImage(row.GlobalImagesJson) ?? FirstImage(row.SupplierImagesJson), 1000);
         item.SearchText = BuildSearchText(row, canonicalBrand);
         item.Status = Limit(Clean(row.GlobalStatus) ?? Clean(row.SupplierStatus) ?? item.Status, 80) ?? item.Status;
@@ -788,6 +788,23 @@ public sealed class CatalogNormalizationService(IApplicationDbContext dbContext)
     private static string? Clean(string? value)
     {
         return string.IsNullOrWhiteSpace(value) ? null : value.Trim();
+    }
+
+    private static string? CleanUpc(string? value)
+    {
+        var clean = Clean(value);
+        if (clean is null)
+        {
+            return null;
+        }
+
+        var digits = new string(clean.Where(char.IsDigit).ToArray());
+        if (digits.Length is < 8 or > 14 || digits.All(x => x == '0'))
+        {
+            return null;
+        }
+
+        return digits;
     }
 
     private static string? Limit(string? value, int maxLength)

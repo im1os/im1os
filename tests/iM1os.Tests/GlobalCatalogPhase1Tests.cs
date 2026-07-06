@@ -203,6 +203,22 @@ public sealed class GlobalCatalogPhase1Tests
         Assert.Contains("drop_ship_fee", supplierProduct.SourceDataJson);
     }
 
+    [Theory]
+    [InlineData("0", null)]
+    [InlineData("000000000000", null)]
+    [InlineData("N/A", null)]
+    [InlineData("123456789012", "123456789012")]
+    [InlineData("12345-67890-12", "123456789012")]
+    public void Catalog_normalization_rejects_placeholder_upc_values(string value, string? expected)
+    {
+        var method = typeof(CatalogNormalizationService).GetMethod(
+            "CleanUpc",
+            System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static);
+
+        Assert.NotNull(method);
+        Assert.Equal(expected, method.Invoke(null, [value]));
+    }
+
     [Fact]
     public async Task Product_matching_creates_manual_review_item_when_no_confident_match_exists()
     {
