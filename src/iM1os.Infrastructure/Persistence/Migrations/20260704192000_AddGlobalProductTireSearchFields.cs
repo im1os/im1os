@@ -1,3 +1,5 @@
+using iM1os.Infrastructure.Persistence;
+using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Migrations;
 
 #nullable disable
@@ -5,6 +7,8 @@ using Microsoft.EntityFrameworkCore.Migrations;
 namespace iM1os.Infrastructure.Persistence.Migrations
 {
     /// <inheritdoc />
+    [DbContext(typeof(ApplicationDbContext))]
+    [Migration("20260704192000_AddGlobalProductTireSearchFields")]
     public partial class AddGlobalProductTireSearchFields : Migration
     {
         /// <inheritdoc />
