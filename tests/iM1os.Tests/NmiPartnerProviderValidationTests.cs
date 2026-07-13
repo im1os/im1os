@@ -246,7 +246,11 @@ public sealed class NmiPartnerProviderValidationTests
                       "fields": [
                         { "id": "fld_legal_name", "value": "NMI Sandbox Motorcycle Supply LL" },
                         { "id": "fld_dba_name", "value": "NMI Sandbox Moto Supply" },
-                        { "id": "fld_legal_postal_code", "value": "78701" }
+                        { "id": "fld_legal_address", "value": "normalized address" },
+                        { "id": "fld_legal_city", "value": "Austin" },
+                        { "id": "fld_legal_state", "value": "TX" },
+                        { "id": "fld_legal_country", "value": "US" },
+                        { "id": "fld_legal_postal_code", "value": "normalized postal" }
                       ]
                     }
                     """));

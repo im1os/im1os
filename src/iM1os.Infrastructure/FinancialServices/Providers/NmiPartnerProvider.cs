@@ -541,8 +541,16 @@ public sealed class NmiPartnerProvider(
                 Clean(request.Dba) ?? LegalBusinessName(request),
                 StringComparison.OrdinalIgnoreCase) &&
             string.Equals(
-                ApplicationField(document.RootElement, "fld_legal_postal_code"),
-                Required(request.PostalCode, "Postal code"),
+                ApplicationField(document.RootElement, "fld_legal_city"),
+                Truncate(Required(request.City, "City"), 13),
+                StringComparison.OrdinalIgnoreCase) &&
+            string.Equals(
+                ApplicationField(document.RootElement, "fld_legal_state"),
+                Required(request.Region, "State/region"),
+                StringComparison.OrdinalIgnoreCase) &&
+            string.Equals(
+                ApplicationField(document.RootElement, "fld_legal_country"),
+                Required(request.Country, "Country"),
                 StringComparison.OrdinalIgnoreCase);
     }
 
