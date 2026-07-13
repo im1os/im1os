@@ -4,7 +4,7 @@
     var organizationId = ViewBag.OrganizationId as Guid?;
 
     static string Money(decimal value, string currency = "USD") => string.Equals(currency, "USD", StringComparison.OrdinalIgnoreCase)
-        ? value.ToString("C2")
+        ? value.ToString("C2", System.Globalization.CultureInfo.GetCultureInfo("en-US"))
         : $"{value:N2} {currency}";
 
     var hero = new IM1WorkspaceHeroModel(
