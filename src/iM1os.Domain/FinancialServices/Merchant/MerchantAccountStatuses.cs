@@ -12,6 +12,10 @@ public static class MerchantAccountStatuses
 
     public const string Approved = nameof(Approved);
 
+    public const string LegalConsentRequired = nameof(LegalConsentRequired);
+
+    public const string CredentialProvisioning = nameof(CredentialProvisioning);
+
     public const string Active = nameof(Active);
 
     public const string Rejected = nameof(Rejected);
@@ -27,6 +31,8 @@ public static class MerchantAccountStatuses
         Submitted,
         UnderReview,
         Approved,
+        LegalConsentRequired,
+        CredentialProvisioning,
         Active,
         Rejected,
         Suspended,

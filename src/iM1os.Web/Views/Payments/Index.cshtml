@@ -4,7 +4,7 @@
     var organizationId = ViewBag.OrganizationId as Guid?;
 
     static string Money(decimal value, string currency = "USD") => string.Equals(currency, "USD", StringComparison.OrdinalIgnoreCase)
-        ? value.ToString("C2")
+        ? value.ToString("C2", System.Globalization.CultureInfo.GetCultureInfo("en-US"))
         : $"{value:N2} {currency}";
 
     var hero = new IM1WorkspaceHeroModel(
@@ -69,7 +69,7 @@
 
                 <label>
                     Amount
-                    <input id="im1PaymentAmount" name="Amount" type="number" min="1.00" step="0.01" value="1.00" required />
+                    <input id="im1PaymentAmount" name="Amount" type="number" min="0.01" step="0.01" value="1.00" required />
                 </label>
                 <label>
                     Currency

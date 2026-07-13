@@ -12,7 +12,19 @@ public sealed class NmiPaymentOptions
 
     public string SignUpBaseUrl { get; set; } = "https://sandbox.signup.nmi.com/api/v1/";
 
-    public string SignUpPackageId { get; set; } = "pkg_merrick_tsys";
+    public string LegalConsentHelperUrl { get; set; } = "https://sandbox.signup.nmi.com/build/consent-helper-1.0.0.umd.js";
+
+    public string? SignUpPackageId { get; set; }
+
+    public string? SignUpPricingType { get; set; }
+
+    public decimal? SignUpQualifiedRate { get; set; }
+
+    public decimal? SignUpQualifiedRatePerAuthorization { get; set; }
+
+    public decimal? SignUpCostPlusRate { get; set; }
+
+    public decimal? SignUpCostPlusPerAuthorization { get; set; }
 
     public string CollectJsUrl { get; set; } = "https://secure.nmi.com/token/Collect.js";
 

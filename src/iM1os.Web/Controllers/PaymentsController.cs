@@ -80,11 +80,9 @@ public sealed class PaymentsController(IPaymentService paymentsService) : Contro
 
     private bool TryOrganizationId(out Guid organizationId)
     {
-        var value = User.FindFirstValue("organization_id")
-            ?? Request.Query["organizationId"].FirstOrDefault()
-            ?? (Request.HasFormContentType ? Request.Form["organizationId"].FirstOrDefault() : null);
-
-        return Guid.TryParse(value, out organizationId);
+        organizationId = Guid.Empty;
+        return User.FindFirstValue("platform_user_id") is null &&
+            Guid.TryParse(User.FindFirstValue("organization_id"), out organizationId);
     }
 
     private Guid UserId()

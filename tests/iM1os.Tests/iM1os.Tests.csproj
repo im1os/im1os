@@ -23,6 +23,7 @@
     <ProjectReference Include="..\..\src\iM1os.Application\iM1os.Application.csproj" />
     <ProjectReference Include="..\..\src\iM1os.Domain\iM1os.Domain.csproj" />
     <ProjectReference Include="..\..\src\iM1os.Infrastructure\iM1os.Infrastructure.csproj" />
+    <ProjectReference Include="..\..\src\iM1os.Web\iM1os.Web.csproj" />
   </ItemGroup>
 
 </Project>

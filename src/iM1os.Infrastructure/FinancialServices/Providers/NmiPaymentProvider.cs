@@ -1,3 +1,5 @@
+using System.Net;
+using System.Net.Http.Headers;
 using System.Text;
 using System.Text.Json;
 using iM1os.Application.FinancialServices.Providers;
@@ -48,31 +50,20 @@ public sealed class NmiPaymentProvider(
                 ["address1"] = Clean(request.AddressLine1),
                 ["city"] = Clean(request.City),
                 ["state"] = Clean(request.Region),
-                ["postal_code"] = Clean(request.PostalCode),
+                ["zip"] = Clean(request.PostalCode),
                 ["country"] = Clean(request.Country) ?? "US"
-            },
-            ["order_details"] = new Dictionary<string, object?>
-            {
-                ["order_id"] = Clean(request.OrderId),
-                ["description"] = Clean(request.Description)
-            },
-            ["merchant_defined_fields"] = new Dictionary<string, object?>
-            {
-                ["im1_organization_id"] = request.OrganizationId.ToString(),
-                ["im1_merchant_account_id"] = request.MerchantAccountId.ToString(),
-                ["im1_provider_merchant_id"] = request.ProviderMerchantId,
-                ["im1_payment_id"] = request.PaymentTransactionId.ToString(),
-                ["im1_reference_type"] = Clean(request.ReferenceType),
-                ["im1_reference_id"] = Clean(request.ReferenceId)
             }
         });
 
         var client = httpClientFactory.CreateClient("NmiPayments");
+        var content = new ByteArrayContent(Encoding.UTF8.GetBytes(JsonSerializer.Serialize(payload)));
+        content.Headers.ContentType = new MediaTypeHeaderValue("application/json");
         using var message = new HttpRequestMessage(HttpMethod.Post, "payments/sale")
         {
-            Content = new StringContent(JsonSerializer.Serialize(payload), Encoding.UTF8, "application/json")
+            Content = content
         };
         message.Headers.TryAddWithoutValidation("Authorization", request.PaymentApiKey ?? paymentOptions.MerchantPrivateKey);
+        message.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
         using var response = await client.SendAsync(message, cancellationToken);
         var responseJson = await response.Content.ReadAsStringAsync(cancellationToken);
 
@@ -80,16 +71,19 @@ public sealed class NmiPaymentProvider(
         var root = document.RootElement;
         if (!response.IsSuccessStatusCode)
         {
+            var responseText = response.StatusCode is HttpStatusCode.BadRequest or HttpStatusCode.UnprocessableEntity
+                ? NmiValidationException.FromPaymentResponse(response.StatusCode, responseJson, request).Message
+                : JsonValue(root, "message") ?? JsonValue(root, "response_text") ?? response.ReasonPhrase;
             return new ProviderPaymentResult(
                 false,
                 "Error",
                 null,
                 null,
                 ((int)response.StatusCode).ToString(),
-                JsonValue(root, "message") ?? JsonValue(root, "response_text") ?? response.ReasonPhrase,
+                responseText,
                 null,
                 null,
-                responseJson);
+                null);
         }
 
         var responseCode = JsonValue(root, "response");
@@ -110,7 +104,7 @@ public sealed class NmiPaymentProvider(
             JsonValue(root, "response_text"),
             JsonValue(root, "card_type"),
             LastFour(JsonValue(root, "cc_number")),
-            responseJson);
+            null);
     }
 
     private static IDictionary<string, object?> RemoveNulls(IDictionary<string, object?> values)

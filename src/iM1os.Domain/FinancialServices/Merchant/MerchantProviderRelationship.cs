@@ -18,6 +18,30 @@ public sealed class MerchantProviderRelationship : AuditableEntity, IOrganizatio
 
     public string? ProviderReference { get; set; }
 
+    public string? ApplicationCreateIdempotencyKey { get; set; }
+
+    public string? ApplicationSubmitIdempotencyKey { get; set; }
+
+    public string? PaymentCredentialIdempotencyKey { get; set; }
+
+    public string? TokenizationCredentialIdempotencyKey { get; set; }
+
+    public DateTimeOffset? ProviderApplicationCreatedAtUtc { get; set; }
+
+    public DateTimeOffset? LegalConsentCompletedAtUtc { get; set; }
+
+    public DateTimeOffset? ProviderApplicationSubmittedAtUtc { get; set; }
+
+    public DateTimeOffset? ProviderStatusRefreshedAtUtc { get; set; }
+
+    public DateTimeOffset? ProviderApprovedAtUtc { get; set; }
+
+    public DateTimeOffset? CredentialsProvisionedAtUtc { get; set; }
+
+    public string? LegalConsentUrlProtected { get; set; }
+
+    public string CredentialProvisioningStatus { get; set; } = "NotStarted";
+
     public string? LastProviderError { get; set; }
 
     public string? SupportNotes { get; set; }
@@ -30,7 +54,7 @@ public sealed class MerchantProviderRelationship : AuditableEntity, IOrganizatio
 
     public string? QueryApiKeyProtected { get; set; }
 
-    public string? PublicTokenizationKey { get; set; }
+    public string? PublicTokenizationKeyProtected { get; set; }
 
     public string? CredentialMetadataJson { get; set; }
 }

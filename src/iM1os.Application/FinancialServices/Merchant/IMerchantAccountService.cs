@@ -45,6 +45,11 @@ public interface IMerchantAccountService
         Guid actorUserId,
         CancellationToken cancellationToken);
 
+    Task<MerchantAccountResult> CompleteLegalConsentAsync(
+        Guid organizationId,
+        Guid actorUserId,
+        CancellationToken cancellationToken);
+
     Task<MerchantAccountResult> RejectApplicationAsync(
         Guid organizationId,
         Guid merchantAccountId,

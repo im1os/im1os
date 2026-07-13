@@ -6,7 +6,7 @@ using Microsoft.AspNetCore.Mvc;
 
 namespace iM1os.Web.Controllers;
 
-[Authorize]
+[Authorize(Roles = "Platform Administrator")]
 public sealed class PlatformFinancialServicesController(IMerchantAccountService merchantAccountService) : Controller
 {
     [HttpGet]
@@ -55,8 +55,16 @@ public sealed class PlatformFinancialServicesController(IMerchantAccountService 
     {
         try
         {
-            await merchantAccountService.ApproveApplicationAsync(organizationId, merchantAccountId, UserId(), cancellationToken);
-            TempData["MerchantStatus"] = "Merchant approved, NMI merchant created, and payments enabled.";
+            var result = await merchantAccountService.ApproveApplicationAsync(organizationId, merchantAccountId, UserId(), cancellationToken);
+            TempData["MerchantStatus"] = result.Status switch
+            {
+                "LegalConsentRequired" => "Platform approval complete. The company authorized signer must complete NMI legal consent.",
+                "UnderReview" => "The application was submitted to NMI and is under review.",
+                "CredentialProvisioning" => "NMI approved the merchant. Secure credentials are being provisioned.",
+                "Active" => "NMI merchant activation is complete and payments are enabled.",
+                "Rejected" => "NMI rejected the merchant application.",
+                _ => $"Merchant status: {result.Status}."
+            };
         }
         catch (Exception ex) when (ex is InvalidOperationException or HttpRequestException)
         {
@@ -79,7 +87,11 @@ public sealed class PlatformFinancialServicesController(IMerchantAccountService 
                 cancellationToken);
             TempData["MerchantStatus"] = result.Status == "Active"
                 ? "NMI merchant approved and payments enabled."
-                : $"NMI merchant status refreshed: {result.Status}.";
+                : result.Status == "CredentialProvisioning"
+                    ? "NMI approved the merchant. Secure credential provisioning is not yet complete."
+                    : result.Status == "Rejected"
+                        ? "NMI rejected the merchant application."
+                        : $"NMI merchant status refreshed: {result.Status}.";
         }
         catch (Exception ex) when (ex is InvalidOperationException or HttpRequestException)
         {

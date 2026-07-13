@@ -1,13 +1,16 @@
 using System.Security.Claims;
 using iM1os.Application.FinancialServices;
 using iM1os.Application.FinancialServices.Merchant;
+using iM1os.Web.Development;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
 namespace iM1os.Web.Controllers;
 
 [Authorize]
-public sealed class FinancialServicesController(IMerchantAccountService merchantAccountService) : Controller
+public sealed class FinancialServicesController(
+    IMerchantAccountService merchantAccountService,
+    IConfiguration configuration) : Controller
 {
     [HttpGet]
     public IActionResult Index()
@@ -63,17 +66,23 @@ public sealed class FinancialServicesController(IMerchantAccountService merchant
 
     [HttpPost]
     [ValidateAntiForgeryToken]
-    public async Task<IActionResult> FillMerchantApplicationDemoData(CancellationToken cancellationToken)
+    [Authorize(Roles = "Owner,Administrator")]
+    public async Task<IActionResult> FillMerchantApplicationSandboxData(CancellationToken cancellationToken)
     {
+        if (!SandboxApplicationFixtureEnabled())
+        {
+            return NotFound();
+        }
+
         var organizationId = OrganizationId();
         try
         {
             await merchantAccountService.SaveDraftAsync(
                 organizationId,
                 UserId(),
-                DemoMerchantApplication().ToRequest(),
+                NmiSandboxMerchantApplicationFixture.Create().ToRequest(),
                 cancellationToken);
-            TempData["MerchantStatus"] = "Merchant application demo data saved.";
+            TempData["MerchantStatus"] = "Development-only NMI sandbox test data saved.";
         }
         catch (Exception ex) when (ex is InvalidOperationException or ArgumentException)
         {
@@ -81,6 +90,15 @@ public sealed class FinancialServicesController(IMerchantAccountService merchant
         }
 
         return RedirectToAction(nameof(MerchantApplication), new { organizationId });
+    }
+
+    private bool SandboxApplicationFixtureEnabled()
+    {
+        return configuration.GetValue<bool>("NmiPayments:EnableSandboxApplicationFixture") &&
+            string.Equals(
+                configuration["NmiPayments:Environment"],
+                "Sandbox",
+                StringComparison.OrdinalIgnoreCase);
     }
 
     [HttpPost]
@@ -94,6 +112,35 @@ public sealed class FinancialServicesController(IMerchantAccountService merchant
             TempData["MerchantStatus"] = "Merchant application submitted for platform review.";
         }
         catch (Exception ex) when (ex is InvalidOperationException or ArgumentException)
+        {
+            TempData["MerchantError"] = ex.Message;
+        }
+
+        return RedirectToAction(nameof(MerchantApplication), new { organizationId });
+    }
+
+    [HttpPost]
+    [ValidateAntiForgeryToken]
+    [Authorize(Roles = "Owner,Administrator")]
+    public async Task<IActionResult> CompleteNmiLegalConsent(CancellationToken cancellationToken)
+    {
+        var organizationId = CompanyOrganizationId();
+        try
+        {
+            var result = await merchantAccountService.CompleteLegalConsentAsync(
+                organizationId,
+                UserId(),
+                cancellationToken);
+            TempData["MerchantStatus"] = result.Status switch
+            {
+                "UnderReview" => "Legal consent completed. The application was submitted to NMI and is under review.",
+                "CredentialProvisioning" => "NMI approved the application. Secure payment credentials are being provisioned.",
+                "Active" => "NMI approved the merchant and payments are active.",
+                "Rejected" => "NMI declined the merchant application.",
+                _ => $"Legal consent recorded. Merchant status: {result.Status}."
+            };
+        }
+        catch (Exception ex) when (ex is InvalidOperationException or HttpRequestException)
         {
             TempData["MerchantError"] = ex.Message;
         }
@@ -191,8 +238,9 @@ public sealed class FinancialServicesController(IMerchantAccountService merchant
 
     private bool TryOrganizationId(out Guid organizationId)
     {
-        var value = User.FindFirstValue("organization_id") ?? Request.Query["organizationId"].FirstOrDefault();
-        return Guid.TryParse(value, out organizationId);
+        organizationId = Guid.Empty;
+        return User.FindFirstValue("platform_user_id") is null &&
+            Guid.TryParse(User.FindFirstValue("organization_id"), out organizationId);
     }
 
     private Guid OrganizationId()
@@ -200,6 +248,17 @@ public sealed class FinancialServicesController(IMerchantAccountService merchant
         return TryOrganizationId(out var organizationId)
             ? organizationId
             : throw new UnauthorizedAccessException("An organization context is required.");
+    }
+
+    private Guid CompanyOrganizationId()
+    {
+        if (User.FindFirstValue("platform_user_id") is not null ||
+            !Guid.TryParse(User.FindFirstValue("organization_id"), out var organizationId))
+        {
+            throw new UnauthorizedAccessException("A company signer context is required.");
+        }
+
+        return organizationId;
     }
 
     private Guid UserId()
@@ -219,39 +278,6 @@ public sealed class FinancialServicesController(IMerchantAccountService merchant
             : RedirectToAction("Login", "Account", new { returnUrl = Request.Path + Request.QueryString });
     }
 
-    private static MerchantApplicationForm DemoMerchantApplication()
-    {
-        return new MerchantApplicationForm
-        {
-            BusinessName = "DEV Smoke Powersports",
-            Dba = "DEV Smoke Powersports",
-            Ein = "82-1234567",
-            TaxId = "821234567",
-            BusinessType = "LLC",
-            PhysicalAddressLine1 = "100 Main St",
-            PhysicalAddressLine2 = "Suite 100",
-            PhysicalCity = "Dallas",
-            PhysicalRegion = "TX",
-            PhysicalPostalCode = "75001",
-            PhysicalCountry = "US",
-            MailingAddressLine1 = "100 Main St",
-            MailingAddressLine2 = "Suite 100",
-            MailingCity = "Dallas",
-            MailingRegion = "TX",
-            MailingPostalCode = "75001",
-            MailingCountry = "US",
-            OwnerName = "Bradley Molen",
-            OwnerEmail = "brad.molen+dev-smoke@example.com",
-            OwnerPhone = "2145551212",
-            BankName = "First National Test Bank",
-            BankRoutingNumber = "111000025",
-            BankAccountNumber = "1234567890",
-            ExpectedMonthlyVolume = 5000,
-            AverageTicket = 100,
-            Website = "https://dev-smoke-powersports.example.com",
-            Mcc = "5533"
-        };
-    }
 }
 
 public sealed class MerchantApplicationForm
@@ -265,6 +291,10 @@ public sealed class MerchantApplicationForm
     public string? TaxId { get; set; }
 
     public string? BusinessType { get; set; }
+
+    public string? BusinessDescription { get; set; }
+
+    public int? YearsInBusiness { get; set; }
 
     public string PhysicalAddressLine1 { get; set; } = string.Empty;
 
@@ -296,6 +326,14 @@ public sealed class MerchantApplicationForm
 
     public string OwnerPhone { get; set; } = string.Empty;
 
+    public string? OwnerTitle { get; set; }
+
+    public decimal? OwnerOwnershipPercentage { get; set; }
+
+    public string? OwnerDateOfBirth { get; set; }
+
+    public string? OwnerSsn { get; set; }
+
     public string? BankName { get; set; }
 
     public string? BankRoutingNumber { get; set; }
@@ -305,6 +343,16 @@ public sealed class MerchantApplicationForm
     public decimal? ExpectedMonthlyVolume { get; set; }
 
     public decimal? AverageTicket { get; set; }
+
+    public decimal? HighTicket { get; set; }
+
+    public decimal? CardPresentPercentage { get; set; }
+
+    public decimal? KeyEnteredPercentage { get; set; }
+
+    public decimal? EcommercePercentage { get; set; }
+
+    public decimal? MotoPercentage { get; set; }
 
     public string? Website { get; set; }
 
@@ -318,6 +366,8 @@ public sealed class MerchantApplicationForm
             Ein,
             TaxId,
             BusinessType,
+            BusinessDescription,
+            YearsInBusiness,
             PhysicalAddressLine1,
             PhysicalAddressLine2,
             PhysicalCity,
@@ -333,11 +383,20 @@ public sealed class MerchantApplicationForm
             OwnerName,
             OwnerEmail,
             OwnerPhone,
+            OwnerTitle,
+            OwnerOwnershipPercentage,
+            OwnerDateOfBirth,
+            OwnerSsn,
             BankName,
             BankRoutingNumber,
             BankAccountNumber,
             ExpectedMonthlyVolume,
             AverageTicket,
+            HighTicket,
+            CardPresentPercentage,
+            KeyEnteredPercentage,
+            EcommercePercentage,
+            MotoPercentage,
             Website,
             Mcc);
     }

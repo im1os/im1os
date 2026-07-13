@@ -58,7 +58,27 @@ public sealed record PartnerMerchantCreateRequest(
     string Email,
     string Phone,
     string? Website,
-    string? ExternalIdentifier);
+    string? ExternalIdentifier,
+    string? Dba = null,
+    string? TaxIdentifier = null,
+    string? BusinessType = null,
+    string? BusinessDescription = null,
+    int? YearsInBusiness = null,
+    string? OwnerTitle = null,
+    decimal? OwnerOwnershipPercentage = null,
+    string? OwnerDateOfBirth = null,
+    string? OwnerSsn = null,
+    string? BankName = null,
+    string? BankRoutingNumber = null,
+    string? BankAccountNumber = null,
+    decimal? ExpectedMonthlyVolume = null,
+    decimal? AverageTicket = null,
+    decimal? HighTicket = null,
+    decimal? CardPresentPercentage = null,
+    decimal? KeyEnteredPercentage = null,
+    decimal? EcommercePercentage = null,
+    decimal? MotoPercentage = null,
+    string? Mcc = null);
 
 public sealed record PartnerMerchantCreateResult(
     string ProviderCode,
@@ -67,7 +87,8 @@ public sealed record PartnerMerchantCreateResult(
     string? GatewayPassword,
     string Status,
     string? RawResponse,
-    string? ProviderReference = null);
+    string? ProviderReference = null,
+    string? LegalConsentUrl = null);
 
 public sealed record PartnerMerchantCredentialRequest(
     string ProviderMerchantId,
@@ -96,11 +117,22 @@ public interface IPartnerProvider
 
     FinancialProviderConfiguration GetConfiguration();
 
-    Task<PartnerMerchantCreateResult> CreateMerchantAsync(PartnerMerchantCreateRequest request, CancellationToken cancellationToken);
+    Task<PartnerMerchantCreateResult> CreateMerchantAsync(
+        PartnerMerchantCreateRequest request,
+        string idempotencyKey,
+        CancellationToken cancellationToken);
+
+    string GetMerchantApplicationPayloadFingerprint(PartnerMerchantCreateRequest request);
+
+    Task<bool> HasMatchingMerchantApplicationAsync(
+        PartnerMerchantCreateRequest request,
+        CancellationToken cancellationToken);
 
     Task<PartnerMerchantCreateResult> SubmitMerchantApplicationAsync(
         string providerReference,
         PartnerMerchantCreateRequest request,
+        string updateIdempotencyKey,
+        string submitIdempotencyKey,
         CancellationToken cancellationToken);
 
     Task<PartnerMerchantCreateResult> GetMerchantApplicationStatusAsync(
@@ -109,6 +141,7 @@ public interface IPartnerProvider
 
     Task<PartnerMerchantCredentialResult> CreateMerchantCredentialAsync(
         PartnerMerchantCredentialRequest request,
+        string idempotencyKey,
         CancellationToken cancellationToken);
 }
 

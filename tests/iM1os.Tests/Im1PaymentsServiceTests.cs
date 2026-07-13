@@ -12,6 +12,73 @@ namespace iM1os.Tests;
 
 public sealed class Im1PaymentsServiceTests
 {
+    private static readonly TestSecretProtector SecretProtector = new();
+
+    [Fact]
+    public async Task CreateSaleAsync_sends_the_exact_json_media_type_required_by_nmi()
+    {
+        await using var dbContext = CreateContext();
+        var handler = new RecordingHandler("""
+            {
+              "id": "28147497671995",
+              "auth_code": "TAS536",
+              "response": "1",
+              "response_text": "Approved",
+              "status": "approved"
+            }
+            """);
+        var service = CreateService(dbContext, handler);
+        var organizationId = Guid.NewGuid();
+        AddActiveMerchant(dbContext, organizationId);
+
+        await service.CreateSaleAsync(
+            organizationId,
+            Guid.NewGuid(),
+            new PaymentSaleRequest("tok_exact_json", 1m, "USD"),
+            CancellationToken.None);
+
+        Assert.Equal("application/json", handler.RequestContentType);
+        Assert.Null(handler.RequestContentTypeCharSet);
+        Assert.Contains("application/json", handler.AcceptMediaTypes);
+    }
+
+    [Fact]
+    public async Task CreateSaleAsync_uses_the_nmi_v5_billing_schema_and_omits_unconfigured_merchant_fields()
+    {
+        await using var dbContext = CreateContext();
+        var handler = new RecordingHandler("""
+            {
+              "id": "28147497671995",
+              "response": "1",
+              "response_text": "Approved",
+              "status": "approved"
+            }
+            """);
+        var service = CreateService(dbContext, handler);
+        var organizationId = Guid.NewGuid();
+        AddActiveMerchant(dbContext, organizationId);
+
+        await service.CreateSaleAsync(
+            organizationId,
+            Guid.NewGuid(),
+            new PaymentSaleRequest(
+                "tok_v5_schema",
+                1m,
+                "USD",
+                OrderId: "TEST-1001",
+                PostalCode: "60601"),
+            CancellationToken.None);
+
+        Assert.Contains("\"zip\":\"60601\"", handler.RequestBody);
+        Assert.DoesNotContain("postal_code", handler.RequestBody);
+        Assert.DoesNotContain("merchant_defined_fields", handler.RequestBody);
+        Assert.DoesNotContain("order_details", handler.RequestBody);
+        Assert.DoesNotContain("im1_", handler.RequestBody);
+
+        var transaction = await dbContext.PaymentTransactions.IgnoreQueryFilters().SingleAsync();
+        Assert.Equal("TEST-1001", transaction.OrderId);
+    }
+
     [Fact]
     public async Task CreateSaleAsync_records_approved_transaction_ledger_entry_and_domain_event()
     {
@@ -61,6 +128,7 @@ public sealed class Im1PaymentsServiceTests
         Assert.Equal("Ada Rider", transaction.CustomerName);
         Assert.Equal("1111", transaction.CardLastFour);
         Assert.Equal("NMI", transaction.Provider);
+        Assert.Null(transaction.RawResponseJson);
 
         var ledgerEntry = await dbContext.FinancialLedgerEntries.IgnoreQueryFilters().SingleAsync();
         Assert.Equal(transaction.Id.ToString(), ledgerEntry.SourceId);
@@ -109,7 +177,7 @@ public sealed class Im1PaymentsServiceTests
     }
 
     [Fact]
-    public async Task CreateSaleAsync_records_nmi_http_error_message()
+    public async Task CreateSaleAsync_records_safe_nmi_http_error_message_without_raw_response()
     {
         await using var dbContext = CreateContext();
         var handler = new RecordingHandler("""
@@ -136,7 +204,109 @@ public sealed class Im1PaymentsServiceTests
         Assert.Equal("Missing/Invalid Authentication", result.ResponseText);
 
         var transaction = await dbContext.PaymentTransactions.IgnoreQueryFilters().SingleAsync();
-        Assert.Contains("E_AUTHENTICATION_MISSING", transaction.RawResponseJson);
+        Assert.Null(transaction.RawResponseJson);
+        Assert.Equal("Missing/Invalid Authentication", transaction.ResponseText);
+    }
+
+    [Fact]
+    public async Task CreateSaleAsync_records_only_allowlisted_nmi_payment_validation_details()
+    {
+        await using var dbContext = CreateContext();
+        const string submittedToken = "tok_sensitive_value_must_not_persist";
+        var handler = new RecordingHandler($$"""
+            {
+              "type": "validationError",
+              "error_code": "E_VALIDATION",
+              "message": "The provided data is invalid.",
+              "details": [
+                {
+                  "fieldName": "payment_details.payment_token",
+                  "message": "The payment token {{submittedToken}} is invalid."
+                },
+                {
+                  "fieldName": "billing_address.zip",
+                  "message": "ZIP format is invalid."
+                },
+                {
+                  "fieldName": "unsupported.private_value",
+                  "message": "Unsafe value 123456789 should not persist."
+                }
+              ]
+            }
+            """, HttpStatusCode.UnprocessableEntity);
+        var service = CreateService(dbContext, handler);
+        var organizationId = Guid.NewGuid();
+        AddActiveMerchant(dbContext, organizationId);
+
+        var result = await service.CreateSaleAsync(
+            organizationId,
+            Guid.NewGuid(),
+            new PaymentSaleRequest(
+                submittedToken,
+                1m,
+                "USD",
+                Email: "private@example.test",
+                PostalCode: "60601"),
+            CancellationToken.None);
+
+        Assert.False(result.Success);
+        Assert.Equal("422", result.ResponseCode);
+        Assert.Contains("billing_address.zip", result.ResponseText);
+        Assert.Contains("payment_details.payment_token", result.ResponseText);
+        Assert.Contains("E_VALIDATION", result.ResponseText);
+        Assert.Contains("ZIP format is invalid.", result.ResponseText);
+        Assert.DoesNotContain(submittedToken, result.ResponseText);
+        Assert.DoesNotContain("private@example.test", result.ResponseText);
+        Assert.DoesNotContain("unsupported.private_value", result.ResponseText);
+        Assert.DoesNotContain("123456789", result.ResponseText);
+
+        var transaction = await dbContext.PaymentTransactions.IgnoreQueryFilters().SingleAsync();
+        Assert.Null(transaction.RawResponseJson);
+        Assert.Equal(result.ResponseText, transaction.ResponseText);
+    }
+
+    [Fact]
+    public async Task CreateSaleAsync_persists_declined_payment_attempt_and_history()
+    {
+        await using var dbContext = CreateContext();
+        var handler = new RecordingHandler("""
+            {
+              "object": "transaction",
+              "id": "declined-transaction-123",
+              "type": "sale",
+              "amount": "10.00",
+              "response": "2",
+              "response_text": "Do not honor",
+              "status": "declined"
+            }
+            """);
+        var service = CreateService(dbContext, handler);
+        var organizationId = Guid.NewGuid();
+        AddActiveMerchant(dbContext, organizationId);
+
+        var result = await service.CreateSaleAsync(
+            organizationId,
+            Guid.NewGuid(),
+            new PaymentSaleRequest("tok_declined", 0.50m, CardBrand: "visa", CardLastFour: "4242"),
+            CancellationToken.None);
+        var workspace = await service.GetWorkspaceAsync(organizationId, CancellationToken.None);
+
+        Assert.False(result.Success);
+        Assert.Equal("Declined", result.Status);
+        Assert.Equal("Do not honor", result.ResponseText);
+        var transaction = await dbContext.PaymentTransactions.IgnoreQueryFilters().SingleAsync();
+        Assert.Equal("Declined", transaction.Status);
+        Assert.False(transaction.IsApproved);
+        Assert.Equal(0.50m, transaction.Amount);
+        Assert.Equal("declined-transaction-123", transaction.GatewayTransactionId);
+        Assert.Null(transaction.RawResponseJson);
+        Assert.Single(workspace.Transactions);
+        Assert.Equal(1, workspace.DeclinedCount);
+
+        var ledgerEntry = await dbContext.FinancialLedgerEntries.IgnoreQueryFilters().SingleAsync();
+        Assert.Equal("PaymentDeclined", ledgerEntry.EntryType);
+        var domainEvent = await dbContext.DomainEvents.IgnoreQueryFilters().SingleAsync();
+        Assert.Equal("PaymentDeclined", domainEvent.EventType);
     }
 
     [Fact]
@@ -155,6 +325,20 @@ public sealed class Im1PaymentsServiceTests
         Assert.Equal("An active merchant account is required before payments can run.", ex.Message);
         Assert.Null(handler.RequestBody);
         Assert.Empty(await dbContext.PaymentTransactions.IgnoreQueryFilters().ToListAsync());
+    }
+
+    [Fact]
+    public async Task GetWorkspaceAsync_does_not_expose_fallback_tokenization_key_without_active_merchant()
+    {
+        await using var dbContext = CreateContext();
+        var service = CreateService(dbContext, new RecordingHandler("{}"));
+
+        var workspace = await service.GetWorkspaceAsync(Guid.NewGuid(), CancellationToken.None);
+
+        Assert.False(workspace.Configuration.IsConfigured);
+        Assert.False(workspace.Configuration.HasActiveMerchant);
+        Assert.Null(workspace.Configuration.PublicTokenizationKey);
+        Assert.False(workspace.Configuration.HasMerchantPrivateKey);
     }
 
     [Theory]
@@ -207,7 +391,8 @@ public sealed class Im1PaymentsServiceTests
                     MerchantTokenizationKey = "test-public-key"
                 })),
             new DomainEventRecorder(dbContext, currentUser, new SystemClock()),
-            new SystemClock());
+            new SystemClock(),
+            SecretProtector);
     }
 
     private static void AddActiveMerchant(ApplicationDbContext dbContext, Guid organizationId)
@@ -235,8 +420,13 @@ public sealed class Im1PaymentsServiceTests
             ProviderCode = "NMI",
             ProviderMerchantId = "nmi-merchant-123",
             Status = status,
-            PaymentApiKeyProtected = status == MerchantAccountStatuses.Active ? "merchant-private-key" : null,
-            PublicTokenizationKey = status == MerchantAccountStatuses.Active ? "merchant-public-key" : null
+            CredentialProvisioningStatus = status == MerchantAccountStatuses.Active ? "Complete" : "NotStarted",
+            PaymentApiKeyProtected = status == MerchantAccountStatuses.Active
+                ? SecretProtector.Protect("merchant-private-key")
+                : null,
+            PublicTokenizationKeyProtected = status == MerchantAccountStatuses.Active
+                ? SecretProtector.Protect("merchant-public-key")
+                : null
         });
         dbContext.SaveChanges();
     }
@@ -255,6 +445,12 @@ public sealed class Im1PaymentsServiceTests
 
         public string? RequestBody { get; private set; }
 
+        public string? RequestContentType { get; private set; }
+
+        public string? RequestContentTypeCharSet { get; private set; }
+
+        public IReadOnlyList<string> AcceptMediaTypes { get; private set; } = [];
+
         protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
         {
             AuthorizationHeader = request.Headers.TryGetValues("Authorization", out var values)
@@ -263,6 +459,13 @@ public sealed class Im1PaymentsServiceTests
             RequestBody = request.Content is null
                 ? string.Empty
                 : await request.Content.ReadAsStringAsync(cancellationToken);
+            RequestContentType = request.Content?.Headers.ContentType?.MediaType;
+            RequestContentTypeCharSet = request.Content?.Headers.ContentType?.CharSet;
+            AcceptMediaTypes = request.Headers.Accept
+                .Select(x => x.MediaType)
+                .Where(x => x is not null)
+                .Select(x => x!)
+                .ToList();
 
             return new HttpResponseMessage(statusCode)
             {
