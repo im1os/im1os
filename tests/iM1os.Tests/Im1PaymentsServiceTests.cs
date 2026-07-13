@@ -165,7 +165,7 @@ public sealed class Im1PaymentsServiceTests
         var result = await service.CreateSaleAsync(
             organizationId,
             Guid.NewGuid(),
-            new PaymentSaleRequest("tok_declined", 10m, CardBrand: "visa", CardLastFour: "4242"),
+            new PaymentSaleRequest("tok_declined", 0.50m, CardBrand: "visa", CardLastFour: "4242"),
             CancellationToken.None);
         var workspace = await service.GetWorkspaceAsync(organizationId, CancellationToken.None);
 
@@ -175,6 +175,7 @@ public sealed class Im1PaymentsServiceTests
         var transaction = await dbContext.PaymentTransactions.IgnoreQueryFilters().SingleAsync();
         Assert.Equal("Declined", transaction.Status);
         Assert.False(transaction.IsApproved);
+        Assert.Equal(0.50m, transaction.Amount);
         Assert.Equal("declined-transaction-123", transaction.GatewayTransactionId);
         Assert.Null(transaction.RawResponseJson);
         Assert.Single(workspace.Transactions);
