@@ -11,7 +11,8 @@ namespace iM1os.Web.Controllers;
 [Authorize]
 public sealed class FinancialServicesController(
     IMerchantAccountService merchantAccountService,
-    IWebHostEnvironment hostEnvironment) : Controller
+    IWebHostEnvironment hostEnvironment,
+    IConfiguration configuration) : Controller
 {
     [HttpGet]
     public IActionResult Index()
@@ -70,7 +71,7 @@ public sealed class FinancialServicesController(
     [Authorize(Roles = "Owner,Administrator")]
     public async Task<IActionResult> FillMerchantApplicationSandboxData(CancellationToken cancellationToken)
     {
-        if (!hostEnvironment.IsDevelopment())
+        if (!SandboxApplicationFixtureEnabled())
         {
             return NotFound();
         }
@@ -91,6 +92,12 @@ public sealed class FinancialServicesController(
         }
 
         return RedirectToAction(nameof(MerchantApplication), new { organizationId });
+    }
+
+    private bool SandboxApplicationFixtureEnabled()
+    {
+        return hostEnvironment.IsDevelopment() ||
+            configuration.GetValue<bool>("NmiPayments:EnableSandboxApplicationFixture");
     }
 
     [HttpPost]

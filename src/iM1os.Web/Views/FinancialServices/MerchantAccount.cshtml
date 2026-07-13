@@ -1,11 +1,14 @@
 @model iM1os.Application.FinancialServices.Merchant.CompanyMerchantAccountWorkspace
 @using Microsoft.Extensions.Hosting
 @inject Microsoft.AspNetCore.Hosting.IWebHostEnvironment HostEnvironment
+@inject IConfiguration Configuration
 @{
     ViewData["Title"] = "Merchant Account";
     var account = Model.Account;
     var app = Model.Application;
     var canEdit = app.CanEdit;
+    var sandboxApplicationFixtureEnabled = HostEnvironment.IsDevelopment() ||
+        Configuration.GetValue<bool>("NmiPayments:EnableSandboxApplicationFixture");
     var saveLabel = app.Status is "Submitted" or "Approved" ? "Save Changes" : "Save Draft";
     var hero = new IM1WorkspaceHeroModel(
         "Merchant Account",
@@ -122,7 +125,7 @@
                 <h2>Merchant Application</h2>
                 <p>@(canEdit ? "Edit the application details and save before approval or activation." : "Application details are locked for this status.")</p>
             </div>
-            @if (HostEnvironment.IsDevelopment() && canEdit)
+            @if (sandboxApplicationFixtureEnabled && canEdit)
             {
                 <form method="post" asp-controller="FinancialServices" asp-action="FillMerchantApplicationSandboxData">
                     @Html.AntiForgeryToken()

@@ -6,6 +6,7 @@ using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.ViewFeatures;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.FileProviders;
 using Microsoft.Extensions.Hosting;
 
@@ -63,11 +64,31 @@ public sealed class NmiSandboxMerchantApplicationFixtureTests
         Assert.Equal("Development-only NMI sandbox test data saved.", controller.TempData["MerchantStatus"]);
     }
 
+    [Fact]
+    public async Task FillSandboxData_SavesWhenExplicitlyEnabledForDevDeployment()
+    {
+        var organizationId = Guid.NewGuid();
+        var actorUserId = Guid.NewGuid();
+        var service = new RecordingMerchantAccountService();
+        var controller = CreateController(
+            service,
+            Environments.Production,
+            organizationId,
+            actorUserId,
+            enableSandboxFixture: true);
+
+        var result = await controller.FillMerchantApplicationSandboxData(CancellationToken.None);
+
+        Assert.IsType<RedirectToActionResult>(result);
+        Assert.NotNull(service.SavedRequest);
+    }
+
     private static FinancialServicesController CreateController(
         IMerchantAccountService service,
         string environmentName,
         Guid? organizationId = null,
-        Guid? actorUserId = null)
+        Guid? actorUserId = null,
+        bool enableSandboxFixture = false)
     {
         var claims = new List<Claim>();
         if (organizationId.HasValue)
@@ -85,7 +106,16 @@ public sealed class NmiSandboxMerchantApplicationFixtureTests
         {
             User = new ClaimsPrincipal(new ClaimsIdentity(claims, "Test"))
         };
-        var controller = new FinancialServicesController(service, new TestWebHostEnvironment(environmentName))
+        var configuration = new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?>
+            {
+                ["NmiPayments:EnableSandboxApplicationFixture"] = enableSandboxFixture.ToString()
+            })
+            .Build();
+        var controller = new FinancialServicesController(
+            service,
+            new TestWebHostEnvironment(environmentName),
+            configuration)
         {
             ControllerContext = new ControllerContext { HttpContext = httpContext }
         };
