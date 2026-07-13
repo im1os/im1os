@@ -414,9 +414,30 @@ public sealed class NmiPartnerProvider(
         var phone = Required(FormatPhone(Clean(request.Phone)), "Owner phone");
         var email = Required(request.Email, "Owner email");
         var goodsDescription = Clean(request.BusinessDescription);
+        var pricingType = Required(paymentOptions.SignUpPricingType, "NMI Sign-Up pricing type");
 
         var fields = new List<object>();
-        AddField(fields, "fld_pricing_type", Required(paymentOptions.SignUpPricingType, "NMI Sign-Up pricing type"));
+        AddField(fields, "fld_pricing_type", pricingType);
+        if (string.Equals(pricingType, "Flat Rate", StringComparison.Ordinal))
+        {
+            AddField(fields, "fld_qual_rate", Required(paymentOptions.SignUpQualifiedRate, "NMI qualified rate"));
+            AddField(
+                fields,
+                "fld_qual_rate_per_auth",
+                Required(paymentOptions.SignUpQualifiedRatePerAuthorization, "NMI qualified rate per authorization"));
+        }
+        else if (string.Equals(pricingType, "Cost Plus", StringComparison.Ordinal))
+        {
+            AddField(fields, "fld_cost_plus", Required(paymentOptions.SignUpCostPlusRate, "NMI cost-plus rate"));
+            AddField(
+                fields,
+                "fld_cost_plus_per_auth",
+                Required(paymentOptions.SignUpCostPlusPerAuthorization, "NMI cost-plus rate per authorization"));
+        }
+        else
+        {
+            throw new InvalidOperationException("NMI Sign-Up pricing type must be Flat Rate or Cost Plus.");
+        }
         AddField(fields, "fld_average_ticket", request.AverageTicket);
         AddField(fields, "fld_high_ticket", request.HighTicket);
         AddField(fields, "fld_monthly_volume", request.ExpectedMonthlyVolume);
@@ -681,6 +702,16 @@ public sealed class NmiPartnerProvider(
     private static string Required(string? value, string label)
     {
         return Clean(value) ?? throw new InvalidOperationException($"{label} is required.");
+    }
+
+    private static decimal Required(decimal? value, string label)
+    {
+        if (!value.HasValue || value.Value < 0m || value.Value > 100m)
+        {
+            throw new InvalidOperationException($"{label} must be configured between 0 and 100.");
+        }
+
+        return value.Value;
     }
 
     private static string BuildMerchantUsername(PartnerMerchantCreateRequest request)

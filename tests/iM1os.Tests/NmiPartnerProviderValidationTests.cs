@@ -72,6 +72,8 @@ public sealed class NmiPartnerProviderValidationTests
                 StringComparer.Ordinal);
         Assert.Equal("Retail", fields["fld_business_nature"]);
         Assert.Equal("Flat Rate", fields["fld_pricing_type"]);
+        Assert.Equal("2.9", fields["fld_qual_rate"]);
+        Assert.Equal("0.30", fields["fld_qual_rate_per_auth"]);
         Assert.Equal(50, fields["fld_type_of_goods_sold"].Length);
         Assert.Equal("NMI Sandbox Motorcycle Supply LL", fields["fld_legal_name"]);
         Assert.Equal("123456789", fields["fld_federal_tax_id"]);
@@ -157,7 +159,9 @@ public sealed class NmiPartnerProviderValidationTests
                 PartnerOAuthClientId = "oauth-client",
                 PartnerOAuthClientSecret = "oauth-secret",
                 SignUpPackageId = "pkg_merrick_tsys",
-                SignUpPricingType = "Flat Rate"
+                SignUpPricingType = "Flat Rate",
+                SignUpQualifiedRate = 2.9m,
+                SignUpQualifiedRatePerAuthorization = 0.30m
             }));
     }
 
