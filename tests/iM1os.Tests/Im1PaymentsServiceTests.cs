@@ -204,6 +204,20 @@ public sealed class Im1PaymentsServiceTests
         Assert.Empty(await dbContext.PaymentTransactions.IgnoreQueryFilters().ToListAsync());
     }
 
+    [Fact]
+    public async Task GetWorkspaceAsync_does_not_expose_fallback_tokenization_key_without_active_merchant()
+    {
+        await using var dbContext = CreateContext();
+        var service = CreateService(dbContext, new RecordingHandler("{}"));
+
+        var workspace = await service.GetWorkspaceAsync(Guid.NewGuid(), CancellationToken.None);
+
+        Assert.False(workspace.Configuration.IsConfigured);
+        Assert.False(workspace.Configuration.HasActiveMerchant);
+        Assert.Null(workspace.Configuration.PublicTokenizationKey);
+        Assert.False(workspace.Configuration.HasMerchantPrivateKey);
+    }
+
     [Theory]
     [InlineData(MerchantAccountStatuses.Rejected)]
     [InlineData(MerchantAccountStatuses.Suspended)]

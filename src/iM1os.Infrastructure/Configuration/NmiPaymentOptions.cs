@@ -12,7 +12,7 @@ public sealed class NmiPaymentOptions
 
     public string SignUpBaseUrl { get; set; } = "https://sandbox.signup.nmi.com/api/v1/";
 
-    public string SignUpPackageId { get; set; } = "pkg_merrick_tsys";
+    public string? SignUpPackageId { get; set; }
 
     public string CollectJsUrl { get; set; } = "https://secure.nmi.com/token/Collect.js";
 

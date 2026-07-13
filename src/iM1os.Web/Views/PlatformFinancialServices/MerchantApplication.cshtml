@@ -5,7 +5,8 @@
     var app = Model.Application;
     var canApprove = merchant.Status == "Submitted" ||
         (merchant.Status == "Approved" && string.IsNullOrWhiteSpace(merchant.ProviderReference));
-    var canRefresh = merchant.Status is "UnderReview" or "CredentialProvisioning";
+    var canRefresh = merchant.Status == "UnderReview" ||
+        (merchant.Status == "CredentialProvisioning" && merchant.CredentialProvisioningStatus == "Failed");
     var canReject = merchant.Status == "Submitted";
     var hero = new IM1WorkspaceHeroModel(
         "Merchant Application",

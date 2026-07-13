@@ -148,8 +148,8 @@ public sealed class PaymentService(
         var hasActiveMerchant = activeMerchant is not null;
         var publicKey = !string.IsNullOrWhiteSpace(activeMerchant?.PublicTokenizationKeyProtected)
             ? secretProtector.Unprotect(activeMerchant.PublicTokenizationKeyProtected)
-            : configuration.PublicTokenizationKey;
-        var hasPaymentCredentials = !string.IsNullOrWhiteSpace(activeMerchant?.PaymentApiKeyProtected) || configuration.HasPaymentCredentials;
+            : null;
+        var hasPaymentCredentials = !string.IsNullOrWhiteSpace(activeMerchant?.PaymentApiKeyProtected);
         return new PaymentsConfigurationStatus(
             hasActiveMerchant && hasPaymentCredentials && !string.IsNullOrWhiteSpace(publicKey),
             configuration.ProviderCode,

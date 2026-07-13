@@ -445,7 +445,8 @@ public sealed class MerchantAccountService(
         }
         if (!string.IsNullOrWhiteSpace(providerResult.LegalConsentUrl))
         {
-            relationship.LegalConsentUrlProtected = secretProtector.Protect(providerResult.LegalConsentUrl);
+            relationship.LegalConsentUrlProtected = secretProtector.Protect(
+                HttpsUrl(providerResult.LegalConsentUrl, "NMI legal consent URL"));
         }
         await dbContext.SaveChangesAsync(cancellationToken);
 
@@ -1367,6 +1368,17 @@ public sealed class MerchantAccountService(
     private static string? Clean(string? value)
     {
         return string.IsNullOrWhiteSpace(value) ? null : value.Trim();
+    }
+
+    private static string HttpsUrl(string value, string label)
+    {
+        if (!Uri.TryCreate(value, UriKind.Absolute, out var uri) ||
+            !string.Equals(uri.Scheme, Uri.UriSchemeHttps, StringComparison.OrdinalIgnoreCase))
+        {
+            throw new InvalidOperationException($"{label} must be an absolute HTTPS URL.");
+        }
+
+        return uri.AbsoluteUri;
     }
 
     private static string? LastFour(string? value)

@@ -57,7 +57,7 @@ public sealed class MerchantAccountServiceTests
         Assert.Equal(0, provider.SubmitCalls);
         Assert.True(workspace.LegalConsent.IsRequired);
         Assert.True(workspace.LegalConsent.CanComplete);
-        Assert.Equal("https://secure.nmi.test/consent/application-123", workspace.LegalConsent.LegalConsentUrl);
+        Assert.Equal("https://secure.nmi.com/consent/application-123", workspace.LegalConsent.LegalConsentUrl);
         Assert.Null(workspace.LegalConsent.CompletedAtUtc);
     }
 
@@ -235,7 +235,7 @@ public sealed class MerchantAccountServiceTests
         AssertProtected(relationship.GatewayPasswordProtected, "gateway-password-secret");
         AssertProtected(relationship.PaymentApiKeyProtected, "private-transaction-secret");
         AssertProtected(relationship.PublicTokenizationKeyProtected, "public-tokenization-secret");
-        AssertProtected(relationship.LegalConsentUrlProtected, "https://secure.nmi.test/consent/application-123");
+        AssertProtected(relationship.LegalConsentUrlProtected, "https://secure.nmi.com/consent/application-123");
 
         var persistedSafeText = string.Join('|', relationship.CapabilitiesJson, relationship.CredentialMetadataJson, relationship.LastProviderError);
         Assert.DoesNotContain("raw-provider-secret", persistedSafeText, StringComparison.Ordinal);
@@ -422,7 +422,7 @@ public sealed class MerchantAccountServiceTests
             return Task.FromResult(Result(
                 MerchantAccountStatuses.LegalConsentRequired,
                 providerMerchantId: string.Empty,
-                legalConsentUrl: "https://secure.nmi.test/consent/application-123"));
+                legalConsentUrl: "https://secure.nmi.com/consent/application-123"));
         }
 
         public Task<PartnerMerchantCreateResult> SubmitMerchantApplicationAsync(

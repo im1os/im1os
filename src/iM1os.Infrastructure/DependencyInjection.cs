@@ -38,7 +38,12 @@ public static class DependencyInjection
     {
         services.Configure<JwtOptions>(configuration.GetSection(JwtOptions.SectionName));
         services.Configure<NmiPaymentOptions>(configuration.GetSection(NmiPaymentOptions.SectionName));
-        services.AddDataProtection().SetApplicationName("iM1os");
+        var dataProtection = services.AddDataProtection().SetApplicationName("iM1os");
+        var dataProtectionKeyRingPath = configuration["DataProtection:KeyRingPath"];
+        if (!string.IsNullOrWhiteSpace(dataProtectionKeyRingPath))
+        {
+            dataProtection.PersistKeysToFileSystem(new DirectoryInfo(Path.GetFullPath(dataProtectionKeyRingPath)));
+        }
 
         services.AddDbContext<ApplicationDbContext>(options =>
             options.UseNpgsql(configuration.GetConnectionString("DefaultConnection")));

@@ -42,9 +42,7 @@ public sealed class NmiPartnerProvider(
         var accessToken = await GetSignupAccessTokenAsync(cancellationToken);
         var applicationPayload = new Dictionary<string, object?>
         {
-            ["package_id"] = string.IsNullOrWhiteSpace(paymentOptions.SignUpPackageId)
-                ? "pkg_merrick_tsys"
-                : paymentOptions.SignUpPackageId,
+            ["package_id"] = Required(paymentOptions.SignUpPackageId, "NMI Sign-Up package id"),
             ["fields"] = BuildSignupFields(request),
             ["collections"] = BuildSignupCollections(request)
         };

@@ -63,7 +63,8 @@
                 {
                     var canApprove = merchant.Status == "Submitted" ||
                         (merchant.Status == "Approved" && string.IsNullOrWhiteSpace(merchant.ProviderReference));
-                    var canRefresh = merchant.Status is "UnderReview" or "CredentialProvisioning";
+                    var canRefresh = merchant.Status == "UnderReview" ||
+                        (merchant.Status == "CredentialProvisioning" && merchant.CredentialProvisioningStatus == "Failed");
                     <tr>
                         <td>
                             <strong>@(merchant.CompanyName ?? merchant.CompanyId.ToString())</strong>

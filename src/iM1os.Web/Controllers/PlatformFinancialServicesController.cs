@@ -6,7 +6,7 @@ using Microsoft.AspNetCore.Mvc;
 
 namespace iM1os.Web.Controllers;
 
-[Authorize]
+[Authorize(Roles = "Platform Administrator")]
 public sealed class PlatformFinancialServicesController(IMerchantAccountService merchantAccountService) : Controller
 {
     [HttpGet]
