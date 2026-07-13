@@ -14,8 +14,8 @@ public static class NmiSandboxMerchantApplicationFixture
         {
             BusinessName = "NMI Sandbox Motorcycle Supply LLC",
             Dba = "NMI Sandbox Moto Supply",
-            Ein = "12-3456789",
-            TaxId = "123456789",
+            Ein = "82-6407193",
+            TaxId = "826407193",
             BusinessType = "LLC",
             BusinessDescription = "Motorcycle parts, accessories, and service for NMI sandbox acceptance testing.",
             YearsInBusiness = 10,

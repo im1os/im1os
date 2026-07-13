@@ -24,7 +24,7 @@ public sealed class NmiSandboxMerchantApplicationFixtureTests
         Assert.EndsWith("@example.com", request.OwnerEmail, StringComparison.Ordinal);
         Assert.Equal("https://example.com", request.Website);
         Assert.Equal("5533", request.Mcc);
-        Assert.False(string.IsNullOrWhiteSpace(request.TaxId));
+        Assert.Equal("826407193", request.TaxId);
         Assert.False(string.IsNullOrWhiteSpace(request.OwnerDateOfBirth));
         Assert.False(string.IsNullOrWhiteSpace(request.OwnerSsn));
         Assert.False(string.IsNullOrWhiteSpace(request.BankRoutingNumber));
