@@ -25,6 +25,7 @@ using iM1os.Infrastructure.Persistence;
 using iM1os.Infrastructure.Security;
 using iM1os.Infrastructure.Services;
 using Microsoft.AspNetCore.Identity;
+using Microsoft.AspNetCore.DataProtection;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
@@ -37,6 +38,7 @@ public static class DependencyInjection
     {
         services.Configure<JwtOptions>(configuration.GetSection(JwtOptions.SectionName));
         services.Configure<NmiPaymentOptions>(configuration.GetSection(NmiPaymentOptions.SectionName));
+        services.AddDataProtection().SetApplicationName("iM1os");
 
         services.AddDbContext<ApplicationDbContext>(options =>
             options.UseNpgsql(configuration.GetConnectionString("DefaultConnection")));
@@ -59,6 +61,7 @@ public static class DependencyInjection
         services.AddScoped<IFeatureFlagService, FeatureFlagService>();
         services.AddScoped<IApplicationSettingsService, ApplicationSettingsService>();
         services.AddScoped<IDomainEventRecorder, DomainEventRecorder>();
+        services.AddSingleton<ISecretProtector, DataProtectionSecretProtector>();
         services.AddScoped<IPlatformAuthenticationService, PlatformAuthenticationService>();
         services.AddScoped<ITenantProvisioningService, TenantProvisioningService>();
         services.AddScoped<ITenantManagerService, TenantManagerService>();

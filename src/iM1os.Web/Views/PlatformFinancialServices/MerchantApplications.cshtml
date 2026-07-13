@@ -62,8 +62,8 @@
                 @foreach (var merchant in Model.Applications)
                 {
                     var canApprove = merchant.Status == "Submitted" ||
-                        ((merchant.Status == "Approved" || merchant.Status == "UnderReview") &&
-                            string.IsNullOrWhiteSpace(merchant.ProviderMerchantId));
+                        (merchant.Status == "Approved" && string.IsNullOrWhiteSpace(merchant.ProviderReference));
+                    var canRefresh = merchant.Status is "UnderReview" or "CredentialProvisioning";
                     <tr>
                         <td>
                             <strong>@(merchant.CompanyName ?? merchant.CompanyId.ToString())</strong>
@@ -83,18 +83,11 @@
                         <td>
                             <span>Payment: @(merchant.HasPaymentApiKey ? "Yes" : "No")</span>
                             <em>Tokenization: @(merchant.HasPublicTokenizationKey ? "Yes" : "No")</em>
+                            <em>Provisioning: @(merchant.CredentialProvisioningStatus ?? "Not started")</em>
                         </td>
                         <td>@(merchant.LastProviderError ?? "-")</td>
                         <td>
-                            @if (!string.IsNullOrWhiteSpace(merchant.SupportNotes) &&
-                                Uri.TryCreate(merchant.SupportNotes, UriKind.Absolute, out _))
-                            {
-                                <a href="@merchant.SupportNotes" target="_blank" rel="noopener">Legal consent</a>
-                            }
-                            else
-                            {
-                                @(merchant.SupportNotes ?? "-")
-                            }
+                            @(merchant.Status == "LegalConsentRequired" ? "Awaiting company signer" : merchant.SupportNotes ?? "-")
                         </td>
                         <td>
                             <a class="im1-button im1-button-secondary"
@@ -106,11 +99,20 @@
                             {
                                 <form method="post"
                                       asp-controller="PlatformFinancialServices"
-                                      asp-action="@(merchant.Status == "UnderReview" ? "RefreshMerchantStatus" : "ApproveMerchant")">
+                                      asp-action="ApproveMerchant">
                                     @Html.AntiForgeryToken()
                                     <input type="hidden" name="organizationId" value="@merchant.CompanyId" />
                                     <input type="hidden" name="merchantAccountId" value="@merchant.MerchantAccountId" />
-                                    <button class="im1-button im1-button-primary" type="submit">@(merchant.Status == "Submitted" ? "Approve" : merchant.Status == "UnderReview" ? "Refresh NMI Status" : "Retry Activation")</button>
+                                    <button class="im1-button im1-button-primary" type="submit">@(merchant.Status == "Submitted" ? "Approve" : "Retry NMI Application Creation")</button>
+                                </form>
+                            }
+                            @if (canRefresh)
+                            {
+                                <form method="post" asp-controller="PlatformFinancialServices" asp-action="RefreshMerchantStatus">
+                                    @Html.AntiForgeryToken()
+                                    <input type="hidden" name="organizationId" value="@merchant.CompanyId" />
+                                    <input type="hidden" name="merchantAccountId" value="@merchant.MerchantAccountId" />
+                                    <button class="im1-button im1-button-primary" type="submit">@(merchant.Status == "CredentialProvisioning" ? "Retry Credentials" : "Refresh NMI Status")</button>
                                 </form>
                             }
                             @if (merchant.Status == "Submitted")

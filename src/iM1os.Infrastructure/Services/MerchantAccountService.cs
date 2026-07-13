@@ -12,13 +12,16 @@ public sealed class MerchantAccountService(
     IApplicationDbContext dbContext,
     IEnumerable<IPartnerProvider> partnerProviders,
     IDomainEventRecorder domainEventRecorder,
-    IDateTimeProvider dateTimeProvider) : IMerchantAccountService
+    IDateTimeProvider dateTimeProvider,
+    ISecretProtector secretProtector) : IMerchantAccountService
 {
     private static readonly IReadOnlySet<string> ApplicationStatuses = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
     {
         MerchantAccountStatuses.Submitted,
         MerchantAccountStatuses.UnderReview,
         MerchantAccountStatuses.Approved,
+        MerchantAccountStatuses.LegalConsentRequired,
+        MerchantAccountStatuses.CredentialProvisioning,
         MerchantAccountStatuses.Rejected
     };
 
@@ -43,7 +46,8 @@ public sealed class MerchantAccountService(
                 EmptyApplication(organizationId),
                 Array.Empty<MerchantStatusHistoryRow>(),
                 new[] { "Submit a merchant account application." },
-                false);
+                false,
+                new MerchantLegalConsentModel(false, null, null, false));
         }
 
         var relationship = await GetPrimaryRelationshipAsync(merchantAccount, cancellationToken);
@@ -56,7 +60,8 @@ public sealed class MerchantAccountService(
             ToApplicationForm(merchantAccount),
             history,
             RequiredNextSteps(summary),
-            summary.IsProcessingReady);
+            summary.IsProcessingReady,
+            ToLegalConsent(merchantAccount, relationship));
     }
 
     public async Task<PlatformMerchantApplicationsWorkspace> GetPlatformMerchantApplicationsAsync(CancellationToken cancellationToken)
@@ -108,38 +113,49 @@ public sealed class MerchantAccountService(
         MerchantOnboardingRequest request,
         CancellationToken cancellationToken)
     {
-        return await SubmitApplicationAsync(
+        return await SaveDraftAsync(
             organizationId,
             actorUserId,
             new MerchantApplicationRequest(
-                request.LegalBusinessName,
-                null,
-                null,
-                null,
-                null,
-                request.AddressLine1,
-                request.AddressLine2,
-                request.City,
-                request.Region,
-                request.PostalCode,
-                request.Country,
-                null,
-                null,
-                null,
-                null,
-                null,
-                null,
-                $"{request.FirstName} {request.LastName}".Trim(),
-                request.Email,
-                request.Phone,
-                null,
-                null,
-                null,
-                null,
-                null,
-                request.Website,
-                null,
-                request.ProviderCode),
+                BusinessName: request.LegalBusinessName,
+                Dba: null,
+                Ein: null,
+                TaxId: null,
+                BusinessType: null,
+                BusinessDescription: null,
+                YearsInBusiness: null,
+                PhysicalAddressLine1: request.AddressLine1,
+                PhysicalAddressLine2: request.AddressLine2,
+                PhysicalCity: request.City,
+                PhysicalRegion: request.Region,
+                PhysicalPostalCode: request.PostalCode,
+                PhysicalCountry: request.Country,
+                MailingAddressLine1: null,
+                MailingAddressLine2: null,
+                MailingCity: null,
+                MailingRegion: null,
+                MailingPostalCode: null,
+                MailingCountry: null,
+                OwnerName: $"{request.FirstName} {request.LastName}".Trim(),
+                OwnerEmail: request.Email,
+                OwnerPhone: request.Phone,
+                OwnerTitle: null,
+                OwnerOwnershipPercentage: null,
+                OwnerDateOfBirth: null,
+                OwnerSsn: null,
+                BankName: null,
+                BankRoutingNumber: null,
+                BankAccountNumber: null,
+                ExpectedMonthlyVolume: null,
+                AverageTicket: null,
+                HighTicket: null,
+                CardPresentPercentage: null,
+                KeyEnteredPercentage: null,
+                EcommercePercentage: null,
+                MotoPercentage: null,
+                Website: request.Website,
+                Mcc: null,
+                ProviderCode: request.ProviderCode),
             cancellationToken);
     }
 
@@ -206,6 +222,7 @@ public sealed class MerchantAccountService(
 
         EnsureApplicationSubmittable(merchantAccount);
         ApplyApplication(merchantAccount, request, provider.ProviderCode);
+        ValidateApplication(merchantAccount);
         var relationship = await GetPrimaryRelationshipAsync(merchantAccount, cancellationToken);
         if (string.Equals(merchantAccount.Status, MerchantAccountStatuses.Submitted, StringComparison.OrdinalIgnoreCase))
         {
@@ -236,26 +253,46 @@ public sealed class MerchantAccountService(
         var merchantAccount = await dbContext.MerchantAccounts.IgnoreQueryFilters()
             .SingleOrDefaultAsync(x => x.OrganizationId == organizationId && x.Id == merchantAccountId, cancellationToken)
             ?? throw new InvalidOperationException("Merchant application was not found.");
+        if (string.Equals(merchantAccount.Status, MerchantAccountStatuses.Rejected, StringComparison.OrdinalIgnoreCase))
+        {
+            throw new InvalidOperationException("A rejected merchant application cannot be approved without company resubmission.");
+        }
+        if (merchantAccount.Status is not MerchantAccountStatuses.Submitted and
+            not MerchantAccountStatuses.Approved and
+            not MerchantAccountStatuses.LegalConsentRequired)
+        {
+            throw new InvalidOperationException($"A merchant application in {merchantAccount.Status} status cannot be approved.");
+        }
+
+        ValidateApplication(merchantAccount);
         var provider = ResolveProvider(merchantAccount.PrimaryProviderCode);
-        MerchantProviderRelationship? relationship = null;
-        try
+        var relationship = await GetOrCreateRelationshipAsync(merchantAccount, provider.ProviderCode, cancellationToken);
+        if (merchantAccount.Status == MerchantAccountStatuses.Submitted)
         {
             await TransitionAsync(
                 merchantAccount,
-                await GetPrimaryRelationshipAsync(merchantAccount, cancellationToken),
+                relationship,
                 actorUserId,
                 MerchantAccountStatuses.Approved,
-                "Merchant application approved.",
+                "Merchant application approved by Platform review.",
                 cancellationToken);
+        }
 
-            relationship = await GetOrCreateRelationshipAsync(merchantAccount, provider.ProviderCode, cancellationToken);
+        if (!string.IsNullOrWhiteSpace(relationship.ProviderReference))
+        {
+            return ToResult(merchantAccount, relationship);
+        }
+
+        relationship.ApplicationCreateIdempotencyKey ??= StableIdempotencyKey("nmi-application-create", merchantAccount.Id);
+        relationship.LastProviderError = null;
+        await dbContext.SaveChangesAsync(cancellationToken);
+        try
+        {
             var providerRequest = ToProviderRequest(merchantAccount);
-            var hasPendingProviderApplication =
-                !string.IsNullOrWhiteSpace(relationship.ProviderReference) &&
-                string.IsNullOrWhiteSpace(relationship.ProviderMerchantId);
-            var providerResult = hasPendingProviderApplication
-                ? await provider.SubmitMerchantApplicationAsync(relationship.ProviderReference!, providerRequest, cancellationToken)
-                : await provider.CreateMerchantAsync(providerRequest, cancellationToken);
+            var providerResult = await provider.CreateMerchantAsync(
+                providerRequest,
+                relationship.ApplicationCreateIdempotencyKey,
+                cancellationToken);
             return await ApplyProviderMerchantResultAsync(
                 merchantAccount,
                 relationship,
@@ -266,8 +303,62 @@ public sealed class MerchantAccountService(
         }
         catch (Exception ex) when (ex is HttpRequestException or InvalidOperationException or JsonException)
         {
-            relationship ??= await GetOrCreateRelationshipAsync(merchantAccount, provider.ProviderCode, cancellationToken);
-            relationship.LastProviderError = ex.Message;
+            relationship.LastProviderError = SafeProviderError(ex, "NMI application creation failed.");
+            await dbContext.SaveChangesAsync(cancellationToken);
+            throw;
+        }
+    }
+
+    public async Task<MerchantAccountResult> CompleteLegalConsentAsync(
+        Guid organizationId,
+        Guid actorUserId,
+        CancellationToken cancellationToken)
+    {
+        var merchantAccount = await dbContext.MerchantAccounts.IgnoreQueryFilters()
+            .SingleOrDefaultAsync(x => x.OrganizationId == organizationId, cancellationToken)
+            ?? throw new InvalidOperationException("Merchant application was not found.");
+        if (merchantAccount.Status != MerchantAccountStatuses.LegalConsentRequired)
+        {
+            throw new InvalidOperationException("Legal consent is not currently required for this merchant application.");
+        }
+
+        var provider = ResolveProvider(merchantAccount.PrimaryProviderCode);
+        var relationship = await GetPrimaryRelationshipAsync(merchantAccount, cancellationToken)
+            ?? throw new InvalidOperationException("Provider relationship was not found.");
+        if (string.IsNullOrWhiteSpace(relationship.ProviderReference))
+        {
+            throw new InvalidOperationException("NMI application reference is required before legal consent can be completed.");
+        }
+
+        relationship.LegalConsentCompletedAtUtc ??= dateTimeProvider.UtcNow;
+        relationship.ApplicationSubmitIdempotencyKey ??= StableIdempotencyKey("nmi-application-submit", merchantAccount.Id);
+        relationship.LastProviderError = null;
+        await dbContext.SaveChangesAsync(cancellationToken);
+
+        try
+        {
+            var providerResult = await provider.SubmitMerchantApplicationAsync(
+                relationship.ProviderReference,
+                ToProviderRequest(merchantAccount),
+                relationship.ApplicationSubmitIdempotencyKey,
+                cancellationToken);
+            relationship.ProviderApplicationSubmittedAtUtc ??= dateTimeProvider.UtcNow;
+            await dbContext.SaveChangesAsync(cancellationToken);
+            return await ApplyProviderMerchantResultAsync(
+                merchantAccount,
+                relationship,
+                provider,
+                providerResult,
+                actorUserId,
+                cancellationToken);
+        }
+        catch (Exception ex) when (ex is HttpRequestException or InvalidOperationException or JsonException)
+        {
+            if (ex.Message.Contains("legal consent", StringComparison.OrdinalIgnoreCase))
+            {
+                relationship.LegalConsentCompletedAtUtc = null;
+            }
+            relationship.LastProviderError = SafeProviderError(ex, "NMI application submission failed.");
             await dbContext.SaveChangesAsync(cancellationToken);
             throw;
         }
@@ -282,6 +373,15 @@ public sealed class MerchantAccountService(
         var merchantAccount = await dbContext.MerchantAccounts.IgnoreQueryFilters()
             .SingleOrDefaultAsync(x => x.OrganizationId == organizationId && x.Id == merchantAccountId, cancellationToken)
             ?? throw new InvalidOperationException("Merchant application was not found.");
+        if (merchantAccount.Status == MerchantAccountStatuses.Active)
+        {
+            return ToResult(merchantAccount, await GetPrimaryRelationshipAsync(merchantAccount, cancellationToken));
+        }
+        if (merchantAccount.Status is not MerchantAccountStatuses.UnderReview and
+            not MerchantAccountStatuses.CredentialProvisioning)
+        {
+            throw new InvalidOperationException($"NMI status cannot be refreshed while the merchant is {merchantAccount.Status}.");
+        }
         var provider = ResolveProvider(merchantAccount.PrimaryProviderCode);
         var relationship = await GetPrimaryRelationshipAsync(merchantAccount, cancellationToken)
             ?? throw new InvalidOperationException("Provider relationship was not found.");
@@ -295,6 +395,8 @@ public sealed class MerchantAccountService(
             var providerResult = await provider.GetMerchantApplicationStatusAsync(
                 relationship.ProviderReference,
                 cancellationToken);
+            relationship.ProviderStatusRefreshedAtUtc = dateTimeProvider.UtcNow;
+            await dbContext.SaveChangesAsync(cancellationToken);
             return await ApplyProviderMerchantResultAsync(
                 merchantAccount,
                 relationship,
@@ -305,7 +407,7 @@ public sealed class MerchantAccountService(
         }
         catch (Exception ex) when (ex is HttpRequestException or InvalidOperationException or JsonException)
         {
-            relationship.LastProviderError = ex.Message;
+            relationship.LastProviderError = SafeProviderError(ex, "NMI status refresh failed.");
             await dbContext.SaveChangesAsync(cancellationToken);
             throw;
         }
@@ -319,13 +421,32 @@ public sealed class MerchantAccountService(
         Guid actorUserId,
         CancellationToken cancellationToken)
     {
-        relationship.ProviderMerchantId = providerResult.ProviderMerchantId;
+        if (!string.IsNullOrWhiteSpace(providerResult.ProviderMerchantId))
+        {
+            relationship.ProviderMerchantId = providerResult.ProviderMerchantId;
+        }
         relationship.ProviderReference = providerResult.ProviderReference ?? relationship.ProviderReference ?? providerResult.ProviderMerchantId;
         relationship.GatewayUsername = providerResult.GatewayUsername;
-        relationship.GatewayPasswordProtected = providerResult.GatewayPassword;
-        relationship.CapabilitiesJson = providerResult.RawResponse;
+        if (!string.IsNullOrWhiteSpace(providerResult.GatewayPassword))
+        {
+            relationship.GatewayPasswordProtected = secretProtector.Protect(providerResult.GatewayPassword);
+        }
+        relationship.CapabilitiesJson = JsonSerializer.Serialize(new
+        {
+            ProviderStatus = providerResult.Status,
+            relationship.ProviderReference,
+            ProviderMerchantId = Clean(providerResult.ProviderMerchantId)
+        });
         relationship.LastProviderError = null;
-        relationship.SupportNotes = SupportNotesFor(providerResult);
+        relationship.SupportNotes = null;
+        if (!string.IsNullOrWhiteSpace(providerResult.ProviderReference))
+        {
+            relationship.ProviderApplicationCreatedAtUtc ??= dateTimeProvider.UtcNow;
+        }
+        if (!string.IsNullOrWhiteSpace(providerResult.LegalConsentUrl))
+        {
+            relationship.LegalConsentUrlProtected = secretProtector.Protect(providerResult.LegalConsentUrl);
+        }
         await dbContext.SaveChangesAsync(cancellationToken);
 
         if (string.Equals(providerResult.Status, MerchantAccountStatuses.Rejected, StringComparison.OrdinalIgnoreCase))
@@ -342,6 +463,19 @@ public sealed class MerchantAccountService(
             return ToResult(merchantAccount, relationship);
         }
 
+        if (string.Equals(providerResult.Status, MerchantAccountStatuses.LegalConsentRequired, StringComparison.OrdinalIgnoreCase))
+        {
+            await TransitionAsync(
+                merchantAccount,
+                relationship,
+                actorUserId,
+                MerchantAccountStatuses.LegalConsentRequired,
+                "NMI application created. Company authorized signer legal consent is required before submission.",
+                cancellationToken);
+
+            return ToResult(merchantAccount, relationship);
+        }
+
         if (!string.Equals(providerResult.Status, MerchantAccountStatuses.Active, StringComparison.OrdinalIgnoreCase) ||
             string.IsNullOrWhiteSpace(providerResult.ProviderMerchantId))
         {
@@ -350,49 +484,98 @@ public sealed class MerchantAccountService(
                 relationship,
                 actorUserId,
                 MerchantAccountStatuses.UnderReview,
-                string.Equals(providerResult.Status, "LegalConsentRequired", StringComparison.OrdinalIgnoreCase)
-                    ? "NMI Sign-Up application created. Legal consent is required before submission."
-                    : "NMI Sign-Up application is under review.",
+                "NMI application submitted and under review.",
                 cancellationToken);
 
             return ToResult(merchantAccount, relationship);
         }
 
-        if (string.IsNullOrWhiteSpace(relationship.PaymentApiKeyProtected))
+        relationship.ProviderApprovedAtUtc ??= dateTimeProvider.UtcNow;
+        relationship.PaymentCredentialIdempotencyKey ??= StableIdempotencyKey("nmi-payment-credential", merchantAccount.Id);
+        relationship.TokenizationCredentialIdempotencyKey ??= StableIdempotencyKey("nmi-tokenization-credential", merchantAccount.Id);
+        if (relationship.CredentialProvisioningStatus == "ReconciliationRequired")
         {
-            var paymentKey = await provider.CreateMerchantCredentialAsync(
-                new PartnerMerchantCredentialRequest(
-                    providerResult.ProviderMerchantId,
-                    "iM1 Payments transaction key",
-                    new[] { "transaction" }),
-                cancellationToken);
-            relationship.PaymentApiKeyProtected = paymentKey.PrivateKey ?? paymentKey.PublicKey;
-            relationship.CredentialMetadataJson = JsonSerializer.Serialize(new
-            {
-                PaymentKey = paymentKey.RawResponse,
-                Existing = relationship.CredentialMetadataJson
-            });
+            throw new InvalidOperationException("NMI credential provisioning requires support reconciliation before retry.");
+        }
+        if (relationship.CredentialProvisioningStatus == "Provisioning")
+        {
+            await RequireCredentialReconciliationAsync(relationship, cancellationToken);
+            throw new InvalidOperationException(relationship.LastProviderError);
         }
 
-        if (string.IsNullOrWhiteSpace(relationship.PublicTokenizationKey))
+        relationship.CredentialProvisioningStatus = "Provisioning";
+        merchantAccount.PaymentsEnabled = false;
+        await dbContext.SaveChangesAsync(cancellationToken);
+        await TransitionAsync(
+            merchantAccount,
+            relationship,
+            actorUserId,
+            MerchantAccountStatuses.CredentialProvisioning,
+            "NMI approved the merchant. Secure payment credentials are being provisioned.",
+            cancellationToken);
+
+        try
         {
-            var tokenizationKey = await provider.CreateMerchantCredentialAsync(
-                new PartnerMerchantCredentialRequest(
-                    providerResult.ProviderMerchantId,
-                    "iM1 Payments Collect.js tokenization key",
-                    new[] { "tokenization" }),
-                cancellationToken);
-            relationship.PublicTokenizationKey = tokenizationKey.PublicKey ?? tokenizationKey.PrivateKey;
-            relationship.CredentialMetadataJson = JsonSerializer.Serialize(new
+            if (string.IsNullOrWhiteSpace(relationship.PaymentApiKeyProtected))
             {
-                TokenizationKey = tokenizationKey.RawResponse,
-                Existing = relationship.CredentialMetadataJson
-            });
+                var paymentKey = await provider.CreateMerchantCredentialAsync(
+                    new PartnerMerchantCredentialRequest(
+                        providerResult.ProviderMerchantId,
+                        "iM1 Payments transaction key",
+                        new[] { "transaction" }),
+                    relationship.PaymentCredentialIdempotencyKey,
+                    cancellationToken);
+                var privateKey = paymentKey.PrivateKey ?? paymentKey.PublicKey
+                    ?? throw new InvalidOperationException("NMI payment credential response did not include a key.");
+                relationship.PaymentApiKeyProtected = secretProtector.Protect(privateKey);
+                relationship.CredentialMetadataJson = SafeCredentialMetadata(
+                    relationship.CredentialMetadataJson,
+                    "PaymentKeyId",
+                    paymentKey.KeyId,
+                    paymentKey.Description);
+                await dbContext.SaveChangesAsync(cancellationToken);
+            }
+
+            if (string.IsNullOrWhiteSpace(relationship.PublicTokenizationKeyProtected))
+            {
+                var tokenizationKey = await provider.CreateMerchantCredentialAsync(
+                    new PartnerMerchantCredentialRequest(
+                        providerResult.ProviderMerchantId,
+                        "iM1 Payments Collect.js tokenization key",
+                        new[] { "tokenization" }),
+                    relationship.TokenizationCredentialIdempotencyKey,
+                    cancellationToken);
+                var publicKey = tokenizationKey.PublicKey ?? tokenizationKey.PrivateKey
+                    ?? throw new InvalidOperationException("NMI tokenization credential response did not include a key.");
+                relationship.PublicTokenizationKeyProtected = secretProtector.Protect(publicKey);
+                relationship.CredentialMetadataJson = SafeCredentialMetadata(
+                    relationship.CredentialMetadataJson,
+                    "TokenizationKeyId",
+                    tokenizationKey.KeyId,
+                    tokenizationKey.Description);
+                await dbContext.SaveChangesAsync(cancellationToken);
+            }
+        }
+        catch (Exception ex) when (
+            ex is TaskCanceledException or JsonException or InvalidOperationException or DbUpdateException ||
+            ex is HttpRequestException httpException &&
+            (httpException.StatusCode is null || (int)httpException.StatusCode >= 500))
+        {
+            await RequireCredentialReconciliationAsync(relationship, CancellationToken.None);
+            throw new InvalidOperationException(relationship.LastProviderError, ex);
+        }
+        catch (HttpRequestException)
+        {
+            relationship.CredentialProvisioningStatus = "Failed";
+            relationship.LastProviderError = "NMI credential provisioning failed before activation.";
+            await dbContext.SaveChangesAsync(cancellationToken);
+            throw;
         }
 
         relationship.LastProviderError = null;
         relationship.SupportNotes = null;
-        merchantAccount.PaymentsEnabled = true;
+        relationship.CredentialProvisioningStatus = "Complete";
+        relationship.CredentialsProvisionedAtUtc ??= dateTimeProvider.UtcNow;
         await dbContext.SaveChangesAsync(cancellationToken);
         await TransitionAsync(
             merchantAccount,
@@ -405,6 +588,16 @@ public sealed class MerchantAccountService(
         return ToResult(merchantAccount, relationship);
     }
 
+    private async Task RequireCredentialReconciliationAsync(
+        MerchantProviderRelationship relationship,
+        CancellationToken cancellationToken)
+    {
+        relationship.CredentialProvisioningStatus = "ReconciliationRequired";
+        relationship.LastProviderError =
+            "NMI credential provisioning had an ambiguous result and requires support reconciliation before retry.";
+        await dbContext.SaveChangesAsync(cancellationToken);
+    }
+
     public async Task<MerchantAccountResult> RejectApplicationAsync(
         Guid organizationId,
         Guid merchantAccountId,
@@ -415,6 +608,10 @@ public sealed class MerchantAccountService(
         var merchantAccount = await dbContext.MerchantAccounts.IgnoreQueryFilters()
             .SingleOrDefaultAsync(x => x.OrganizationId == organizationId && x.Id == merchantAccountId, cancellationToken)
             ?? throw new InvalidOperationException("Merchant application was not found.");
+        if (merchantAccount.Status != MerchantAccountStatuses.Submitted)
+        {
+            throw new InvalidOperationException("Only a submitted application awaiting Platform review can be rejected.");
+        }
         var relationship = await GetPrimaryRelationshipAsync(merchantAccount, cancellationToken);
         merchantAccount.PaymentsEnabled = false;
         await TransitionAsync(
@@ -442,9 +639,13 @@ public sealed class MerchantAccountService(
             ?? throw new InvalidOperationException("Merchant account was not found.");
         var relationship = await GetPrimaryRelationshipAsync(merchantAccount, cancellationToken);
         if (normalizedStatus == MerchantAccountStatuses.Active &&
-            (relationship is null || string.IsNullOrWhiteSpace(relationship.ProviderMerchantId)))
+            (relationship is null ||
+             string.IsNullOrWhiteSpace(relationship.ProviderMerchantId) ||
+             string.IsNullOrWhiteSpace(relationship.PaymentApiKeyProtected) ||
+             string.IsNullOrWhiteSpace(relationship.PublicTokenizationKeyProtected) ||
+             !string.Equals(relationship.CredentialProvisioningStatus, "Complete", StringComparison.OrdinalIgnoreCase)))
         {
-            throw new InvalidOperationException("Provider merchant relationship is required before activation.");
+            throw new InvalidOperationException("A fully provisioned provider merchant relationship is required before activation.");
         }
 
         await TransitionAsync(
@@ -629,13 +830,20 @@ public sealed class MerchantAccountService(
             : await relationships.FirstOrDefaultAsync(cancellationToken);
     }
 
-    private static void ApplyApplication(MerchantAccount merchantAccount, MerchantApplicationRequest request, string providerCode)
+    private void ApplyApplication(MerchantAccount merchantAccount, MerchantApplicationRequest request, string providerCode)
     {
         merchantAccount.LegalBusinessName = Clean(request.BusinessName);
         merchantAccount.Dba = Clean(request.Dba);
-        merchantAccount.Ein = Clean(request.Ein);
-        merchantAccount.TaxIdentifierLastFour = LastFour(request.TaxId);
+        var taxIdentifier = NewSecretValue(request.TaxId) ?? NewSecretValue(request.Ein);
+        if (taxIdentifier is not null)
+        {
+            merchantAccount.Ein = Mask(taxIdentifier);
+            merchantAccount.TaxIdentifierLastFour = LastFour(taxIdentifier);
+            merchantAccount.TaxIdentifierProtected = secretProtector.Protect(taxIdentifier);
+        }
         merchantAccount.BusinessType = Clean(request.BusinessType);
+        merchantAccount.BusinessDescription = Clean(request.BusinessDescription);
+        merchantAccount.YearsInBusiness = request.YearsInBusiness;
         merchantAccount.PhysicalAddressLine1 = Clean(request.PhysicalAddressLine1);
         merchantAccount.PhysicalAddressLine2 = Clean(request.PhysicalAddressLine2);
         merchantAccount.PhysicalCity = Clean(request.PhysicalCity);
@@ -651,14 +859,87 @@ public sealed class MerchantAccountService(
         merchantAccount.OwnerName = Clean(request.OwnerName);
         merchantAccount.OwnerEmail = Clean(request.OwnerEmail);
         merchantAccount.OwnerPhone = Clean(request.OwnerPhone);
+        merchantAccount.OwnerTitle = Clean(request.OwnerTitle);
+        merchantAccount.OwnerOwnershipPercentage = request.OwnerOwnershipPercentage;
+        var ownerDateOfBirth = NewSecretValue(request.OwnerDateOfBirth);
+        if (ownerDateOfBirth is not null)
+        {
+            merchantAccount.OwnerDateOfBirthProtected = secretProtector.Protect(ownerDateOfBirth);
+        }
+        var ownerSsn = NewSecretValue(request.OwnerSsn);
+        if (ownerSsn is not null)
+        {
+            merchantAccount.OwnerSsnLastFour = LastFour(ownerSsn);
+            merchantAccount.OwnerSsnProtected = secretProtector.Protect(ownerSsn);
+        }
         merchantAccount.BankName = Clean(request.BankName);
-        merchantAccount.BankRoutingLastFour = LastFour(request.BankRoutingNumber);
-        merchantAccount.BankAccountLastFour = LastFour(request.BankAccountNumber);
+        var routingNumber = NewSecretValue(request.BankRoutingNumber);
+        if (routingNumber is not null)
+        {
+            merchantAccount.BankRoutingLastFour = LastFour(routingNumber);
+            merchantAccount.BankRoutingNumberProtected = secretProtector.Protect(routingNumber);
+        }
+        var accountNumber = NewSecretValue(request.BankAccountNumber);
+        if (accountNumber is not null)
+        {
+            merchantAccount.BankAccountLastFour = LastFour(accountNumber);
+            merchantAccount.BankAccountNumberProtected = secretProtector.Protect(accountNumber);
+        }
         merchantAccount.ExpectedMonthlyVolume = request.ExpectedMonthlyVolume;
         merchantAccount.AverageTicket = request.AverageTicket;
+        merchantAccount.HighTicket = request.HighTicket;
+        merchantAccount.CardPresentPercentage = request.CardPresentPercentage;
+        merchantAccount.KeyEnteredPercentage = request.KeyEnteredPercentage;
+        merchantAccount.EcommercePercentage = request.EcommercePercentage;
+        merchantAccount.MotoPercentage = request.MotoPercentage;
         merchantAccount.Website = Clean(request.Website);
         merchantAccount.Mcc = Clean(request.Mcc);
         merchantAccount.PrimaryProviderCode = providerCode;
+    }
+
+    private static void ValidateApplication(MerchantAccount merchantAccount)
+    {
+        Required(merchantAccount.LegalBusinessName, "Business name");
+        Required(merchantAccount.BusinessType, "Business type");
+        Required(merchantAccount.BusinessDescription, "Business description");
+        if (merchantAccount.YearsInBusiness is null or < 0)
+        {
+            throw new InvalidOperationException("Years in business is required.");
+        }
+        Required(merchantAccount.PhysicalAddressLine1, "Physical address");
+        Required(merchantAccount.PhysicalCity, "City");
+        Required(merchantAccount.PhysicalRegion, "State/region");
+        Required(merchantAccount.PhysicalPostalCode, "Postal code");
+        Required(merchantAccount.OwnerName, "Owner name");
+        Required(merchantAccount.OwnerEmail, "Owner email");
+        Required(merchantAccount.OwnerPhone, "Owner phone");
+        Required(merchantAccount.OwnerTitle, "Owner title");
+        Required(merchantAccount.TaxIdentifierProtected, "Tax identifier");
+        Required(merchantAccount.OwnerDateOfBirthProtected, "Owner date of birth");
+        Required(merchantAccount.OwnerSsnProtected, "Owner SSN");
+        Required(merchantAccount.BankRoutingNumberProtected, "Bank routing number");
+        Required(merchantAccount.BankAccountNumberProtected, "Bank account number");
+        if (merchantAccount.OwnerOwnershipPercentage is null or <= 0 or > 100)
+        {
+            throw new InvalidOperationException("Owner ownership percentage must be between 0 and 100.");
+        }
+        if (merchantAccount.ExpectedMonthlyVolume is null or <= 0 ||
+            merchantAccount.AverageTicket is null or <= 0 ||
+            merchantAccount.HighTicket is null or <= 0)
+        {
+            throw new InvalidOperationException("Expected monthly volume, average ticket, and high ticket are required.");
+        }
+        var processingMix = new[]
+        {
+            merchantAccount.CardPresentPercentage,
+            merchantAccount.KeyEnteredPercentage,
+            merchantAccount.EcommercePercentage,
+            merchantAccount.MotoPercentage
+        };
+        if (processingMix.Any(x => x is null or < 0) || processingMix.Sum(x => x ?? 0) != 100m)
+        {
+            throw new InvalidOperationException("Card-present, keyed, ecommerce, and MOTO percentages must total 100.");
+        }
     }
 
     private static void EnsureApplicationEditable(MerchantAccount merchantAccount)
@@ -771,7 +1052,7 @@ public sealed class MerchantAccountService(
             ?? throw new InvalidOperationException($"Financial provider '{normalizedProviderCode}' is not registered.");
     }
 
-    private static PartnerMerchantCreateRequest ToProviderRequest(MerchantAccount merchantAccount)
+    private PartnerMerchantCreateRequest ToProviderRequest(MerchantAccount merchantAccount)
     {
         var ownerNames = (merchantAccount.OwnerName ?? string.Empty)
             .Split(' ', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
@@ -792,75 +1073,75 @@ public sealed class MerchantAccountService(
             Required(merchantAccount.OwnerEmail, "Owner email"),
             Required(merchantAccount.OwnerPhone, "Owner phone"),
             Clean(merchantAccount.Website),
-            merchantAccount.Id.ToString());
-    }
-
-    private static string? SupportNotesFor(PartnerMerchantCreateResult providerResult)
-    {
-        if (!string.Equals(providerResult.Status, "LegalConsentRequired", StringComparison.OrdinalIgnoreCase) ||
-            string.IsNullOrWhiteSpace(providerResult.RawResponse))
-        {
-            return null;
-        }
-
-        try
-        {
-            using var document = JsonDocument.Parse(providerResult.RawResponse);
-            return JsonString(document.RootElement, "LegalConsentUrl") ??
-                JsonString(document.RootElement, "legalConsentUrl") ??
-                JsonString(document.RootElement, "url") ??
-                "Legal consent is required before NMI Sign-Up application submission.";
-        }
-        catch (JsonException)
-        {
-            return providerResult.RawResponse;
-        }
-    }
-
-    private static string? JsonString(JsonElement element, string propertyName)
-    {
-        return element.ValueKind == JsonValueKind.Object &&
-            element.TryGetProperty(propertyName, out var property) &&
-            property.ValueKind is not JsonValueKind.Null and not JsonValueKind.Undefined
-                ? property.ToString()
-                : null;
+            merchantAccount.Id.ToString(),
+            Clean(merchantAccount.Dba),
+            UnprotectRequired(merchantAccount.TaxIdentifierProtected, "Tax identifier"),
+            Clean(merchantAccount.BusinessType),
+            Clean(merchantAccount.BusinessDescription),
+            merchantAccount.YearsInBusiness,
+            Clean(merchantAccount.OwnerTitle),
+            merchantAccount.OwnerOwnershipPercentage,
+            UnprotectRequired(merchantAccount.OwnerDateOfBirthProtected, "Owner date of birth"),
+            UnprotectRequired(merchantAccount.OwnerSsnProtected, "Owner SSN"),
+            Clean(merchantAccount.BankName),
+            UnprotectRequired(merchantAccount.BankRoutingNumberProtected, "Bank routing number"),
+            UnprotectRequired(merchantAccount.BankAccountNumberProtected, "Bank account number"),
+            merchantAccount.ExpectedMonthlyVolume,
+            merchantAccount.AverageTicket,
+            merchantAccount.HighTicket,
+            merchantAccount.CardPresentPercentage,
+            merchantAccount.KeyEnteredPercentage,
+            merchantAccount.EcommercePercentage,
+            merchantAccount.MotoPercentage,
+            Clean(merchantAccount.Mcc));
     }
 
     private static MerchantApplicationFormModel EmptyApplication(Guid organizationId)
     {
         return new MerchantApplicationFormModel(
-            organizationId,
-            null,
-            MerchantAccountStatuses.NotStarted,
-            "DEV Smoke Powersports",
-            "DEV Smoke Powersports",
-            "82-1234567",
-            "821234567",
-            "LLC",
-            "100 Main St",
-            "Suite 100",
-            "Dallas",
-            "TX",
-            "75001",
-            "US",
-            "100 Main St",
-            "Suite 100",
-            "Dallas",
-            "TX",
-            "75001",
-            "US",
-            "Bradley Molen",
-            "brad.molen+dev-smoke@example.com",
-            "2145551212",
-            "First National Test Bank",
-            "6789",
-            "7890",
-            5000,
-            100,
-            "https://dev-smoke-powersports.example.com",
-            "5533",
-            true,
-            true);
+            OrganizationId: organizationId,
+            MerchantAccountId: null,
+            Status: MerchantAccountStatuses.NotStarted,
+            BusinessName: string.Empty,
+            Dba: null,
+            Ein: null,
+            TaxId: null,
+            BusinessType: null,
+            BusinessDescription: null,
+            YearsInBusiness: null,
+            PhysicalAddressLine1: string.Empty,
+            PhysicalAddressLine2: null,
+            PhysicalCity: string.Empty,
+            PhysicalRegion: string.Empty,
+            PhysicalPostalCode: string.Empty,
+            PhysicalCountry: "US",
+            MailingAddressLine1: null,
+            MailingAddressLine2: null,
+            MailingCity: null,
+            MailingRegion: null,
+            MailingPostalCode: null,
+            MailingCountry: "US",
+            OwnerName: string.Empty,
+            OwnerEmail: string.Empty,
+            OwnerPhone: string.Empty,
+            OwnerTitle: null,
+            OwnerOwnershipPercentage: null,
+            OwnerDateOfBirthMasked: null,
+            OwnerSsnLastFour: null,
+            BankName: null,
+            BankRoutingLastFour: null,
+            BankAccountLastFour: null,
+            ExpectedMonthlyVolume: null,
+            AverageTicket: null,
+            HighTicket: null,
+            CardPresentPercentage: null,
+            KeyEnteredPercentage: null,
+            EcommercePercentage: null,
+            MotoPercentage: null,
+            Website: null,
+            Mcc: null,
+            CanEdit: true,
+            CanSubmit: true);
     }
 
     private static MerchantApplicationFormModel ToApplicationForm(MerchantAccount merchantAccount)
@@ -868,38 +1149,49 @@ public sealed class MerchantAccountService(
         var canEdit = CanEditApplication(merchantAccount.Status);
         var canSubmit = CanSubmitApplication(merchantAccount.Status);
         return new MerchantApplicationFormModel(
-            merchantAccount.OrganizationId,
-            merchantAccount.Id,
-            merchantAccount.Status,
-            merchantAccount.LegalBusinessName ?? string.Empty,
-            merchantAccount.Dba,
-            merchantAccount.Ein,
-            merchantAccount.TaxIdentifierLastFour,
-            merchantAccount.BusinessType,
-            merchantAccount.PhysicalAddressLine1 ?? string.Empty,
-            merchantAccount.PhysicalAddressLine2,
-            merchantAccount.PhysicalCity ?? string.Empty,
-            merchantAccount.PhysicalRegion ?? string.Empty,
-            merchantAccount.PhysicalPostalCode ?? string.Empty,
-            merchantAccount.PhysicalCountry ?? "US",
-            merchantAccount.MailingAddressLine1,
-            merchantAccount.MailingAddressLine2,
-            merchantAccount.MailingCity,
-            merchantAccount.MailingRegion,
-            merchantAccount.MailingPostalCode,
-            merchantAccount.MailingCountry,
-            merchantAccount.OwnerName ?? string.Empty,
-            merchantAccount.OwnerEmail ?? string.Empty,
-            merchantAccount.OwnerPhone ?? string.Empty,
-            merchantAccount.BankName,
-            merchantAccount.BankRoutingLastFour,
-            merchantAccount.BankAccountLastFour,
-            merchantAccount.ExpectedMonthlyVolume,
-            merchantAccount.AverageTicket,
-            merchantAccount.Website,
-            merchantAccount.Mcc,
-            canEdit,
-            canSubmit);
+            OrganizationId: merchantAccount.OrganizationId,
+            MerchantAccountId: merchantAccount.Id,
+            Status: merchantAccount.Status,
+            BusinessName: merchantAccount.LegalBusinessName ?? string.Empty,
+            Dba: merchantAccount.Dba,
+            Ein: merchantAccount.Ein,
+            TaxId: MaskLastFour(merchantAccount.TaxIdentifierLastFour),
+            BusinessType: merchantAccount.BusinessType,
+            BusinessDescription: merchantAccount.BusinessDescription,
+            YearsInBusiness: merchantAccount.YearsInBusiness,
+            PhysicalAddressLine1: merchantAccount.PhysicalAddressLine1 ?? string.Empty,
+            PhysicalAddressLine2: merchantAccount.PhysicalAddressLine2,
+            PhysicalCity: merchantAccount.PhysicalCity ?? string.Empty,
+            PhysicalRegion: merchantAccount.PhysicalRegion ?? string.Empty,
+            PhysicalPostalCode: merchantAccount.PhysicalPostalCode ?? string.Empty,
+            PhysicalCountry: merchantAccount.PhysicalCountry ?? "US",
+            MailingAddressLine1: merchantAccount.MailingAddressLine1,
+            MailingAddressLine2: merchantAccount.MailingAddressLine2,
+            MailingCity: merchantAccount.MailingCity,
+            MailingRegion: merchantAccount.MailingRegion,
+            MailingPostalCode: merchantAccount.MailingPostalCode,
+            MailingCountry: merchantAccount.MailingCountry,
+            OwnerName: merchantAccount.OwnerName ?? string.Empty,
+            OwnerEmail: merchantAccount.OwnerEmail ?? string.Empty,
+            OwnerPhone: merchantAccount.OwnerPhone ?? string.Empty,
+            OwnerTitle: merchantAccount.OwnerTitle,
+            OwnerOwnershipPercentage: merchantAccount.OwnerOwnershipPercentage,
+            OwnerDateOfBirthMasked: string.IsNullOrWhiteSpace(merchantAccount.OwnerDateOfBirthProtected) ? null : "Configured",
+            OwnerSsnLastFour: MaskLastFour(merchantAccount.OwnerSsnLastFour),
+            BankName: merchantAccount.BankName,
+            BankRoutingLastFour: MaskLastFour(merchantAccount.BankRoutingLastFour),
+            BankAccountLastFour: MaskLastFour(merchantAccount.BankAccountLastFour),
+            ExpectedMonthlyVolume: merchantAccount.ExpectedMonthlyVolume,
+            AverageTicket: merchantAccount.AverageTicket,
+            HighTicket: merchantAccount.HighTicket,
+            CardPresentPercentage: merchantAccount.CardPresentPercentage,
+            KeyEnteredPercentage: merchantAccount.KeyEnteredPercentage,
+            EcommercePercentage: merchantAccount.EcommercePercentage,
+            MotoPercentage: merchantAccount.MotoPercentage,
+            Website: merchantAccount.Website,
+            Mcc: merchantAccount.Mcc,
+            CanEdit: canEdit,
+            CanSubmit: canSubmit);
     }
 
     private static MerchantAccountSummary ToSummary(MerchantAccount account, MerchantProviderRelationship? relationship)
@@ -909,7 +1201,10 @@ public sealed class MerchantAccountService(
             string.Equals(account.Status, MerchantAccountStatuses.Active, StringComparison.OrdinalIgnoreCase) &&
             relationship is not null &&
             string.Equals(relationship.Status, MerchantAccountStatuses.Active, StringComparison.OrdinalIgnoreCase) &&
-            hasProviderMerchant;
+            hasProviderMerchant &&
+            !string.IsNullOrWhiteSpace(relationship.PaymentApiKeyProtected) &&
+            !string.IsNullOrWhiteSpace(relationship.PublicTokenizationKeyProtected) &&
+            string.Equals(relationship.CredentialProvisioningStatus, "Complete", StringComparison.OrdinalIgnoreCase);
         return new MerchantAccountSummary(
             account.Id,
             account.OrganizationId,
@@ -924,6 +1219,21 @@ public sealed class MerchantAccountService(
             isReady && account.PaymentsEnabled);
     }
 
+    private MerchantLegalConsentModel ToLegalConsent(
+        MerchantAccount account,
+        MerchantProviderRelationship? relationship)
+    {
+        var isRequired = account.Status == MerchantAccountStatuses.LegalConsentRequired;
+        var legalConsentUrl = isRequired && !string.IsNullOrWhiteSpace(relationship?.LegalConsentUrlProtected)
+            ? secretProtector.Unprotect(relationship.LegalConsentUrlProtected)
+            : null;
+        return new MerchantLegalConsentModel(
+            isRequired,
+            legalConsentUrl,
+            relationship?.LegalConsentCompletedAtUtc,
+            isRequired && !string.IsNullOrWhiteSpace(legalConsentUrl));
+    }
+
     private static PlatformMerchantAccountRow ToPlatformRow(
         MerchantAccount account,
         MerchantProviderRelationship? relationship,
@@ -931,27 +1241,34 @@ public sealed class MerchantAccountService(
         IReadOnlyCollection<MerchantStatusHistoryRow> history)
     {
         return new PlatformMerchantAccountRow(
-            account.OrganizationId,
-            account.Id,
-            companyName,
-            account.Status,
-            account.UnderwritingStatus,
-            account.LegalBusinessName,
-            account.OwnerName,
-            account.OwnerEmail,
-            account.ExpectedMonthlyVolume,
-            relationship?.ProviderCode ?? account.PrimaryProviderCode,
-            relationship?.ProviderMerchantId,
-            relationship?.GatewayUsername,
-            !string.IsNullOrWhiteSpace(relationship?.PaymentApiKeyProtected),
-            !string.IsNullOrWhiteSpace(relationship?.PublicTokenizationKey),
-            relationship?.ProviderReference,
-            relationship?.Status,
-            relationship?.LastProviderError,
-            relationship?.SupportNotes,
-            account.CreatedAtUtc,
-            account.UpdatedAtUtc,
-            history);
+            CompanyId: account.OrganizationId,
+            MerchantAccountId: account.Id,
+            CompanyName: companyName,
+            Status: account.Status,
+            UnderwritingStatus: account.UnderwritingStatus,
+            LegalBusinessName: account.LegalBusinessName,
+            OwnerName: account.OwnerName,
+            OwnerEmail: account.OwnerEmail,
+            ExpectedMonthlyVolume: account.ExpectedMonthlyVolume,
+            ProviderCode: relationship?.ProviderCode ?? account.PrimaryProviderCode,
+            ProviderMerchantId: relationship?.ProviderMerchantId,
+            GatewayUsername: relationship?.GatewayUsername,
+            HasPaymentApiKey: !string.IsNullOrWhiteSpace(relationship?.PaymentApiKeyProtected),
+            HasPublicTokenizationKey: !string.IsNullOrWhiteSpace(relationship?.PublicTokenizationKeyProtected),
+            ProviderReference: relationship?.ProviderReference,
+            ProviderRelationshipStatus: relationship?.Status,
+            CredentialProvisioningStatus: relationship?.CredentialProvisioningStatus,
+            LastProviderError: relationship?.LastProviderError,
+            SupportNotes: relationship?.SupportNotes,
+            ProviderApplicationCreatedAtUtc: relationship?.ProviderApplicationCreatedAtUtc,
+            LegalConsentCompletedAtUtc: relationship?.LegalConsentCompletedAtUtc,
+            ProviderApplicationSubmittedAtUtc: relationship?.ProviderApplicationSubmittedAtUtc,
+            ProviderStatusRefreshedAtUtc: relationship?.ProviderStatusRefreshedAtUtc,
+            ProviderApprovedAtUtc: relationship?.ProviderApprovedAtUtc,
+            CredentialsProvisionedAtUtc: relationship?.CredentialsProvisionedAtUtc,
+            CreatedAtUtc: account.CreatedAtUtc,
+            UpdatedAtUtc: account.UpdatedAtUtc,
+            StatusHistory: history);
     }
 
     private static MerchantStatusHistoryRow ToHistoryRow(MerchantAccountStatusHistory history)
@@ -974,8 +1291,10 @@ public sealed class MerchantAccountService(
         {
             MerchantAccountStatuses.Draft => new[] { "Complete and submit the merchant application." },
             MerchantAccountStatuses.Submitted => new[] { "iM1 Financial Services is preparing the application for review." },
+            MerchantAccountStatuses.Approved => new[] { "Platform approval is complete. The NMI application is being created." },
+            MerchantAccountStatuses.LegalConsentRequired => new[] { "An authorized company signer must complete NMI legal consent before submission." },
             MerchantAccountStatuses.UnderReview => new[] { "The merchant application has been submitted to NMI for review." },
-            MerchantAccountStatuses.Approved => new[] { "Platform approval is complete. Merchant activation is finishing." },
+            MerchantAccountStatuses.CredentialProvisioning => new[] { "NMI approved the merchant. Secure payment credentials are being provisioned." },
             MerchantAccountStatuses.Active when !summary.IsProcessingReady => new[] { "Contact support to repair the provider merchant relationship." },
             MerchantAccountStatuses.Active => Array.Empty<string>(),
             MerchantAccountStatuses.Rejected => new[] { "Contact iM1 support for rejection details or resubmission options." },
@@ -1000,6 +1319,8 @@ public sealed class MerchantAccountService(
             MerchantAccountStatuses.Submitted => "Submitted",
             MerchantAccountStatuses.UnderReview => "UnderReview",
             MerchantAccountStatuses.Approved => "Approved",
+            MerchantAccountStatuses.LegalConsentRequired => "LegalConsentRequired",
+            MerchantAccountStatuses.CredentialProvisioning => "Approved",
             MerchantAccountStatuses.Active => "Approved",
             MerchantAccountStatuses.Rejected => "Rejected",
             MerchantAccountStatuses.Suspended => "Suspended",
@@ -1052,5 +1373,74 @@ public sealed class MerchantAccountService(
     {
         var digits = new string((value ?? string.Empty).Where(char.IsDigit).ToArray());
         return digits.Length >= 4 ? digits[^4..] : null;
+    }
+
+    private string UnprotectRequired(string? protectedValue, string label)
+    {
+        return secretProtector.Unprotect(Required(protectedValue, label));
+    }
+
+    private static string StableIdempotencyKey(string operation, Guid merchantAccountId)
+    {
+        return $"{operation}-{merchantAccountId:N}";
+    }
+
+    private static string SafeProviderError(Exception exception, string fallback)
+    {
+        if (exception.Message.Contains("legal consent", StringComparison.OrdinalIgnoreCase) ||
+            exception.Message.Contains("reconciliation", StringComparison.OrdinalIgnoreCase))
+        {
+            return exception.Message;
+        }
+
+        return fallback;
+    }
+
+    private static string SafeCredentialMetadata(
+        string? existingJson,
+        string keyName,
+        string? keyId,
+        string? description)
+    {
+        var values = new Dictionary<string, string?>(StringComparer.OrdinalIgnoreCase);
+        if (!string.IsNullOrWhiteSpace(existingJson))
+        {
+            try
+            {
+                using var document = JsonDocument.Parse(existingJson);
+                foreach (var property in document.RootElement.EnumerateObject())
+                {
+                    values[property.Name] = property.Value.ValueKind == JsonValueKind.String
+                        ? property.Value.GetString()
+                        : property.Value.ToString();
+                }
+            }
+            catch (JsonException)
+            {
+                values.Clear();
+            }
+        }
+
+        values[keyName] = Clean(keyId);
+        values[$"{keyName}Description"] = Clean(description);
+        return JsonSerializer.Serialize(values);
+    }
+
+    private static string? NewSecretValue(string? value)
+    {
+        var clean = Clean(value);
+        return clean is null || clean.Contains('*') || string.Equals(clean, "Configured", StringComparison.OrdinalIgnoreCase)
+            ? null
+            : clean;
+    }
+
+    private static string Mask(string value)
+    {
+        return MaskLastFour(LastFour(value)) ?? "Configured";
+    }
+
+    private static string? MaskLastFour(string? lastFour)
+    {
+        return string.IsNullOrWhiteSpace(lastFour) ? null : $"****{lastFour}";
     }
 }

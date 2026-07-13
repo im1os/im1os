@@ -1,6 +1,6 @@
 using iM1os.Application.FinancialServices.Merchant;
 using iM1os.Application.FinancialServices.Providers;
-using iM1os.Domain.FinancialServices.Events;
+using iM1os.Application.Payments;
 using iM1os.Domain.FinancialServices.Merchant;
 using iM1os.Infrastructure.Persistence;
 using iM1os.Infrastructure.Services;
@@ -10,228 +10,311 @@ namespace iM1os.Tests;
 
 public sealed class MerchantAccountServiceTests
 {
+    private static readonly TestSecretProtector SecretProtector = new();
+
     [Fact]
-    public async Task OnboardMerchantAsync_creates_merchant_application_and_submission_event()
+    public async Task Rejection_before_platform_approval_never_calls_NMI()
+    {
+        await using var dbContext = CreateContext();
+        var provider = new RecordingPartnerProvider();
+        var service = CreateService(dbContext, provider);
+        var organizationId = Guid.NewGuid();
+        var actorId = Guid.NewGuid();
+        var submitted = await SubmitAsync(service, organizationId, actorId);
+
+        var result = await service.RejectApplicationAsync(
+            organizationId,
+            submitted.MerchantAccountId,
+            actorId,
+            "Underwriting requirements were not met.",
+            CancellationToken.None);
+
+        Assert.Equal(MerchantAccountStatuses.Rejected, result.Status);
+        Assert.Equal(0, provider.CreateCalls);
+        Assert.Equal(0, provider.SubmitCalls);
+        Assert.Empty(await dbContext.MerchantProviderRelationships.IgnoreQueryFilters().ToListAsync());
+    }
+
+    [Fact]
+    public async Task Platform_approval_creates_application_once_and_gates_submission_on_company_consent()
+    {
+        await using var dbContext = CreateContext();
+        var provider = new RecordingPartnerProvider();
+        var service = CreateService(dbContext, provider);
+        var organizationId = Guid.NewGuid();
+        var actorId = Guid.NewGuid();
+        var submitted = await SubmitAsync(service, organizationId, actorId);
+
+        var result = await service.ApproveApplicationAsync(
+            organizationId,
+            submitted.MerchantAccountId,
+            actorId,
+            CancellationToken.None);
+        var workspace = await service.GetCompanyMerchantAccountAsync(organizationId, CancellationToken.None);
+
+        Assert.Equal(MerchantAccountStatuses.LegalConsentRequired, result.Status);
+        Assert.Equal(1, provider.CreateCalls);
+        Assert.Equal(0, provider.SubmitCalls);
+        Assert.True(workspace.LegalConsent.IsRequired);
+        Assert.True(workspace.LegalConsent.CanComplete);
+        Assert.Equal("https://secure.nmi.test/consent/application-123", workspace.LegalConsent.LegalConsentUrl);
+        Assert.Null(workspace.LegalConsent.CompletedAtUtc);
+    }
+
+    [Fact]
+    public async Task Retrying_approval_reuses_creation_idempotency_key_and_keeps_one_relationship()
+    {
+        await using var dbContext = CreateContext();
+        var provider = new RecordingPartnerProvider { FailFirstCreate = true };
+        var service = CreateService(dbContext, provider);
+        var organizationId = Guid.NewGuid();
+        var actorId = Guid.NewGuid();
+        var submitted = await SubmitAsync(service, organizationId, actorId);
+
+        await Assert.ThrowsAsync<HttpRequestException>(() => service.ApproveApplicationAsync(
+            organizationId,
+            submitted.MerchantAccountId,
+            actorId,
+            CancellationToken.None));
+        var result = await service.ApproveApplicationAsync(
+            organizationId,
+            submitted.MerchantAccountId,
+            actorId,
+            CancellationToken.None);
+
+        Assert.Equal(MerchantAccountStatuses.LegalConsentRequired, result.Status);
+        Assert.Equal(2, provider.CreateCalls);
+        Assert.Equal(provider.CreateIdempotencyKeys[0], provider.CreateIdempotencyKeys[1]);
+        Assert.Single(provider.CreateIdempotencyKeys.Distinct());
+        Assert.Single(await dbContext.MerchantProviderRelationships.IgnoreQueryFilters().ToListAsync());
+    }
+
+    [Fact]
+    public async Task Retrying_submission_reuses_the_persisted_idempotency_key()
+    {
+        await using var dbContext = CreateContext();
+        var provider = new RecordingPartnerProvider { FailFirstSubmit = true };
+        var service = CreateService(dbContext, provider);
+        var organizationId = Guid.NewGuid();
+        var actorId = Guid.NewGuid();
+        var submitted = await SubmitAsync(service, organizationId, actorId);
+        await service.ApproveApplicationAsync(organizationId, submitted.MerchantAccountId, actorId, CancellationToken.None);
+
+        await Assert.ThrowsAsync<HttpRequestException>(() => service.CompleteLegalConsentAsync(
+            organizationId,
+            actorId,
+            CancellationToken.None));
+        var result = await service.CompleteLegalConsentAsync(organizationId, actorId, CancellationToken.None);
+        var relationship = await dbContext.MerchantProviderRelationships.IgnoreQueryFilters().SingleAsync();
+
+        Assert.Equal(MerchantAccountStatuses.UnderReview, result.Status);
+        Assert.Equal(2, provider.SubmitCalls);
+        Assert.Equal(provider.SubmitIdempotencyKeys[0], provider.SubmitIdempotencyKeys[1]);
+        Assert.Equal(relationship.ApplicationSubmitIdempotencyKey, provider.SubmitIdempotencyKeys[0]);
+        Assert.NotNull(relationship.LegalConsentCompletedAtUtc);
+        Assert.NotNull(relationship.ProviderApplicationSubmittedAtUtc);
+    }
+
+    [Fact]
+    public async Task UnderReview_refresh_updates_status_timestamp_without_duplicate_records()
+    {
+        await using var dbContext = CreateContext();
+        var provider = new RecordingPartnerProvider { RefreshStatus = MerchantAccountStatuses.UnderReview };
+        var service = CreateService(dbContext, provider);
+        var organizationId = Guid.NewGuid();
+        var actorId = Guid.NewGuid();
+        var underReview = await SubmitApproveAndConsentAsync(service, organizationId, actorId);
+
+        var result = await service.RefreshProviderStatusAsync(
+            organizationId,
+            underReview.MerchantAccountId,
+            actorId,
+            CancellationToken.None);
+        var relationship = await dbContext.MerchantProviderRelationships.IgnoreQueryFilters().SingleAsync();
+
+        Assert.Equal(MerchantAccountStatuses.UnderReview, result.Status);
+        Assert.Equal(1, provider.RefreshCalls);
+        Assert.NotNull(relationship.ProviderStatusRefreshedAtUtc);
+        Assert.Single(await dbContext.MerchantAccounts.IgnoreQueryFilters().ToListAsync());
+        Assert.Single(await dbContext.MerchantProviderRelationships.IgnoreQueryFilters().ToListAsync());
+    }
+
+    [Fact]
+    public async Task Credential_provisioning_retry_resumes_missing_key_and_activates_only_after_both_exist()
+    {
+        await using var dbContext = CreateContext();
+        var provider = new RecordingPartnerProvider { FailFirstTokenizationCredential = true };
+        var service = CreateService(dbContext, provider);
+        var organizationId = Guid.NewGuid();
+        var actorId = Guid.NewGuid();
+        var underReview = await SubmitApproveAndConsentAsync(service, organizationId, actorId);
+
+        await Assert.ThrowsAsync<HttpRequestException>(() => service.RefreshProviderStatusAsync(
+            organizationId,
+            underReview.MerchantAccountId,
+            actorId,
+            CancellationToken.None));
+        var accountAfterFailure = await dbContext.MerchantAccounts.IgnoreQueryFilters().SingleAsync();
+        var relationshipAfterFailure = await dbContext.MerchantProviderRelationships.IgnoreQueryFilters().SingleAsync();
+        Assert.Equal(MerchantAccountStatuses.CredentialProvisioning, accountAfterFailure.Status);
+        Assert.False(accountAfterFailure.PaymentsEnabled);
+        Assert.Equal("Failed", relationshipAfterFailure.CredentialProvisioningStatus);
+        Assert.NotNull(relationshipAfterFailure.PaymentApiKeyProtected);
+        Assert.Null(relationshipAfterFailure.PublicTokenizationKeyProtected);
+
+        var result = await service.RefreshProviderStatusAsync(
+            organizationId,
+            underReview.MerchantAccountId,
+            actorId,
+            CancellationToken.None);
+        var relationship = await dbContext.MerchantProviderRelationships.IgnoreQueryFilters().SingleAsync();
+
+        Assert.Equal(MerchantAccountStatuses.Active, result.Status);
+        Assert.Equal(1, provider.PaymentCredentialCalls);
+        Assert.Equal(2, provider.TokenizationCredentialCalls);
+        Assert.Single(provider.PaymentCredentialIdempotencyKeys.Distinct());
+        Assert.Single(provider.TokenizationCredentialIdempotencyKeys.Distinct());
+        Assert.Equal("Complete", relationship.CredentialProvisioningStatus);
+        Assert.NotNull(relationship.CredentialsProvisionedAtUtc);
+    }
+
+    [Fact]
+    public async Task Credential_timeout_requires_reconciliation_and_never_falsely_activates_merchant()
+    {
+        await using var dbContext = CreateContext();
+        var provider = new RecordingPartnerProvider { TimeoutFirstTokenizationCredential = true };
+        var service = CreateService(dbContext, provider);
+        var organizationId = Guid.NewGuid();
+        var actorId = Guid.NewGuid();
+        var underReview = await SubmitApproveAndConsentAsync(service, organizationId, actorId);
+
+        var exception = await Assert.ThrowsAsync<InvalidOperationException>(() => service.RefreshProviderStatusAsync(
+            organizationId,
+            underReview.MerchantAccountId,
+            actorId,
+            CancellationToken.None));
+        var account = await dbContext.MerchantAccounts.IgnoreQueryFilters().SingleAsync();
+        var relationship = await dbContext.MerchantProviderRelationships.IgnoreQueryFilters().SingleAsync();
+
+        Assert.Contains("reconciliation", exception.Message, StringComparison.OrdinalIgnoreCase);
+        Assert.Equal(MerchantAccountStatuses.CredentialProvisioning, account.Status);
+        Assert.False(account.PaymentsEnabled);
+        Assert.Equal("ReconciliationRequired", relationship.CredentialProvisioningStatus);
+        Assert.Equal(1, provider.PaymentCredentialCalls);
+        Assert.Equal(1, provider.TokenizationCredentialCalls);
+
+        await Assert.ThrowsAsync<InvalidOperationException>(() => service.RefreshProviderStatusAsync(
+            organizationId,
+            underReview.MerchantAccountId,
+            actorId,
+            CancellationToken.None));
+        Assert.Equal(1, provider.PaymentCredentialCalls);
+        Assert.Equal(1, provider.TokenizationCredentialCalls);
+    }
+
+    [Fact]
+    public async Task Sensitive_application_and_provider_values_are_protected_and_absent_from_metadata()
+    {
+        await using var dbContext = CreateContext();
+        var provider = new RecordingPartnerProvider();
+        var service = CreateService(dbContext, provider);
+        var organizationId = Guid.NewGuid();
+        var actorId = Guid.NewGuid();
+        var underReview = await SubmitApproveAndConsentAsync(service, organizationId, actorId);
+        await service.RefreshProviderStatusAsync(organizationId, underReview.MerchantAccountId, actorId, CancellationToken.None);
+
+        var account = await dbContext.MerchantAccounts.IgnoreQueryFilters().SingleAsync();
+        var relationship = await dbContext.MerchantProviderRelationships.IgnoreQueryFilters().SingleAsync();
+        AssertProtected(account.TaxIdentifierProtected, "821234567");
+        AssertProtected(account.OwnerDateOfBirthProtected, "1980-01-01");
+        AssertProtected(account.OwnerSsnProtected, "111223333");
+        AssertProtected(account.BankRoutingNumberProtected, "111000025");
+        AssertProtected(account.BankAccountNumberProtected, "1234567890");
+        Assert.Equal("****4567", account.Ein);
+        Assert.Equal("3333", account.OwnerSsnLastFour);
+        AssertProtected(relationship.GatewayPasswordProtected, "gateway-password-secret");
+        AssertProtected(relationship.PaymentApiKeyProtected, "private-transaction-secret");
+        AssertProtected(relationship.PublicTokenizationKeyProtected, "public-tokenization-secret");
+        AssertProtected(relationship.LegalConsentUrlProtected, "https://secure.nmi.test/consent/application-123");
+
+        var persistedSafeText = string.Join('|', relationship.CapabilitiesJson, relationship.CredentialMetadataJson, relationship.LastProviderError);
+        Assert.DoesNotContain("raw-provider-secret", persistedSafeText, StringComparison.Ordinal);
+        Assert.DoesNotContain("gateway-password-secret", persistedSafeText, StringComparison.Ordinal);
+        Assert.DoesNotContain("private-transaction-secret", persistedSafeText, StringComparison.Ordinal);
+        Assert.DoesNotContain("public-tokenization-secret", persistedSafeText, StringComparison.Ordinal);
+        Assert.DoesNotContain("821234567", persistedSafeText, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task Complete_onboarding_to_payment_workflow_persists_visible_transaction()
     {
         await using var dbContext = CreateContext();
         var partnerProvider = new RecordingPartnerProvider();
-        var service = new MerchantAccountService(
-            dbContext,
-            new[] { partnerProvider },
-            new DomainEventRecorder(dbContext, new NoCurrentUser(), new SystemClock()),
-            new SystemClock());
+        var merchantService = CreateService(dbContext, partnerProvider);
         var organizationId = Guid.NewGuid();
-
-        var result = await service.OnboardMerchantAsync(
+        var actorId = Guid.NewGuid();
+        var underReview = await SubmitApproveAndConsentAsync(merchantService, organizationId, actorId);
+        await merchantService.RefreshProviderStatusAsync(
             organizationId,
-            Guid.NewGuid(),
-            new MerchantOnboardingRequest(
-                "iM1 Test Shop",
-                "US",
-                "100 Main St",
-                null,
-                "Dallas",
-                "TX",
-                "75001",
-                "America/Chicago",
-                "Bradley",
-                "Molen",
-                "brad@example.test",
-                "555-0100",
-                "https://example.test"),
+            underReview.MerchantAccountId,
+            actorId,
             CancellationToken.None);
+        var paymentProvider = new RecordingPaymentProvider();
+        var paymentService = new PaymentService(
+            dbContext,
+            paymentProvider,
+            new DomainEventRecorder(dbContext, new NoCurrentUser(), new SystemClock()),
+            new SystemClock(),
+            SecretProtector);
 
-        Assert.Equal("NMI", result.ProviderCode);
-        Assert.Equal(string.Empty, result.ProviderMerchantId);
-        Assert.Equal(MerchantAccountStatuses.Submitted, result.Status);
-        Assert.Null(partnerProvider.Request);
-
-        var merchantAccount = await dbContext.MerchantAccounts.IgnoreQueryFilters().SingleAsync();
-        Assert.Equal(MerchantAccountStatuses.Submitted, merchantAccount.Status);
-        Assert.Equal("Submitted", merchantAccount.UnderwritingStatus);
-        Assert.Equal("NMI", merchantAccount.PrimaryProviderCode);
-
-        Assert.Empty(await dbContext.MerchantProviderRelationships.IgnoreQueryFilters().ToListAsync());
-
-        var histories = await dbContext.MerchantAccountStatusHistories.IgnoreQueryFilters()
-            .OrderBy(x => x.CreatedAtUtc)
-            .ToListAsync();
-        Assert.Collection(
-            histories,
-            x =>
-            {
-                Assert.Null(x.OldStatus);
-                Assert.Equal(MerchantAccountStatuses.Draft, x.NewStatus);
-            },
-            x =>
-            {
-                Assert.Equal(MerchantAccountStatuses.Draft, x.OldStatus);
-                Assert.Equal(MerchantAccountStatuses.Submitted, x.NewStatus);
-                Assert.Null(x.ProviderReference);
-            });
-
-        var domainEvent = await dbContext.DomainEvents.IgnoreQueryFilters().SingleAsync();
-        Assert.Equal(FinancialEventTypes.MerchantApplicationSubmitted, domainEvent.EventType);
-        Assert.Equal("FinancialServices", domainEvent.SourceModule);
-        Assert.Contains(MerchantAccountStatuses.Submitted, domainEvent.PayloadJson);
-    }
-
-    [Fact]
-    public async Task ApproveApplicationAsync_creates_provider_relationship_credentials_status_history_and_events()
-    {
-        await using var dbContext = CreateContext();
-        var service = CreateService(dbContext);
-        var organizationId = Guid.NewGuid();
-        var actorId = Guid.NewGuid();
-        var result = await service.OnboardMerchantAsync(organizationId, actorId, OnboardingRequest(), CancellationToken.None);
-
-        await service.ApproveApplicationAsync(organizationId, result.MerchantAccountId, actorId, CancellationToken.None);
-
-        var merchantAccount = await dbContext.MerchantAccounts.IgnoreQueryFilters().SingleAsync();
-        Assert.Equal(MerchantAccountStatuses.Active, merchantAccount.Status);
-        Assert.True(merchantAccount.PaymentsEnabled);
-
-        var relationship = await dbContext.MerchantProviderRelationships.IgnoreQueryFilters().SingleAsync();
-        Assert.Equal(merchantAccount.Id, relationship.MerchantAccountId);
-        Assert.Equal("nmi-gateway-123", relationship.ProviderMerchantId);
-        Assert.Equal(MerchantAccountStatuses.Active, relationship.Status);
-        Assert.Equal("gateway-user", relationship.GatewayUsername);
-        Assert.Equal("gateway-pass", relationship.GatewayPasswordProtected);
-        Assert.Equal("private_txn_key", relationship.PaymentApiKeyProtected);
-        Assert.Equal("public_token_key", relationship.PublicTokenizationKey);
-
-        var statuses = await dbContext.MerchantAccountStatusHistories.IgnoreQueryFilters()
-            .OrderBy(x => x.CreatedAtUtc)
-            .Select(x => x.NewStatus)
-            .ToListAsync();
-        Assert.Equal(
-            new[]
-            {
-                MerchantAccountStatuses.Draft,
-                MerchantAccountStatuses.Submitted,
-                MerchantAccountStatuses.Approved,
-                MerchantAccountStatuses.Active
-            },
-            statuses);
-
-        var eventTypes = await dbContext.DomainEvents.IgnoreQueryFilters()
-            .OrderBy(x => x.OccurredAtUtc)
-            .Select(x => x.EventType)
-            .ToListAsync();
-        Assert.Contains(FinancialEventTypes.MerchantApplicationSubmitted, eventTypes);
-        Assert.Contains(FinancialEventTypes.MerchantApproved, eventTypes);
-        Assert.Contains(FinancialEventTypes.MerchantActivated, eventTypes);
-    }
-
-    [Fact]
-    public async Task Company_workspace_only_returns_requested_company_merchant_account()
-    {
-        await using var dbContext = CreateContext();
-        var service = CreateService(dbContext);
-        var firstOrganizationId = Guid.NewGuid();
-        var secondOrganizationId = Guid.NewGuid();
-        await service.OnboardMerchantAsync(firstOrganizationId, Guid.NewGuid(), OnboardingRequest("First Shop"), CancellationToken.None);
-        await service.OnboardMerchantAsync(secondOrganizationId, Guid.NewGuid(), OnboardingRequest("Second Shop"), CancellationToken.None);
-
-        var workspace = await service.GetCompanyMerchantAccountAsync(firstOrganizationId, CancellationToken.None);
-
-        Assert.Equal(firstOrganizationId, workspace.OrganizationId);
-        Assert.NotNull(workspace.Account);
-        Assert.Equal("First Shop", workspace.Account.LegalBusinessName);
-        Assert.DoesNotContain(workspace.StatusHistory, x => x.CompanyId == secondOrganizationId);
-    }
-
-    [Fact]
-    public async Task Platform_workspaces_show_platform_merchant_management_data()
-    {
-        await using var dbContext = CreateContext();
-        var service = CreateService(dbContext);
-        var firstOrganizationId = Guid.NewGuid();
-        var secondOrganizationId = Guid.NewGuid();
-
-        await service.OnboardMerchantAsync(firstOrganizationId, Guid.NewGuid(), OnboardingRequest("First Shop"), CancellationToken.None);
-        var active = await service.OnboardMerchantAsync(secondOrganizationId, Guid.NewGuid(), OnboardingRequest("Second Shop"), CancellationToken.None);
-        await service.ApproveApplicationAsync(secondOrganizationId, active.MerchantAccountId, Guid.NewGuid(), CancellationToken.None);
-
-        var applications = await service.GetPlatformMerchantApplicationsAsync(CancellationToken.None);
-        var activeMerchants = await service.GetPlatformActiveMerchantsAsync(CancellationToken.None);
-
-        Assert.Contains(applications.Applications, x =>
-            x.CompanyId == firstOrganizationId &&
-            string.IsNullOrWhiteSpace(x.ProviderMerchantId) &&
-            x.StatusHistory.Any());
-        Assert.DoesNotContain(applications.Applications, x => x.CompanyId == secondOrganizationId);
-        Assert.Contains(activeMerchants.Merchants, x =>
-            x.CompanyId == secondOrganizationId &&
-            x.ProviderMerchantId == "nmi-gateway-123" &&
-            x.Status == MerchantAccountStatuses.Active);
-        Assert.DoesNotContain(activeMerchants.Merchants, x => x.CompanyId == firstOrganizationId);
-    }
-
-    [Fact]
-    public async Task SaveDraftAsync_updates_submitted_application_without_downgrading_status()
-    {
-        await using var dbContext = CreateContext();
-        var service = CreateService(dbContext);
-        var organizationId = Guid.NewGuid();
-        var actorId = Guid.NewGuid();
-        await service.OnboardMerchantAsync(organizationId, actorId, OnboardingRequest("Original Shop"), CancellationToken.None);
-
-        var result = await service.SaveDraftAsync(
+        var payment = await paymentService.CreateSaleAsync(
             organizationId,
             actorId,
-            ApplicationRequest("Updated Shop"),
+            new PaymentSaleRequest("hosted-fields-token", 42.50m, OrderId: "ORDER-100"),
             CancellationToken.None);
+        var workspace = await paymentService.GetWorkspaceAsync(organizationId, CancellationToken.None);
 
-        Assert.Equal(MerchantAccountStatuses.Submitted, result.Status);
-        var merchantAccount = await dbContext.MerchantAccounts.IgnoreQueryFilters().SingleAsync();
-        Assert.Equal(MerchantAccountStatuses.Submitted, merchantAccount.Status);
-        Assert.Equal("Updated Shop", merchantAccount.LegalBusinessName);
-
-        var statuses = await dbContext.MerchantAccountStatusHistories.IgnoreQueryFilters()
-            .OrderBy(x => x.CreatedAtUtc)
-            .Select(x => x.NewStatus)
-            .ToListAsync();
-        Assert.Equal(
-            new[] { MerchantAccountStatuses.Draft, MerchantAccountStatuses.Submitted },
-            statuses);
+        Assert.True(payment.Success);
+        Assert.Equal("sandbox-transaction-123", payment.GatewayTransactionId);
+        Assert.Equal("private-transaction-secret", paymentProvider.Request?.PaymentApiKey);
+        Assert.Equal("hosted-fields-token", paymentProvider.Request?.PaymentToken);
+        Assert.Single(workspace.Transactions);
+        Assert.Equal("Approved", workspace.Transactions.Single().Status);
+        Assert.Equal(42.50m, workspace.ApprovedSalesTotal);
     }
 
-    [Fact]
-    public async Task SaveDraftAsync_rejects_active_application_edits()
+    private static void AssertProtected(string? protectedValue, string plaintext)
     {
-        await using var dbContext = CreateContext();
-        var service = CreateService(dbContext);
-        var organizationId = Guid.NewGuid();
-        var actorId = Guid.NewGuid();
-        var result = await service.OnboardMerchantAsync(organizationId, actorId, OnboardingRequest(), CancellationToken.None);
-        await service.ApproveApplicationAsync(organizationId, result.MerchantAccountId, actorId, CancellationToken.None);
-
-        await Assert.ThrowsAsync<InvalidOperationException>(() =>
-            service.SaveDraftAsync(
-                organizationId,
-                actorId,
-                ApplicationRequest("Should Not Save"),
-                CancellationToken.None));
+        Assert.NotNull(protectedValue);
+        Assert.NotEqual(plaintext, protectedValue);
+        Assert.DoesNotContain(plaintext, protectedValue, StringComparison.Ordinal);
+        Assert.Equal(plaintext, SecretProtector.Unprotect(protectedValue));
     }
 
-    [Fact]
-    public async Task GetPlatformMerchantApplicationAsync_returns_review_detail()
+    private static async Task<MerchantAccountResult> SubmitAsync(
+        MerchantAccountService service,
+        Guid organizationId,
+        Guid actorId)
     {
-        await using var dbContext = CreateContext();
-        var service = CreateService(dbContext);
-        var organizationId = Guid.NewGuid();
-        var result = await service.OnboardMerchantAsync(organizationId, Guid.NewGuid(), OnboardingRequest("Review Shop"), CancellationToken.None);
-
-        var detail = await service.GetPlatformMerchantApplicationAsync(
+        return await service.SubmitApplicationAsync(
             organizationId,
-            result.MerchantAccountId,
+            actorId,
+            ApplicationRequest(),
             CancellationToken.None);
+    }
 
-        Assert.Equal(organizationId, detail.Merchant.CompanyId);
-        Assert.Equal(result.MerchantAccountId, detail.Merchant.MerchantAccountId);
-        Assert.Equal("Review Shop", detail.Application.BusinessName);
-        Assert.NotEmpty(detail.Merchant.StatusHistory);
+    private static async Task<MerchantAccountResult> SubmitApproveAndConsentAsync(
+        MerchantAccountService service,
+        Guid organizationId,
+        Guid actorId)
+    {
+        var submitted = await SubmitAsync(service, organizationId, actorId);
+        await service.ApproveApplicationAsync(
+            organizationId,
+            submitted.MerchantAccountId,
+            actorId,
+            CancellationToken.None);
+        return await service.CompleteLegalConsentAsync(organizationId, actorId, CancellationToken.None);
     }
 
     private static ApplicationDbContext CreateContext()
@@ -243,140 +326,216 @@ public sealed class MerchantAccountServiceTests
         return new ApplicationDbContext(options, currentUser, new SystemClock(), new TenantProvider(currentUser));
     }
 
-    private static MerchantAccountService CreateService(ApplicationDbContext dbContext)
+    private static MerchantAccountService CreateService(ApplicationDbContext dbContext, RecordingPartnerProvider provider)
     {
         return new MerchantAccountService(
             dbContext,
-            new[] { new RecordingPartnerProvider() },
+            new[] { provider },
             new DomainEventRecorder(dbContext, new NoCurrentUser(), new SystemClock()),
-            new SystemClock());
+            new SystemClock(),
+            SecretProtector);
     }
 
-    private static MerchantOnboardingRequest OnboardingRequest(string legalBusinessName = "iM1 Test Shop")
-    {
-        return new MerchantOnboardingRequest(
-            legalBusinessName,
-            "US",
-            "100 Main St",
-            null,
-            "Dallas",
-            "TX",
-            "75001",
-            "America/Chicago",
-            "Bradley",
-            "Molen",
-            "brad@example.test",
-            "555-0100",
-            "https://example.test");
-    }
-
-    private static MerchantApplicationRequest ApplicationRequest(string businessName = "iM1 Test Shop")
+    private static MerchantApplicationRequest ApplicationRequest()
     {
         return new MerchantApplicationRequest(
-            businessName,
-            null,
-            null,
-            null,
-            "LLC",
-            "100 Main St",
-            null,
-            "Dallas",
-            "TX",
-            "75001",
-            "US",
-            null,
-            null,
-            null,
-            null,
-            null,
-            null,
-            "Bradley Molen",
-            "brad@example.test",
-            "2145551212",
-            "Test Bank",
-            "123456789",
-            "1234567890",
-            5000,
-            100,
-            "https://example.test",
-            "5533");
+            BusinessName: "iM1 Test Shop",
+            Dba: "iM1 Test",
+            Ein: null,
+            TaxId: "821234567",
+            BusinessType: "LLC",
+            BusinessDescription: "Motorcycle parts and service",
+            YearsInBusiness: 5,
+            PhysicalAddressLine1: "100 Main St",
+            PhysicalAddressLine2: null,
+            PhysicalCity: "Dallas",
+            PhysicalRegion: "TX",
+            PhysicalPostalCode: "75001",
+            PhysicalCountry: "US",
+            MailingAddressLine1: null,
+            MailingAddressLine2: null,
+            MailingCity: null,
+            MailingRegion: null,
+            MailingPostalCode: null,
+            MailingCountry: null,
+            OwnerName: "Bradley Molen",
+            OwnerEmail: "brad@example.test",
+            OwnerPhone: "2145551212",
+            OwnerTitle: "Owner",
+            OwnerOwnershipPercentage: 100m,
+            OwnerDateOfBirth: "1980-01-01",
+            OwnerSsn: "111223333",
+            BankName: "Test Bank",
+            BankRoutingNumber: "111000025",
+            BankAccountNumber: "1234567890",
+            ExpectedMonthlyVolume: 5000m,
+            AverageTicket: 100m,
+            HighTicket: 250m,
+            CardPresentPercentage: 100m,
+            KeyEnteredPercentage: 0m,
+            EcommercePercentage: 0m,
+            MotoPercentage: 0m,
+            Website: "https://example.test",
+            Mcc: "5533");
     }
 
     private sealed class RecordingPartnerProvider : IPartnerProvider
     {
-        public PartnerMerchantCreateRequest? Request { get; private set; }
+        public bool FailFirstCreate { get; init; }
+        public bool FailFirstSubmit { get; init; }
+        public bool FailFirstTokenizationCredential { get; init; }
+        public bool TimeoutFirstTokenizationCredential { get; init; }
+        public string RefreshStatus { get; init; } = MerchantAccountStatuses.Active;
+        public int CreateCalls { get; private set; }
+        public int SubmitCalls { get; private set; }
+        public int RefreshCalls { get; private set; }
+        public int PaymentCredentialCalls { get; private set; }
+        public int TokenizationCredentialCalls { get; private set; }
+        public List<string> CreateIdempotencyKeys { get; } = [];
+        public List<string> SubmitIdempotencyKeys { get; } = [];
+        public List<string> PaymentCredentialIdempotencyKeys { get; } = [];
+        public List<string> TokenizationCredentialIdempotencyKeys { get; } = [];
 
         public string ProviderCode => "NMI";
 
-        public FinancialProviderConfiguration GetConfiguration()
-        {
-            return new FinancialProviderConfiguration(
-                true,
-                ProviderCode,
-                "Sandbox",
-                "public-tokenization-key",
-                "https://secure.nmi.com/token/Collect.js",
-                true,
-                true);
-        }
+        public FinancialProviderConfiguration GetConfiguration() => new(
+            true,
+            ProviderCode,
+            "Sandbox",
+            null,
+            "https://secure.nmi.com/token/Collect.js",
+            true,
+            true);
 
         public Task<PartnerMerchantCreateResult> CreateMerchantAsync(
             PartnerMerchantCreateRequest request,
+            string idempotencyKey,
             CancellationToken cancellationToken)
         {
-            Request = request;
-            return Task.FromResult(new PartnerMerchantCreateResult(
-                ProviderCode,
-                "nmi-gateway-123",
-                "gateway-user",
-                "gateway-pass",
-                "Active",
-                    """{"gateway_id":"nmi-gateway-123"}"""));
+            CreateCalls++;
+            CreateIdempotencyKeys.Add(idempotencyKey);
+            if (FailFirstCreate && CreateCalls == 1)
+            {
+                throw new HttpRequestException("Simulated NMI application timeout.");
+            }
+
+            return Task.FromResult(Result(
+                MerchantAccountStatuses.LegalConsentRequired,
+                providerMerchantId: string.Empty,
+                legalConsentUrl: "https://secure.nmi.test/consent/application-123"));
         }
 
         public Task<PartnerMerchantCreateResult> SubmitMerchantApplicationAsync(
             string providerReference,
             PartnerMerchantCreateRequest request,
+            string idempotencyKey,
             CancellationToken cancellationToken)
         {
-            Request = request;
-            return Task.FromResult(new PartnerMerchantCreateResult(
-                ProviderCode,
-                "nmi-gateway-123",
-                "gateway-user",
-                "gateway-pass",
-                "Active",
-                """{"gateway_id":"nmi-gateway-123"}""",
-                providerReference));
+            SubmitCalls++;
+            SubmitIdempotencyKeys.Add(idempotencyKey);
+            if (FailFirstSubmit && SubmitCalls == 1)
+            {
+                throw new HttpRequestException("Simulated NMI submission timeout.");
+            }
+
+            return Task.FromResult(Result(MerchantAccountStatuses.UnderReview, providerMerchantId: string.Empty));
         }
 
         public Task<PartnerMerchantCreateResult> GetMerchantApplicationStatusAsync(
             string providerReference,
             CancellationToken cancellationToken)
         {
-            return Task.FromResult(new PartnerMerchantCreateResult(
-                ProviderCode,
-                "nmi-gateway-123",
-                "gateway-user",
-                "gateway-pass",
-                "Active",
-                """{"status":"boarded","gateway_id":"nmi-gateway-123"}""",
-                providerReference));
+            RefreshCalls++;
+            var merchantId = RefreshStatus == MerchantAccountStatuses.Active ? "nmi-merchant-123" : string.Empty;
+            return Task.FromResult(Result(RefreshStatus, merchantId));
         }
 
         public Task<PartnerMerchantCredentialResult> CreateMerchantCredentialAsync(
             PartnerMerchantCredentialRequest request,
+            string idempotencyKey,
             CancellationToken cancellationToken)
         {
-            var isTokenizationKey = request.Permissions.Contains("tokenization", StringComparer.OrdinalIgnoreCase);
+            var tokenization = request.Permissions.Contains("tokenization", StringComparer.OrdinalIgnoreCase);
+            if (tokenization)
+            {
+                TokenizationCredentialCalls++;
+                TokenizationCredentialIdempotencyKeys.Add(idempotencyKey);
+                if (FailFirstTokenizationCredential && TokenizationCredentialCalls == 1)
+                {
+                    throw new HttpRequestException(
+                        "Simulated credential validation failure.",
+                        null,
+                        System.Net.HttpStatusCode.BadRequest);
+                }
+                if (TimeoutFirstTokenizationCredential && TokenizationCredentialCalls == 1)
+                {
+                    throw new TaskCanceledException("Simulated ambiguous credential timeout.");
+                }
+
+                return Task.FromResult(new PartnerMerchantCredentialResult(
+                    "tokenization-key-id",
+                    null,
+                    "public-tokenization-secret",
+                    request.Description,
+                    "raw-provider-secret-public-tokenization-secret"));
+            }
+
+            PaymentCredentialCalls++;
+            PaymentCredentialIdempotencyKeys.Add(idempotencyKey);
             return Task.FromResult(new PartnerMerchantCredentialResult(
-                isTokenizationKey ? "tokenization-key-id" : "transaction-key-id",
-                isTokenizationKey ? null : "private_txn_key",
-                isTokenizationKey ? "public_token_key" : null,
+                "transaction-key-id",
+                "private-transaction-secret",
+                null,
                 request.Description,
-                isTokenizationKey
-                    ? """{"key":"public_token_key"}"""
-                    : """{"key":"private_txn_key"}"""));
+                "raw-provider-secret-private-transaction-secret"));
+        }
+
+        private PartnerMerchantCreateResult Result(
+            string status,
+            string providerMerchantId,
+            string? legalConsentUrl = null)
+        {
+            return new PartnerMerchantCreateResult(
+                ProviderCode,
+                providerMerchantId,
+                "gateway-user",
+                "gateway-password-secret",
+                status,
+                "raw-provider-secret-gateway-password-secret-821234567",
+                "application-123",
+                legalConsentUrl);
+        }
+    }
+
+    private sealed class RecordingPaymentProvider : IPaymentProvider
+    {
+        public ProviderPaymentSaleRequest? Request { get; private set; }
+        public string ProviderCode => "NMI";
+
+        public FinancialProviderConfiguration GetConfiguration() => new(
+            true,
+            ProviderCode,
+            "Sandbox",
+            null,
+            "https://secure.nmi.com/token/Collect.js",
+            false,
+            true);
+
+        public Task<ProviderPaymentResult> ProcessSaleAsync(
+            ProviderPaymentSaleRequest request,
+            CancellationToken cancellationToken)
+        {
+            Request = request;
+            return Task.FromResult(new ProviderPaymentResult(
+                true,
+                "Approved",
+                "sandbox-transaction-123",
+                "AUTH123",
+                "1",
+                "Approved",
+                "visa",
+                "1111",
+                "raw-card-sensitive-response"));
         }
     }
 }

@@ -12,6 +12,8 @@ namespace iM1os.Tests;
 
 public sealed class Im1PaymentsServiceTests
 {
+    private static readonly TestSecretProtector SecretProtector = new();
+
     [Fact]
     public async Task CreateSaleAsync_records_approved_transaction_ledger_entry_and_domain_event()
     {
@@ -61,6 +63,7 @@ public sealed class Im1PaymentsServiceTests
         Assert.Equal("Ada Rider", transaction.CustomerName);
         Assert.Equal("1111", transaction.CardLastFour);
         Assert.Equal("NMI", transaction.Provider);
+        Assert.Null(transaction.RawResponseJson);
 
         var ledgerEntry = await dbContext.FinancialLedgerEntries.IgnoreQueryFilters().SingleAsync();
         Assert.Equal(transaction.Id.ToString(), ledgerEntry.SourceId);
@@ -109,7 +112,7 @@ public sealed class Im1PaymentsServiceTests
     }
 
     [Fact]
-    public async Task CreateSaleAsync_records_nmi_http_error_message()
+    public async Task CreateSaleAsync_records_safe_nmi_http_error_message_without_raw_response()
     {
         await using var dbContext = CreateContext();
         var handler = new RecordingHandler("""
@@ -136,7 +139,51 @@ public sealed class Im1PaymentsServiceTests
         Assert.Equal("Missing/Invalid Authentication", result.ResponseText);
 
         var transaction = await dbContext.PaymentTransactions.IgnoreQueryFilters().SingleAsync();
-        Assert.Contains("E_AUTHENTICATION_MISSING", transaction.RawResponseJson);
+        Assert.Null(transaction.RawResponseJson);
+        Assert.Equal("Missing/Invalid Authentication", transaction.ResponseText);
+    }
+
+    [Fact]
+    public async Task CreateSaleAsync_persists_declined_payment_attempt_and_history()
+    {
+        await using var dbContext = CreateContext();
+        var handler = new RecordingHandler("""
+            {
+              "object": "transaction",
+              "id": "declined-transaction-123",
+              "type": "sale",
+              "amount": "10.00",
+              "response": "2",
+              "response_text": "Do not honor",
+              "status": "declined"
+            }
+            """);
+        var service = CreateService(dbContext, handler);
+        var organizationId = Guid.NewGuid();
+        AddActiveMerchant(dbContext, organizationId);
+
+        var result = await service.CreateSaleAsync(
+            organizationId,
+            Guid.NewGuid(),
+            new PaymentSaleRequest("tok_declined", 10m, CardBrand: "visa", CardLastFour: "4242"),
+            CancellationToken.None);
+        var workspace = await service.GetWorkspaceAsync(organizationId, CancellationToken.None);
+
+        Assert.False(result.Success);
+        Assert.Equal("Declined", result.Status);
+        Assert.Equal("Do not honor", result.ResponseText);
+        var transaction = await dbContext.PaymentTransactions.IgnoreQueryFilters().SingleAsync();
+        Assert.Equal("Declined", transaction.Status);
+        Assert.False(transaction.IsApproved);
+        Assert.Equal("declined-transaction-123", transaction.GatewayTransactionId);
+        Assert.Null(transaction.RawResponseJson);
+        Assert.Single(workspace.Transactions);
+        Assert.Equal(1, workspace.DeclinedCount);
+
+        var ledgerEntry = await dbContext.FinancialLedgerEntries.IgnoreQueryFilters().SingleAsync();
+        Assert.Equal("PaymentDeclined", ledgerEntry.EntryType);
+        var domainEvent = await dbContext.DomainEvents.IgnoreQueryFilters().SingleAsync();
+        Assert.Equal("PaymentDeclined", domainEvent.EventType);
     }
 
     [Fact]
@@ -207,7 +254,8 @@ public sealed class Im1PaymentsServiceTests
                     MerchantTokenizationKey = "test-public-key"
                 })),
             new DomainEventRecorder(dbContext, currentUser, new SystemClock()),
-            new SystemClock());
+            new SystemClock(),
+            SecretProtector);
     }
 
     private static void AddActiveMerchant(ApplicationDbContext dbContext, Guid organizationId)
@@ -235,8 +283,13 @@ public sealed class Im1PaymentsServiceTests
             ProviderCode = "NMI",
             ProviderMerchantId = "nmi-merchant-123",
             Status = status,
-            PaymentApiKeyProtected = status == MerchantAccountStatuses.Active ? "merchant-private-key" : null,
-            PublicTokenizationKey = status == MerchantAccountStatuses.Active ? "merchant-public-key" : null
+            CredentialProvisioningStatus = status == MerchantAccountStatuses.Active ? "Complete" : "NotStarted",
+            PaymentApiKeyProtected = status == MerchantAccountStatuses.Active
+                ? SecretProtector.Protect("merchant-private-key")
+                : null,
+            PublicTokenizationKeyProtected = status == MerchantAccountStatuses.Active
+                ? SecretProtector.Protect("merchant-public-key")
+                : null
         });
         dbContext.SaveChanges();
     }

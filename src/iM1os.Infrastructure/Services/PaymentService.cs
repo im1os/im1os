@@ -15,7 +15,8 @@ public sealed class PaymentService(
     IApplicationDbContext dbContext,
     IPaymentProvider paymentProvider,
     IDomainEventRecorder domainEventRecorder,
-    IDateTimeProvider dateTimeProvider) : IPaymentService, IIm1PaymentsService
+    IDateTimeProvider dateTimeProvider,
+    ISecretProtector secretProtector) : IPaymentService, IIm1PaymentsService
 {
     public async Task<PaymentsWorkspace> GetWorkspaceAsync(Guid organizationId, CancellationToken cancellationToken)
     {
@@ -42,7 +43,7 @@ public sealed class PaymentService(
         var configuration = paymentProvider.GetConfiguration();
         var activeMerchant = await GetActiveMerchantRelationshipAsync(organizationId, cancellationToken)
             ?? throw new InvalidOperationException("An active merchant account is required before payments can run.");
-        if (!configuration.HasPaymentCredentials && string.IsNullOrWhiteSpace(activeMerchant.PaymentApiKey))
+        if (!configuration.HasPaymentCredentials && string.IsNullOrWhiteSpace(activeMerchant.PaymentApiKeyProtected))
         {
             throw new InvalidOperationException("Payment processing credentials are not configured.");
         }
@@ -88,7 +89,7 @@ public sealed class PaymentService(
                     organizationId,
                     activeMerchant.MerchantAccountId,
                     activeMerchant.ProviderMerchantId,
-                    activeMerchant.PaymentApiKey,
+                    secretProtector.Unprotect(activeMerchant.PaymentApiKeyProtected),
                     transaction.Id,
                     paymentToken,
                     transaction.Amount,
@@ -131,22 +132,24 @@ public sealed class PaymentService(
     private static void ApplyProviderResponse(PaymentTransaction transaction, ProviderPaymentResult response)
     {
         transaction.ResponseCode = response.ResponseCode;
-        transaction.ResponseText = response.ResponseText;
+        transaction.ResponseText = SafeResponseText(response.ResponseText);
         transaction.GatewayTransactionId = response.ProviderTransactionId;
         transaction.AuthorizationCode = response.AuthorizationCode;
         transaction.IsApproved = response.IsApproved;
         transaction.Status = response.Status;
         transaction.CardBrand ??= response.CardBrand;
         transaction.CardLastFour ??= response.CardLastFour;
-        transaction.RawResponseJson = response.RawResponse;
+        transaction.RawResponseJson = null;
     }
 
     private PaymentsConfigurationStatus BuildConfigurationStatus(ActiveMerchantRelationship? activeMerchant)
     {
         var configuration = paymentProvider.GetConfiguration();
         var hasActiveMerchant = activeMerchant is not null;
-        var publicKey = activeMerchant?.PublicTokenizationKey ?? configuration.PublicTokenizationKey;
-        var hasPaymentCredentials = !string.IsNullOrWhiteSpace(activeMerchant?.PaymentApiKey) || configuration.HasPaymentCredentials;
+        var publicKey = !string.IsNullOrWhiteSpace(activeMerchant?.PublicTokenizationKeyProtected)
+            ? secretProtector.Unprotect(activeMerchant.PublicTokenizationKeyProtected)
+            : configuration.PublicTokenizationKey;
+        var hasPaymentCredentials = !string.IsNullOrWhiteSpace(activeMerchant?.PaymentApiKeyProtected) || configuration.HasPaymentCredentials;
         return new PaymentsConfigurationStatus(
             hasActiveMerchant && hasPaymentCredentials && !string.IsNullOrWhiteSpace(publicKey),
             configuration.ProviderCode,
@@ -168,7 +171,10 @@ public sealed class PaymentService(
             .Where(x =>
                 x.OrganizationId == organizationId &&
                 x.ProviderCode == providerCode &&
-                x.Status == MerchantAccountStatuses.Active)
+                x.Status == MerchantAccountStatuses.Active &&
+                x.CredentialProvisioningStatus == "Complete" &&
+                x.PaymentApiKeyProtected != null &&
+                x.PublicTokenizationKeyProtected != null)
             .Join(
                 dbContext.MerchantAccounts.IgnoreQueryFilters().Where(x =>
                     x.OrganizationId == organizationId &&
@@ -179,8 +185,8 @@ public sealed class PaymentService(
                 (relationship, merchant) => new ActiveMerchantRelationship(
                     merchant.Id,
                     relationship.ProviderMerchantId,
-                    relationship.PaymentApiKeyProtected,
-                    relationship.PublicTokenizationKey))
+                    relationship.PaymentApiKeyProtected!,
+                    relationship.PublicTokenizationKeyProtected!))
             .SingleOrDefaultAsync(cancellationToken);
 
         return activeRelationship;
@@ -276,9 +282,15 @@ public sealed class PaymentService(
         return digits.Length >= 4 ? digits[^4..] : null;
     }
 
+    private static string? SafeResponseText(string? value)
+    {
+        var clean = Clean(value);
+        return clean is null ? null : clean[..Math.Min(clean.Length, 500)];
+    }
+
     private sealed record ActiveMerchantRelationship(
         Guid MerchantAccountId,
         string ProviderMerchantId,
-        string? PaymentApiKey,
-        string? PublicTokenizationKey);
+        string PaymentApiKeyProtected,
+        string PublicTokenizationKeyProtected);
 }

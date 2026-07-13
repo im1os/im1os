@@ -3,7 +3,6 @@ using System.Text.Json;
 using iM1os.Application.FinancialServices.Providers;
 using iM1os.Infrastructure.Configuration;
 using System.Net.Http.Headers;
-using System.Security.Cryptography;
 using Microsoft.Extensions.Options;
 
 namespace iM1os.Infrastructure.FinancialServices.Providers;
@@ -31,6 +30,7 @@ public sealed class NmiPartnerProvider(
 
     public async Task<PartnerMerchantCreateResult> CreateMerchantAsync(
         PartnerMerchantCreateRequest request,
+        string idempotencyKey,
         CancellationToken cancellationToken)
     {
         if (string.IsNullOrWhiteSpace(paymentOptions.PartnerOAuthClientId) ||
@@ -50,7 +50,6 @@ public sealed class NmiPartnerProvider(
         };
 
         var signupClient = httpClientFactory.CreateClient("NmiSignup");
-        var idempotencyKey = IdempotencyKey("im1-create", request, applicationPayload);
         using var createMessage = new HttpRequestMessage(HttpMethod.Post, "applications")
         {
             Content = JsonContent(applicationPayload)
@@ -64,7 +63,7 @@ public sealed class NmiPartnerProvider(
         if (!createResponse.IsSuccessStatusCode)
         {
             throw new HttpRequestException(
-                NmiErrorMessage(createResponseJson) ?? $"NMI Sign-Up application creation failed with HTTP {(int)createResponse.StatusCode}.",
+                $"NMI Sign-Up application creation failed with HTTP {(int)createResponse.StatusCode}.",
                 null,
                 createResponse.StatusCode);
         }
@@ -77,25 +76,21 @@ public sealed class NmiPartnerProvider(
         }
 
         var legalConsentUrl = await GetLegalConsentUrlAsync(signupClient, accessToken, applicationId, cancellationToken);
-        var rawResponse = JsonSerializer.Serialize(new
-        {
-            Application = JsonDocument.Parse(createResponseJson).RootElement,
-            LegalConsentUrl = legalConsentUrl
-        });
-
         return new PartnerMerchantCreateResult(
             ProviderCode,
             string.Empty,
             null,
             null,
             "LegalConsentRequired",
-            rawResponse,
-            applicationId);
+            createResponseJson,
+            applicationId,
+            legalConsentUrl);
     }
 
     public async Task<PartnerMerchantCreateResult> SubmitMerchantApplicationAsync(
         string providerReference,
         PartnerMerchantCreateRequest request,
+        string idempotencyKey,
         CancellationToken cancellationToken)
     {
         if (string.IsNullOrWhiteSpace(providerReference))
@@ -112,7 +107,7 @@ public sealed class NmiPartnerProvider(
             Content = JsonContent(new { })
         };
         submitMessage.Headers.Authorization = new AuthenticationHeaderValue("Bearer", accessToken);
-        submitMessage.Headers.TryAddWithoutValidation("Idempotency-Key", NewIdempotencyKey("im1-submit", providerReference));
+        submitMessage.Headers.TryAddWithoutValidation("Idempotency-Key", idempotencyKey);
         submitMessage.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
 
         using var submitResponse = await signupClient.SendAsync(submitMessage, cancellationToken);
@@ -134,7 +129,10 @@ public sealed class NmiPartnerProvider(
             }
 
             throw new HttpRequestException(
-                $"NMI Sign-Up application {providerReference}: {errorMessage ?? $"submit failed with HTTP {(int)submitResponse.StatusCode}."}",
+                submitResponse.StatusCode == System.Net.HttpStatusCode.UnprocessableEntity &&
+                errorMessage?.Contains("consent", StringComparison.OrdinalIgnoreCase) == true
+                    ? "NMI legal consent is not complete."
+                    : $"NMI Sign-Up application submission failed with HTTP {(int)submitResponse.StatusCode}.",
                 null,
                 submitResponse.StatusCode);
         }
@@ -164,7 +162,7 @@ public sealed class NmiPartnerProvider(
         if (!response.IsSuccessStatusCode)
         {
             throw new HttpRequestException(
-                $"NMI Sign-Up application {providerReference}: {NmiErrorMessage(responseJson) ?? $"status refresh failed with HTTP {(int)response.StatusCode}."}",
+                $"NMI Sign-Up status refresh failed with HTTP {(int)response.StatusCode}.",
                 null,
                 response.StatusCode);
         }
@@ -174,6 +172,7 @@ public sealed class NmiPartnerProvider(
 
     public async Task<PartnerMerchantCredentialResult> CreateMerchantCredentialAsync(
         PartnerMerchantCredentialRequest request,
+        string idempotencyKey,
         CancellationToken cancellationToken)
     {
         if (string.IsNullOrWhiteSpace(paymentOptions.PartnerApiKey))
@@ -192,6 +191,7 @@ public sealed class NmiPartnerProvider(
             Content = JsonContent(payload)
         };
         message.Headers.TryAddWithoutValidation("Authorization", paymentOptions.PartnerApiKey);
+        message.Headers.TryAddWithoutValidation("Idempotency-Key", idempotencyKey);
         message.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
 
         using var response = await client.SendAsync(message, cancellationToken);
@@ -199,7 +199,7 @@ public sealed class NmiPartnerProvider(
         if (!response.IsSuccessStatusCode)
         {
             throw new HttpRequestException(
-                NmiErrorMessage(responseJson) ?? $"NMI merchant key creation failed with HTTP {(int)response.StatusCode}.",
+                $"NMI merchant key creation failed with HTTP {(int)response.StatusCode}.",
                 null,
                 response.StatusCode);
         }
@@ -239,7 +239,7 @@ public sealed class NmiPartnerProvider(
         if (!response.IsSuccessStatusCode)
         {
             throw new HttpRequestException(
-                NmiErrorMessage(responseJson) ?? $"NMI Sign-Up OAuth token request failed with HTTP {(int)response.StatusCode}.",
+                $"NMI Sign-Up OAuth token request failed with HTTP {(int)response.StatusCode}.",
                 null,
                 response.StatusCode);
         }
@@ -303,7 +303,7 @@ public sealed class NmiPartnerProvider(
         if (!response.IsSuccessStatusCode)
         {
             throw new HttpRequestException(
-                $"NMI Sign-Up application {applicationId}: {NmiErrorMessage(responseJson) ?? $"legal consent URL request failed with HTTP {(int)response.StatusCode}."}",
+                $"NMI Sign-Up legal consent URL request failed with HTTP {(int)response.StatusCode}.",
                 null,
                 response.StatusCode);
         }
@@ -313,39 +313,37 @@ public sealed class NmiPartnerProvider(
             JsonValue(document.RootElement, "consent_url") ??
             JsonValue(document.RootElement, "legal_consent_url") ??
             JsonValue(document.RootElement, "legalConsentUrl") ??
-            responseJson;
+            throw new InvalidOperationException("NMI Sign-Up legal consent response did not include a URL.");
     }
 
     private static IReadOnlyCollection<object> BuildSignupFields(PartnerMerchantCreateRequest request)
     {
-        var firstName = Clean(request.FirstName) ?? "Merchant";
-        var lastName = Clean(request.LastName) ?? "Owner";
+        var firstName = Required(request.FirstName, "Owner first name");
+        var lastName = Required(request.LastName, "Owner last name");
         var address = Truncate(Required(request.AddressLine1, "Address"), 32);
         var city = Truncate(Required(request.City, "City"), 13);
-        var state = Clean(request.Region) ?? "TX";
-        var postalCode = Clean(request.PostalCode) ?? "75001";
+        var state = Required(request.Region, "State/region");
+        var postalCode = Required(request.PostalCode, "Postal code");
         var businessName = Required(request.LegalBusinessName, "Business name");
-        var phone = FormatPhone(Clean(request.Phone)) ?? "2145551212";
-        var email = Clean(request.Email) ?? "merchant@example.test";
+        var dba = Clean(request.Dba) ?? businessName;
+        var phone = Required(FormatPhone(Clean(request.Phone)), "Owner phone");
+        var email = Required(request.Email, "Owner email");
 
         var fields = new List<object>();
-        AddField(fields, "fld_pricing_type", "Flat Rate");
-        AddField(fields, "fld_qual_rate", 2.75m);
-        AddField(fields, "fld_qual_rate_per_auth", 0.10m);
-        AddField(fields, "fld_average_ticket", 100);
-        AddField(fields, "fld_high_ticket", 250);
-        AddField(fields, "fld_monthly_volume", 5000);
-        AddField(fields, "fld_percent_of_swiped", 100);
-        AddField(fields, "fld_percent_key_entered", 0);
-        AddField(fields, "fld_percent_of_ecommerce", 0);
-        AddField(fields, "fld_percent_of_moto", 0);
-        AddField(fields, "fld_years_in_business", 1);
-        AddField(fields, "fld_business_nature", "Retail");
-        AddField(fields, "fld_type_business", "LLC");
+        AddField(fields, "fld_average_ticket", request.AverageTicket);
+        AddField(fields, "fld_high_ticket", request.HighTicket);
+        AddField(fields, "fld_monthly_volume", request.ExpectedMonthlyVolume);
+        AddField(fields, "fld_percent_of_swiped", request.CardPresentPercentage);
+        AddField(fields, "fld_percent_key_entered", request.KeyEnteredPercentage);
+        AddField(fields, "fld_percent_of_ecommerce", request.EcommercePercentage);
+        AddField(fields, "fld_percent_of_moto", request.MotoPercentage);
+        AddField(fields, "fld_years_in_business", request.YearsInBusiness);
+        AddField(fields, "fld_business_nature", Clean(request.BusinessDescription));
+        AddField(fields, "fld_type_business", Clean(request.BusinessType));
         AddField(fields, "fld_state_incorporated", state);
-        AddField(fields, "fld_type_of_goods_sold", "Powersports service and parts");
-        AddField(fields, "fld_mcc", "5533");
-        AddField(fields, "fld_federal_tax_id", "821234567");
+        AddField(fields, "fld_type_of_goods_sold", Clean(request.BusinessDescription));
+        AddField(fields, "fld_mcc", Clean(request.Mcc));
+        AddField(fields, "fld_federal_tax_id", Required(request.TaxIdentifier, "Tax identifier"));
         AddField(fields, "fld_contact_name", $"{firstName} {lastName}".Trim());
         AddField(fields, "fld_legal_name", businessName);
         AddField(fields, "fld_legal_address", address);
@@ -354,7 +352,7 @@ public sealed class NmiPartnerProvider(
         AddField(fields, "fld_legal_postal_code", postalCode);
         AddField(fields, "fld_legal_country", Clean(request.Country) ?? "US");
         AddField(fields, "fld_legal_phone_number", phone);
-        AddField(fields, "fld_dba_name", businessName);
+        AddField(fields, "fld_dba_name", dba);
         AddField(fields, "fld_dba_address", address);
         AddField(fields, "fld_dba_city", city);
         AddField(fields, "fld_dba_state", state);
@@ -365,7 +363,7 @@ public sealed class NmiPartnerProvider(
         AddField(fields, "fld_business_website", Clean(request.Website));
         AddField(fields, "fld_individual_with_control_first_name", firstName);
         AddField(fields, "fld_individual_with_control_last_name", lastName);
-        AddField(fields, "fld_individual_with_control_title", "Owner");
+        AddField(fields, "fld_individual_with_control_title", Required(request.OwnerTitle, "Owner title"));
         AddField(fields, "fld_individual_with_control_address", address);
         AddField(fields, "fld_individual_with_control_city", city);
         AddField(fields, "fld_individual_with_control_state", state);
@@ -373,45 +371,45 @@ public sealed class NmiPartnerProvider(
         AddField(fields, "fld_individual_with_control_country", Clean(request.Country) ?? "US");
         AddField(fields, "fld_individual_with_control_email", email);
         AddField(fields, "fld_individual_with_control_phone", phone);
-        AddField(fields, "fld_individual_with_control_dob", "1980-01-01");
-        AddField(fields, "fld_individual_with_control_ssn", "111223333");
-        AddField(fields, "fld_individual_with_control_ownership_percentage", 100);
+        AddField(fields, "fld_individual_with_control_dob", Required(request.OwnerDateOfBirth, "Owner date of birth"));
+        AddField(fields, "fld_individual_with_control_ssn", Required(request.OwnerSsn, "Owner SSN"));
+        AddField(fields, "fld_individual_with_control_ownership_percentage", request.OwnerOwnershipPercentage);
 
         return fields;
     }
 
     private static IReadOnlyCollection<object> BuildSignupCollections(PartnerMerchantCreateRequest request)
     {
-        var firstName = Clean(request.FirstName) ?? "Merchant";
-        var lastName = Clean(request.LastName) ?? "Owner";
+        var firstName = Required(request.FirstName, "Owner first name");
+        var lastName = Required(request.LastName, "Owner last name");
         var address = Truncate(Required(request.AddressLine1, "Address"), 32);
         var city = Truncate(Required(request.City, "City"), 13);
-        var state = Clean(request.Region) ?? "TX";
-        var postalCode = Clean(request.PostalCode) ?? "75001";
-        var country = Clean(request.Country) ?? "US";
+        var state = Required(request.Region, "State/region");
+        var postalCode = Required(request.PostalCode, "Postal code");
+        var country = Required(request.Country, "Country");
         var businessName = Required(request.LegalBusinessName, "Business name");
-        var email = Clean(request.Email) ?? "merchant@example.test";
-        var phone = FormatOwnerPhone(Clean(request.Phone)) ?? "(214) 555-1212";
+        var email = Required(request.Email, "Owner email");
+        var phone = Required(FormatOwnerPhone(Clean(request.Phone)), "Owner phone");
 
         var ownerFields = new List<object>();
-        AddField(ownerFields, "fld_owner_ownership_percentage", 100);
+        AddField(ownerFields, "fld_owner_ownership_percentage", request.OwnerOwnershipPercentage);
         AddField(ownerFields, "fld_owner_address", address);
         AddField(ownerFields, "fld_owner_city", city);
         AddField(ownerFields, "fld_owner_country", country);
         AddField(ownerFields, "fld_owner_postal_code", postalCode);
         AddField(ownerFields, "fld_owner_state", state);
-        AddField(ownerFields, "fld_owner_dob", "1980-01-01");
-        AddField(ownerFields, "fld_owner_title", "Owner");
-        AddField(ownerFields, "fld_owner_ssn", "111223333");
+        AddField(ownerFields, "fld_owner_dob", Required(request.OwnerDateOfBirth, "Owner date of birth"));
+        AddField(ownerFields, "fld_owner_title", Required(request.OwnerTitle, "Owner title"));
+        AddField(ownerFields, "fld_owner_ssn", Required(request.OwnerSsn, "Owner SSN"));
         AddField(ownerFields, "fld_owner_email", email);
         AddField(ownerFields, "fld_owner_phone_num", phone);
         AddField(ownerFields, "fld_owner_first_name", firstName);
         AddField(ownerFields, "fld_owner_last_name", lastName);
 
         var bankFields = new List<object>();
-        AddField(bankFields, "fld_dda_account_routing_number", "111000025");
-        AddField(bankFields, "fld_dda_name_on_account", businessName);
-        AddField(bankFields, "fld_dda_account_number", "1234567890");
+        AddField(bankFields, "fld_dda_account_routing_number", Required(request.BankRoutingNumber, "Bank routing number"));
+        AddField(bankFields, "fld_dda_name_on_account", Clean(request.BankName) ?? businessName);
+        AddField(bankFields, "fld_dda_account_number", Required(request.BankAccountNumber, "Bank account number"));
 
         return new object[]
         {
@@ -455,23 +453,6 @@ public sealed class NmiPartnerProvider(
         var content = new ByteArrayContent(Encoding.UTF8.GetBytes(JsonSerializer.Serialize(value)));
         content.Headers.ContentType = new MediaTypeHeaderValue("application/json");
         return content;
-    }
-
-    private static string IdempotencyKey(string prefix, PartnerMerchantCreateRequest request, object scope)
-    {
-        var source = Clean(request.ExternalIdentifier) ?? request.OrganizationId.ToString("N");
-        var clean = new string(source.Where(char.IsLetterOrDigit).ToArray());
-        var hash = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(JsonSerializer.Serialize(scope))))
-            .ToLowerInvariant()[..16];
-        var key = $"{prefix}-{clean}-{hash}";
-        return key[..Math.Min(100, key.Length)];
-    }
-
-    private static string NewIdempotencyKey(string prefix, string scope)
-    {
-        var clean = new string((scope ?? string.Empty).Where(char.IsLetterOrDigit).ToArray());
-        var key = $"{prefix}-{clean}-{Guid.NewGuid():N}";
-        return key[..Math.Min(100, key.Length)];
     }
 
     private static string Truncate(string value, int maxLength)

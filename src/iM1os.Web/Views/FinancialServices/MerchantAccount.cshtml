@@ -77,6 +77,42 @@
     </article>
 </section>
 
+@if (Model.LegalConsent.IsRequired)
+{
+    <section class="im1-workspace-grid">
+        <article class="im1-workspace-card span-12">
+            <header class="im1-section-header">
+                <div>
+                    <h2>NMI Legal Consent</h2>
+                    <p>An authorized company signer must complete this consent before iM1 can submit the application to NMI.</p>
+                </div>
+            </header>
+            @if (!string.IsNullOrWhiteSpace(Model.LegalConsent.LegalConsentUrl))
+            {
+                <div class="im1-action-row">
+                    <a class="im1-button im1-button-secondary"
+                       href="@Model.LegalConsent.LegalConsentUrl"
+                       target="_blank"
+                       rel="noopener noreferrer">Open consent in a secure window</a>
+                </div>
+                <iframe title="NMI legal consent"
+                        src="@Model.LegalConsent.LegalConsentUrl"
+                        referrerpolicy="no-referrer"
+                        style="width:100%;min-height:680px;border:1px solid var(--im1-border-color);border-radius:12px"></iframe>
+                <form method="post" asp-controller="FinancialServices" asp-action="CompleteNmiLegalConsent">
+                    @Html.AntiForgeryToken()
+                    <p class="im1-form-help">iM1 records only the completion time. Signatures and consent documents remain with NMI.</p>
+                    <button class="im1-button im1-button-primary" type="submit">I completed NMI legal consent</button>
+                </form>
+            }
+            else
+            {
+                <div class="im1-alert im1-alert-error">The NMI consent link is unavailable. Contact iM1 support.</div>
+            }
+        </article>
+    </section>
+}
+
 <section class="im1-workspace-grid">
     <article id="merchant-application" class="im1-workspace-card span-12">
         <header class="im1-section-header">
@@ -84,13 +120,6 @@
                 <h2>Merchant Application</h2>
                 <p>@(canEdit ? "Edit the application details and save before approval or activation." : "Application details are locked for this status.")</p>
             </div>
-            @if (canEdit)
-            {
-                <form method="post" asp-controller="FinancialServices" asp-action="FillMerchantApplicationDemoData">
-                    @Html.AntiForgeryToken()
-                    <button class="im1-button im1-button-secondary" type="submit">Fill Demo Data</button>
-                </form>
-            }
         </header>
         <form class="im1-form-grid" method="post">
             @Html.AntiForgeryToken()
@@ -104,11 +133,19 @@
             </label>
             <label>
                 EIN
-                <input name="Ein" value="@app.Ein" maxlength="20" @(canEdit ? null : "readonly") />
+                <input name="Ein" value="" placeholder="@(app.Ein ?? "Enter EIN")" maxlength="20" autocomplete="off" @(canEdit ? null : "readonly") />
             </label>
             <label>
                 Tax ID
-                <input name="TaxId" value="@app.TaxId" maxlength="20" @(canEdit ? null : "readonly") />
+                <input name="TaxId" value="" placeholder="@(app.TaxId ?? "Enter tax ID")" maxlength="20" autocomplete="off" @(canEdit ? null : "readonly") />
+            </label>
+            <label>
+                Business Description
+                <input name="BusinessDescription" value="@app.BusinessDescription" maxlength="500" placeholder="Goods and services sold" @(canEdit ? null : "readonly") />
+            </label>
+            <label>
+                Years in Business
+                <input name="YearsInBusiness" type="number" min="0" value="@app.YearsInBusiness" @(canEdit ? null : "readonly") />
             </label>
             <label>
                 Business Type
@@ -129,6 +166,26 @@
             <label>
                 Average Ticket
                 <input name="AverageTicket" type="number" min="0" step="0.01" value="@app.AverageTicket" @(canEdit ? null : "readonly") />
+            </label>
+            <label>
+                High Ticket
+                <input name="HighTicket" type="number" min="0" step="0.01" value="@app.HighTicket" @(canEdit ? null : "readonly") />
+            </label>
+            <label>
+                Card Present %
+                <input name="CardPresentPercentage" type="number" min="0" max="100" step="0.01" value="@app.CardPresentPercentage" @(canEdit ? null : "readonly") />
+            </label>
+            <label>
+                Key Entered %
+                <input name="KeyEnteredPercentage" type="number" min="0" max="100" step="0.01" value="@app.KeyEnteredPercentage" @(canEdit ? null : "readonly") />
+            </label>
+            <label>
+                Ecommerce %
+                <input name="EcommercePercentage" type="number" min="0" max="100" step="0.01" value="@app.EcommercePercentage" @(canEdit ? null : "readonly") />
+            </label>
+            <label>
+                Mail/Phone Order %
+                <input name="MotoPercentage" type="number" min="0" max="100" step="0.01" value="@app.MotoPercentage" @(canEdit ? null : "readonly") />
             </label>
             <label>
                 Physical Address
@@ -181,16 +238,32 @@
                 <input name="OwnerPhone" value="@app.OwnerPhone" maxlength="40" required @(canEdit ? null : "readonly") />
             </label>
             <label>
+                Owner Title
+                <input name="OwnerTitle" value="@app.OwnerTitle" maxlength="120" @(canEdit ? null : "readonly") />
+            </label>
+            <label>
+                Ownership %
+                <input name="OwnerOwnershipPercentage" type="number" min="0.01" max="100" step="0.01" value="@app.OwnerOwnershipPercentage" @(canEdit ? null : "readonly") />
+            </label>
+            <label>
+                Owner Date of Birth
+                <input name="OwnerDateOfBirth" type="date" value="" placeholder="@app.OwnerDateOfBirthMasked" autocomplete="off" @(canEdit ? null : "readonly") />
+            </label>
+            <label>
+                Owner SSN
+                <input name="OwnerSsn" type="password" value="" placeholder="@(app.OwnerSsnLastFour ?? "Enter SSN")" maxlength="20" autocomplete="new-password" @(canEdit ? null : "readonly") />
+            </label>
+            <label>
                 Bank Name
                 <input name="BankName" value="@app.BankName" maxlength="160" @(canEdit ? null : "readonly") />
             </label>
             <label>
                 Routing Number
-                <input name="BankRoutingNumber" value="@app.BankRoutingLastFour" maxlength="20" @(canEdit ? null : "readonly") />
+                <input name="BankRoutingNumber" value="" placeholder="@(app.BankRoutingLastFour ?? "Enter routing number")" maxlength="20" autocomplete="off" @(canEdit ? null : "readonly") />
             </label>
             <label>
                 Account Number
-                <input name="BankAccountNumber" value="@app.BankAccountLastFour" maxlength="30" @(canEdit ? null : "readonly") />
+                <input name="BankAccountNumber" type="password" value="" placeholder="@(app.BankAccountLastFour ?? "Enter account number")" maxlength="30" autocomplete="new-password" @(canEdit ? null : "readonly") />
             </label>
             @if (canEdit)
             {

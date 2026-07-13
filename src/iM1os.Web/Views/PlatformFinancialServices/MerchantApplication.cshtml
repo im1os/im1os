@@ -4,8 +4,8 @@
     var merchant = Model.Merchant;
     var app = Model.Application;
     var canApprove = merchant.Status == "Submitted" ||
-        ((merchant.Status == "Approved" || merchant.Status == "UnderReview") &&
-            string.IsNullOrWhiteSpace(merchant.ProviderMerchantId));
+        (merchant.Status == "Approved" && string.IsNullOrWhiteSpace(merchant.ProviderReference));
+    var canRefresh = merchant.Status is "UnderReview" or "CredentialProvisioning";
     var canReject = merchant.Status == "Submitted";
     var hero = new IM1WorkspaceHeroModel(
         "Merchant Application",
@@ -54,34 +54,36 @@
             <div><dt>Provider Reference</dt><dd>@(merchant.ProviderReference ?? "-")</dd></div>
             <div><dt>Gateway Username</dt><dd>@(merchant.GatewayUsername ?? "-")</dd></div>
             <div><dt>Relationship</dt><dd>@(merchant.ProviderRelationshipStatus ?? "-")</dd></div>
+            <div><dt>Credential Provisioning</dt><dd>@(merchant.CredentialProvisioningStatus ?? "-")</dd></div>
             <div><dt>Provider Error</dt><dd>@(merchant.LastProviderError ?? "-")</dd></div>
-            <div>
-                <dt>Support Notes</dt>
-                <dd>
-                    @if (!string.IsNullOrWhiteSpace(merchant.SupportNotes) &&
-                        Uri.TryCreate(merchant.SupportNotes, UriKind.Absolute, out _))
-                    {
-                        <a href="@merchant.SupportNotes" target="_blank" rel="noopener">Open legal consent</a>
-                    }
-                    else
-                    {
-                        @(merchant.SupportNotes ?? "-")
-                    }
-                </dd>
-            </div>
+            <div><dt>Application Created</dt><dd>@(merchant.ProviderApplicationCreatedAtUtc?.LocalDateTime.ToString("g") ?? "-")</dd></div>
+            <div><dt>Company Consent</dt><dd>@(merchant.LegalConsentCompletedAtUtc?.LocalDateTime.ToString("g") ?? "Pending")</dd></div>
+            <div><dt>Submitted to NMI</dt><dd>@(merchant.ProviderApplicationSubmittedAtUtc?.LocalDateTime.ToString("g") ?? "-")</dd></div>
+            <div><dt>Last NMI Refresh</dt><dd>@(merchant.ProviderStatusRefreshedAtUtc?.LocalDateTime.ToString("g") ?? "-")</dd></div>
+            <div><dt>NMI Approved</dt><dd>@(merchant.ProviderApprovedAtUtc?.LocalDateTime.ToString("g") ?? "-")</dd></div>
+            <div><dt>Credentials Provisioned</dt><dd>@(merchant.CredentialsProvisionedAtUtc?.LocalDateTime.ToString("g") ?? "-")</dd></div>
         </div>
-        @if (canApprove || canReject)
+        @if (canApprove || canRefresh || canReject)
         {
             <div class="im1-action-row">
                 @if (canApprove)
                 {
                     <form method="post"
                           asp-controller="PlatformFinancialServices"
-                          asp-action="@(merchant.Status == "UnderReview" ? "RefreshMerchantStatus" : "ApproveMerchant")">
+                          asp-action="ApproveMerchant">
                         @Html.AntiForgeryToken()
                         <input type="hidden" name="organizationId" value="@merchant.CompanyId" />
                         <input type="hidden" name="merchantAccountId" value="@merchant.MerchantAccountId" />
-                        <button class="im1-button im1-button-primary" type="submit">@(merchant.Status == "Submitted" ? "Approve" : merchant.Status == "UnderReview" ? "Refresh NMI Status" : "Retry Activation")</button>
+                        <button class="im1-button im1-button-primary" type="submit">@(merchant.Status == "Submitted" ? "Approve" : "Retry NMI Application Creation")</button>
+                    </form>
+                }
+                @if (canRefresh)
+                {
+                    <form method="post" asp-controller="PlatformFinancialServices" asp-action="RefreshMerchantStatus">
+                        @Html.AntiForgeryToken()
+                        <input type="hidden" name="organizationId" value="@merchant.CompanyId" />
+                        <input type="hidden" name="merchantAccountId" value="@merchant.MerchantAccountId" />
+                        <button class="im1-button im1-button-primary" type="submit">@(merchant.Status == "CredentialProvisioning" ? "Retry Credential Provisioning" : "Refresh NMI Status")</button>
                     </form>
                 }
                 @if (canReject)
