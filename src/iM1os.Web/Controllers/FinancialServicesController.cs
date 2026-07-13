@@ -4,14 +4,12 @@ using iM1os.Application.FinancialServices.Merchant;
 using iM1os.Web.Development;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
-using Microsoft.Extensions.Hosting;
 
 namespace iM1os.Web.Controllers;
 
 [Authorize]
 public sealed class FinancialServicesController(
     IMerchantAccountService merchantAccountService,
-    IWebHostEnvironment hostEnvironment,
     IConfiguration configuration) : Controller
 {
     [HttpGet]
@@ -96,8 +94,11 @@ public sealed class FinancialServicesController(
 
     private bool SandboxApplicationFixtureEnabled()
     {
-        return hostEnvironment.IsDevelopment() ||
-            configuration.GetValue<bool>("NmiPayments:EnableSandboxApplicationFixture");
+        return configuration.GetValue<bool>("NmiPayments:EnableSandboxApplicationFixture") &&
+            string.Equals(
+                configuration["NmiPayments:Environment"],
+                "Sandbox",
+                StringComparison.OrdinalIgnoreCase);
     }
 
     [HttpPost]

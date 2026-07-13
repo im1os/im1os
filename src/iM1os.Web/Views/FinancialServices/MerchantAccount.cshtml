@@ -1,15 +1,14 @@
 @model iM1os.Application.FinancialServices.Merchant.CompanyMerchantAccountWorkspace
 @using System.Text.Json
-@using Microsoft.Extensions.Hosting
-@inject Microsoft.AspNetCore.Hosting.IWebHostEnvironment HostEnvironment
 @inject IConfiguration Configuration
 @{
     ViewData["Title"] = "Merchant Account";
     var account = Model.Account;
     var app = Model.Application;
     var canEdit = app.CanEdit;
-    var sandboxApplicationFixtureEnabled = HostEnvironment.IsDevelopment() ||
-        Configuration.GetValue<bool>("NmiPayments:EnableSandboxApplicationFixture");
+    var sandboxApplicationFixtureEnabled =
+        Configuration.GetValue<bool>("NmiPayments:EnableSandboxApplicationFixture") &&
+        string.Equals(Configuration["NmiPayments:Environment"], "Sandbox", StringComparison.OrdinalIgnoreCase);
     var configuredLegalConsentHelperUrl = Configuration["NmiPayments:LegalConsentHelperUrl"] ??
         "https://sandbox.signup.nmi.com/build/consent-helper-1.0.0.umd.js";
     var legalConsentHelperUrlIsAllowed =

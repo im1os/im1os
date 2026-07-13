@@ -3,8 +3,8 @@ using iM1os.Web.Controllers;
 namespace iM1os.Web.Development;
 
 /// <summary>
-/// Synthetic data for the NMI sandbox workflow. This fixture is reachable only
-/// when the web application runs in the Development environment.
+/// Synthetic data for the NMI sandbox workflow. The web endpoint exposes this
+/// fixture only when the explicit fixture flag is enabled in NMI Sandbox mode.
 /// </summary>
 public static class NmiSandboxMerchantApplicationFixture
 {

@@ -7,8 +7,6 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.ViewFeatures;
 using Microsoft.Extensions.Configuration;
-using Microsoft.Extensions.FileProviders;
-using Microsoft.Extensions.Hosting;
 
 namespace iM1os.Tests;
 
@@ -35,10 +33,10 @@ public sealed class NmiSandboxMerchantApplicationFixtureTests
     }
 
     [Fact]
-    public async Task FillSandboxData_ReturnsNotFoundOutsideDevelopmentWithoutSaving()
+    public async Task FillSandboxData_ReturnsNotFoundWhenExplicitFlagIsDisabled()
     {
         var service = new RecordingMerchantAccountService();
-        var controller = CreateController(service, Environments.Production);
+        var controller = CreateController(service);
 
         var result = await controller.FillMerchantApplicationSandboxData(CancellationToken.None);
 
@@ -47,21 +45,15 @@ public sealed class NmiSandboxMerchantApplicationFixtureTests
     }
 
     [Fact]
-    public async Task FillSandboxData_SavesFixtureForCompanyInDevelopment()
+    public async Task FillSandboxData_ReturnsNotFoundInDevelopmentWithoutExplicitFlag()
     {
-        var organizationId = Guid.NewGuid();
-        var actorUserId = Guid.NewGuid();
         var service = new RecordingMerchantAccountService();
-        var controller = CreateController(service, Environments.Development, organizationId, actorUserId);
+        var controller = CreateController(service);
 
         var result = await controller.FillMerchantApplicationSandboxData(CancellationToken.None);
 
-        var redirect = Assert.IsType<RedirectToActionResult>(result);
-        Assert.Equal(nameof(FinancialServicesController.MerchantApplication), redirect.ActionName);
-        Assert.Equal(organizationId, service.SavedOrganizationId);
-        Assert.Equal(actorUserId, service.SavedActorUserId);
-        Assert.Equal("NMI Sandbox Motorcycle Supply LLC", service.SavedRequest?.BusinessName);
-        Assert.Equal("Development-only NMI sandbox test data saved.", controller.TempData["MerchantStatus"]);
+        Assert.IsType<NotFoundResult>(result);
+        Assert.Null(service.SavedRequest);
     }
 
     [Fact]
@@ -72,7 +64,6 @@ public sealed class NmiSandboxMerchantApplicationFixtureTests
         var service = new RecordingMerchantAccountService();
         var controller = CreateController(
             service,
-            Environments.Production,
             organizationId,
             actorUserId,
             enableSandboxFixture: true);
@@ -83,12 +74,27 @@ public sealed class NmiSandboxMerchantApplicationFixtureTests
         Assert.NotNull(service.SavedRequest);
     }
 
+    [Fact]
+    public async Task FillSandboxData_ReturnsNotFoundWhenFlagEnabledOutsideNmiSandbox()
+    {
+        var service = new RecordingMerchantAccountService();
+        var controller = CreateController(
+            service,
+            enableSandboxFixture: true,
+            nmiEnvironment: "Production");
+
+        var result = await controller.FillMerchantApplicationSandboxData(CancellationToken.None);
+
+        Assert.IsType<NotFoundResult>(result);
+        Assert.Null(service.SavedRequest);
+    }
+
     private static FinancialServicesController CreateController(
         IMerchantAccountService service,
-        string environmentName,
         Guid? organizationId = null,
         Guid? actorUserId = null,
-        bool enableSandboxFixture = false)
+        bool enableSandboxFixture = false,
+        string nmiEnvironment = "Sandbox")
     {
         var claims = new List<Claim>();
         if (organizationId.HasValue)
@@ -109,28 +115,18 @@ public sealed class NmiSandboxMerchantApplicationFixtureTests
         var configuration = new ConfigurationBuilder()
             .AddInMemoryCollection(new Dictionary<string, string?>
             {
-                ["NmiPayments:EnableSandboxApplicationFixture"] = enableSandboxFixture.ToString()
+                ["NmiPayments:EnableSandboxApplicationFixture"] = enableSandboxFixture.ToString(),
+                ["NmiPayments:Environment"] = nmiEnvironment
             })
             .Build();
         var controller = new FinancialServicesController(
             service,
-            new TestWebHostEnvironment(environmentName),
             configuration)
         {
             ControllerContext = new ControllerContext { HttpContext = httpContext }
         };
         controller.TempData = new TempDataDictionary(httpContext, new TestTempDataProvider());
         return controller;
-    }
-
-    private sealed class TestWebHostEnvironment(string environmentName) : IWebHostEnvironment
-    {
-        public string EnvironmentName { get; set; } = environmentName;
-        public string ApplicationName { get; set; } = "iM1os.Tests";
-        public string WebRootPath { get; set; } = string.Empty;
-        public IFileProvider WebRootFileProvider { get; set; } = new NullFileProvider();
-        public string ContentRootPath { get; set; } = string.Empty;
-        public IFileProvider ContentRootFileProvider { get; set; } = new NullFileProvider();
     }
 
     private sealed class TestTempDataProvider : ITempDataProvider
