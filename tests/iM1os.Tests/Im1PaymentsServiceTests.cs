@@ -15,6 +15,34 @@ public sealed class Im1PaymentsServiceTests
     private static readonly TestSecretProtector SecretProtector = new();
 
     [Fact]
+    public async Task CreateSaleAsync_sends_the_exact_json_media_type_required_by_nmi()
+    {
+        await using var dbContext = CreateContext();
+        var handler = new RecordingHandler("""
+            {
+              "id": "28147497671995",
+              "auth_code": "TAS536",
+              "response": "1",
+              "response_text": "Approved",
+              "status": "approved"
+            }
+            """);
+        var service = CreateService(dbContext, handler);
+        var organizationId = Guid.NewGuid();
+        AddActiveMerchant(dbContext, organizationId);
+
+        await service.CreateSaleAsync(
+            organizationId,
+            Guid.NewGuid(),
+            new PaymentSaleRequest("tok_exact_json", 1m, "USD"),
+            CancellationToken.None);
+
+        Assert.Equal("application/json", handler.RequestContentType);
+        Assert.Null(handler.RequestContentTypeCharSet);
+        Assert.Contains("application/json", handler.AcceptMediaTypes);
+    }
+
+    [Fact]
     public async Task CreateSaleAsync_records_approved_transaction_ledger_entry_and_domain_event()
     {
         await using var dbContext = CreateContext();
@@ -323,6 +351,12 @@ public sealed class Im1PaymentsServiceTests
 
         public string? RequestBody { get; private set; }
 
+        public string? RequestContentType { get; private set; }
+
+        public string? RequestContentTypeCharSet { get; private set; }
+
+        public IReadOnlyList<string> AcceptMediaTypes { get; private set; } = [];
+
         protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
         {
             AuthorizationHeader = request.Headers.TryGetValues("Authorization", out var values)
@@ -331,6 +365,13 @@ public sealed class Im1PaymentsServiceTests
             RequestBody = request.Content is null
                 ? string.Empty
                 : await request.Content.ReadAsStringAsync(cancellationToken);
+            RequestContentType = request.Content?.Headers.ContentType?.MediaType;
+            RequestContentTypeCharSet = request.Content?.Headers.ContentType?.CharSet;
+            AcceptMediaTypes = request.Headers.Accept
+                .Select(x => x.MediaType)
+                .Where(x => x is not null)
+                .Select(x => x!)
+                .ToList();
 
             return new HttpResponseMessage(statusCode)
             {

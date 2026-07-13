@@ -1,3 +1,4 @@
+using System.Net.Http.Headers;
 using System.Text;
 using System.Text.Json;
 using iM1os.Application.FinancialServices.Providers;
@@ -68,11 +69,14 @@ public sealed class NmiPaymentProvider(
         });
 
         var client = httpClientFactory.CreateClient("NmiPayments");
+        var content = new ByteArrayContent(Encoding.UTF8.GetBytes(JsonSerializer.Serialize(payload)));
+        content.Headers.ContentType = new MediaTypeHeaderValue("application/json");
         using var message = new HttpRequestMessage(HttpMethod.Post, "payments/sale")
         {
-            Content = new StringContent(JsonSerializer.Serialize(payload), Encoding.UTF8, "application/json")
+            Content = content
         };
         message.Headers.TryAddWithoutValidation("Authorization", request.PaymentApiKey ?? paymentOptions.MerchantPrivateKey);
+        message.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
         using var response = await client.SendAsync(message, cancellationToken);
         var responseJson = await response.Content.ReadAsStringAsync(cancellationToken);
 
