@@ -6,6 +6,7 @@ using iM1os.Infrastructure.FinancialServices.Providers;
 using iM1os.Infrastructure.Persistence;
 using iM1os.Infrastructure.Services;
 using Microsoft.EntityFrameworkCore;
+using System.Text.Json;
 
 namespace iM1os.Tests;
 
@@ -72,7 +73,7 @@ public sealed class MerchantAccountServiceTests
         var actorId = Guid.NewGuid();
         var submitted = await SubmitAsync(service, organizationId, actorId);
 
-        await Assert.ThrowsAsync<HttpRequestException>(() => service.ApproveApplicationAsync(
+        var ambiguousFailure = await Assert.ThrowsAsync<InvalidOperationException>(() => service.ApproveApplicationAsync(
             organizationId,
             submitted.MerchantAccountId,
             actorId,
@@ -84,6 +85,7 @@ public sealed class MerchantAccountServiceTests
             CancellationToken.None);
 
         Assert.Equal(MerchantAccountStatuses.LegalConsentRequired, result.Status);
+        Assert.Contains("ambiguous", ambiguousFailure.Message, StringComparison.OrdinalIgnoreCase);
         Assert.Equal(2, provider.CreateCalls);
         Assert.Equal(provider.CreateIdempotencyKeys[0], provider.CreateIdempotencyKeys[1]);
         Assert.Single(provider.CreateIdempotencyKeys.Distinct());
@@ -119,6 +121,198 @@ public sealed class MerchantAccountServiceTests
         Assert.DoesNotContain("821234567", relationship.LastProviderError, StringComparison.Ordinal);
         Assert.DoesNotContain("111223333", relationship.LastProviderError, StringComparison.Ordinal);
         Assert.DoesNotContain("1234567890", relationship.LastProviderError, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task Definitive_422_allows_reconciled_versioned_rotation_for_changed_payload()
+    {
+        await using var dbContext = CreateContext();
+        var provider = new RecordingPartnerProvider
+        {
+            FirstCreateException = ValidationFailure()
+        };
+        var service = CreateService(dbContext, provider);
+        var organizationId = Guid.NewGuid();
+        var actorId = Guid.NewGuid();
+        var submitted = await SubmitAsync(service, organizationId, actorId);
+
+        await Assert.ThrowsAsync<NmiValidationException>(() => service.ApproveApplicationAsync(
+            organizationId,
+            submitted.MerchantAccountId,
+            actorId,
+            CancellationToken.None));
+        var relationshipAfterFailure = await dbContext.MerchantProviderRelationships
+            .IgnoreQueryFilters()
+            .SingleAsync();
+        var originalKey = relationshipAfterFailure.ApplicationCreateIdempotencyKey;
+
+        provider.PayloadFingerprint = "PAYLOAD_FINGERPRINT_V2";
+        var result = await service.ApproveApplicationAsync(
+            organizationId,
+            submitted.MerchantAccountId,
+            actorId,
+            CancellationToken.None);
+        var relationship = await dbContext.MerchantProviderRelationships.IgnoreQueryFilters().SingleAsync();
+        using var capabilities = JsonDocument.Parse(relationship.CapabilitiesJson!);
+        var operation = capabilities.RootElement.GetProperty("ApplicationCreateOperation");
+        var rotation = Assert.Single(operation.GetProperty("Rotations").EnumerateArray());
+
+        Assert.Equal(MerchantAccountStatuses.LegalConsentRequired, result.Status);
+        Assert.Equal(1, provider.ReconciliationCalls);
+        Assert.Equal(2, provider.CreateCalls);
+        Assert.NotEqual(originalKey, relationship.ApplicationCreateIdempotencyKey);
+        Assert.Contains("nmi-application-create-v2", relationship.ApplicationCreateIdempotencyKey, StringComparison.Ordinal);
+        Assert.Equal(2, operation.GetProperty("KeyVersion").GetInt32());
+        Assert.Equal("PAYLOAD_FINGERPRINT_V2", operation.GetProperty("PayloadFingerprint").GetString());
+        Assert.Equal(2, rotation.GetProperty("KeyVersion").GetInt32());
+        Assert.Equal("PAYLOAD_FINGERPRINT_V2", rotation.GetProperty("PayloadFingerprint").GetString());
+        Assert.Equal("INVALID_FORMAT", rotation.GetProperty("ReasonCode").GetString());
+        Assert.NotEqual(default, rotation.GetProperty("RotatedAtUtc").GetDateTimeOffset());
+        Assert.DoesNotContain("821234567", relationship.CapabilitiesJson, StringComparison.Ordinal);
+        Assert.DoesNotContain("111223333", relationship.CapabilitiesJson, StringComparison.Ordinal);
+        Assert.DoesNotContain("1234567890", relationship.CapabilitiesJson, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task Same_corrected_payload_reuses_existing_key_without_rotation_or_reconciliation()
+    {
+        await using var dbContext = CreateContext();
+        var provider = new RecordingPartnerProvider
+        {
+            FirstCreateException = ValidationFailure()
+        };
+        var service = CreateService(dbContext, provider);
+        var organizationId = Guid.NewGuid();
+        var actorId = Guid.NewGuid();
+        var submitted = await SubmitAsync(service, organizationId, actorId);
+
+        await Assert.ThrowsAsync<NmiValidationException>(() => service.ApproveApplicationAsync(
+            organizationId,
+            submitted.MerchantAccountId,
+            actorId,
+            CancellationToken.None));
+        var result = await service.ApproveApplicationAsync(
+            organizationId,
+            submitted.MerchantAccountId,
+            actorId,
+            CancellationToken.None);
+
+        Assert.Equal(MerchantAccountStatuses.LegalConsentRequired, result.Status);
+        Assert.Equal(2, provider.CreateCalls);
+        Assert.Equal(provider.CreateIdempotencyKeys[0], provider.CreateIdempotencyKeys[1]);
+        Assert.Equal(0, provider.ReconciliationCalls);
+    }
+
+    [Fact]
+    public async Task Rotation_is_blocked_when_provider_reference_exists()
+    {
+        await using var dbContext = CreateContext();
+        var provider = new RecordingPartnerProvider();
+        var service = CreateService(dbContext, provider);
+        var organizationId = Guid.NewGuid();
+        var actorId = Guid.NewGuid();
+        var submitted = await SubmitAsync(service, organizationId, actorId);
+        await service.ApproveApplicationAsync(
+            organizationId,
+            submitted.MerchantAccountId,
+            actorId,
+            CancellationToken.None);
+        var relationship = await dbContext.MerchantProviderRelationships.IgnoreQueryFilters().SingleAsync();
+        var originalKey = relationship.ApplicationCreateIdempotencyKey;
+
+        provider.PayloadFingerprint = "PAYLOAD_FINGERPRINT_V2";
+        await service.ApproveApplicationAsync(
+            organizationId,
+            submitted.MerchantAccountId,
+            actorId,
+            CancellationToken.None);
+
+        Assert.NotNull(relationship.ProviderReference);
+        Assert.Equal(originalKey, relationship.ApplicationCreateIdempotencyKey);
+        Assert.Equal(1, provider.CreateCalls);
+        Assert.Equal(0, provider.ReconciliationCalls);
+    }
+
+    [Fact]
+    public async Task Rotation_is_blocked_when_reconciliation_finds_matching_NMI_application()
+    {
+        await using var dbContext = CreateContext();
+        var provider = new RecordingPartnerProvider
+        {
+            FirstCreateException = ValidationFailure(),
+            MatchingApplicationExists = true
+        };
+        var service = CreateService(dbContext, provider);
+        var organizationId = Guid.NewGuid();
+        var actorId = Guid.NewGuid();
+        var submitted = await SubmitAsync(service, organizationId, actorId);
+
+        await Assert.ThrowsAsync<NmiValidationException>(() => service.ApproveApplicationAsync(
+            organizationId,
+            submitted.MerchantAccountId,
+            actorId,
+            CancellationToken.None));
+        var relationship = await dbContext.MerchantProviderRelationships.IgnoreQueryFilters().SingleAsync();
+        var originalKey = relationship.ApplicationCreateIdempotencyKey;
+        provider.PayloadFingerprint = "PAYLOAD_FINGERPRINT_V2";
+
+        var exception = await Assert.ThrowsAsync<InvalidOperationException>(() => service.ApproveApplicationAsync(
+            organizationId,
+            submitted.MerchantAccountId,
+            actorId,
+            CancellationToken.None));
+
+        Assert.Contains("matching application", exception.Message, StringComparison.OrdinalIgnoreCase);
+        Assert.Equal(1, provider.ReconciliationCalls);
+        Assert.Equal(1, provider.CreateCalls);
+        Assert.Equal(originalKey, relationship.ApplicationCreateIdempotencyKey);
+    }
+
+    [Fact]
+    public async Task Rotation_is_blocked_after_timeout_5xx_and_ambiguous_response()
+    {
+        var ambiguousFailures = new Exception[]
+        {
+            new TaskCanceledException("Simulated timeout."),
+            new HttpRequestException(
+                "Simulated provider 5xx.",
+                null,
+                System.Net.HttpStatusCode.ServiceUnavailable),
+            new JsonException("Simulated malformed provider response.")
+        };
+
+        foreach (var ambiguousFailure in ambiguousFailures)
+        {
+            await using var dbContext = CreateContext();
+            var provider = new RecordingPartnerProvider { FirstCreateException = ambiguousFailure };
+            var service = CreateService(dbContext, provider);
+            var organizationId = Guid.NewGuid();
+            var actorId = Guid.NewGuid();
+            var submitted = await SubmitAsync(service, organizationId, actorId);
+
+            var firstException = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+                service.ApproveApplicationAsync(
+                    organizationId,
+                    submitted.MerchantAccountId,
+                    actorId,
+                    CancellationToken.None));
+            Assert.Contains("ambiguous", firstException.Message, StringComparison.OrdinalIgnoreCase);
+            var relationship = await dbContext.MerchantProviderRelationships.IgnoreQueryFilters().SingleAsync();
+            var originalKey = relationship.ApplicationCreateIdempotencyKey;
+            provider.PayloadFingerprint = "PAYLOAD_FINGERPRINT_V2";
+
+            var rotationException = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+                service.ApproveApplicationAsync(
+                    organizationId,
+                    submitted.MerchantAccountId,
+                    actorId,
+                    CancellationToken.None));
+
+            Assert.Contains("definitive validation", rotationException.Message, StringComparison.OrdinalIgnoreCase);
+            Assert.Equal(originalKey, relationship.ApplicationCreateIdempotencyKey);
+            Assert.Equal(1, provider.CreateCalls);
+            Assert.Equal(0, provider.ReconciliationCalls);
+        }
     }
 
     [Fact]
@@ -323,6 +517,15 @@ public sealed class MerchantAccountServiceTests
         Assert.Equal(plaintext, SecretProtector.Unprotect(protectedValue));
     }
 
+    private static NmiValidationException ValidationFailure()
+    {
+        return new NmiValidationException(
+            System.Net.HttpStatusCode.UnprocessableEntity,
+            ["fld_federal_tax_id"],
+            ["invalid_format"],
+            ["Value format is invalid."]);
+    }
+
     private static async Task<MerchantAccountResult> SubmitAsync(
         MerchantAccountService service,
         Guid organizationId,
@@ -418,12 +621,16 @@ public sealed class MerchantAccountServiceTests
         public bool FailFirstTokenizationCredential { get; init; }
         public bool TimeoutFirstTokenizationCredential { get; init; }
         public Exception? CreateException { get; init; }
+        public Exception? FirstCreateException { get; init; }
+        public string PayloadFingerprint { get; set; } = "PAYLOAD_FINGERPRINT_V1";
+        public bool MatchingApplicationExists { get; set; }
         public string RefreshStatus { get; init; } = MerchantAccountStatuses.Active;
         public int CreateCalls { get; private set; }
         public int SubmitCalls { get; private set; }
         public int RefreshCalls { get; private set; }
         public int PaymentCredentialCalls { get; private set; }
         public int TokenizationCredentialCalls { get; private set; }
+        public int ReconciliationCalls { get; private set; }
         public List<string> CreateIdempotencyKeys { get; } = [];
         public List<string> SubmitIdempotencyKeys { get; } = [];
         public List<string> PaymentCredentialIdempotencyKeys { get; } = [];
@@ -447,6 +654,10 @@ public sealed class MerchantAccountServiceTests
         {
             CreateCalls++;
             CreateIdempotencyKeys.Add(idempotencyKey);
+            if (FirstCreateException is not null && CreateCalls == 1)
+            {
+                throw FirstCreateException;
+            }
             if (CreateException is not null)
             {
                 throw CreateException;
@@ -460,6 +671,17 @@ public sealed class MerchantAccountServiceTests
                 MerchantAccountStatuses.LegalConsentRequired,
                 providerMerchantId: string.Empty,
                 legalConsentUrl: "https://secure.nmi.com/consent/application-123"));
+        }
+
+        public string GetMerchantApplicationPayloadFingerprint(PartnerMerchantCreateRequest request) =>
+            PayloadFingerprint;
+
+        public Task<bool> HasMatchingMerchantApplicationAsync(
+            PartnerMerchantCreateRequest request,
+            CancellationToken cancellationToken)
+        {
+            ReconciliationCalls++;
+            return Task.FromResult(MatchingApplicationExists);
         }
 
         public Task<PartnerMerchantCreateResult> SubmitMerchantApplicationAsync(

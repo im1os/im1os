@@ -1,4 +1,6 @@
 using System.Text.Json;
+using System.Text.Json.Nodes;
+using System.Text.RegularExpressions;
 using iM1os.Application.Common;
 using iM1os.Application.FinancialServices.Merchant;
 using iM1os.Application.FinancialServices.Providers;
@@ -16,6 +18,9 @@ public sealed class MerchantAccountService(
     IDateTimeProvider dateTimeProvider,
     ISecretProtector secretProtector) : IMerchantAccountService
 {
+    private const string ApplicationCreateMetadataProperty = "ApplicationCreateOperation";
+    private const string DefinitiveValidationFailure = "DefinitiveValidation";
+    private const string AmbiguousFailure = "Ambiguous";
     private static readonly IReadOnlySet<string> ApplicationStatuses = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
     {
         MerchantAccountStatuses.Submitted,
@@ -284,12 +289,53 @@ public sealed class MerchantAccountService(
             return ToResult(merchantAccount, relationship);
         }
 
-        relationship.ApplicationCreateIdempotencyKey ??= StableIdempotencyKey("nmi-application-create", merchantAccount.Id);
+        var providerRequest = ToProviderRequest(merchantAccount);
+        var payloadFingerprint = provider.GetMerchantApplicationPayloadFingerprint(providerRequest);
+        var createMetadata = ReadApplicationCreateMetadata(relationship.CapabilitiesJson);
+        if (string.IsNullOrWhiteSpace(relationship.ApplicationCreateIdempotencyKey))
+        {
+            relationship.ApplicationCreateIdempotencyKey = StableIdempotencyKey("nmi-application-create-v1", merchantAccount.Id);
+            createMetadata = NewApplicationCreateMetadata(payloadFingerprint, dateTimeProvider.UtcNow);
+            relationship.CapabilitiesJson = SetApplicationCreateMetadata(relationship.CapabilitiesJson, createMetadata);
+        }
+        else if (createMetadata is null)
+        {
+            if (TryLegacyDefinitiveValidationReason(relationship.LastProviderError, out var legacyReasonCode))
+            {
+                createMetadata = new ApplicationCreateOperationMetadata(
+                    1,
+                    "LEGACY_UNKNOWN",
+                    relationship.CreatedAtUtc,
+                    null,
+                    null,
+                    DefinitiveValidationFailure,
+                    legacyReasonCode,
+                    relationship.UpdatedAtUtc,
+                    null);
+            }
+            else
+            {
+                createMetadata = NewApplicationCreateMetadata(payloadFingerprint, relationship.CreatedAtUtc);
+                relationship.CapabilitiesJson = SetApplicationCreateMetadata(relationship.CapabilitiesJson, createMetadata);
+            }
+        }
+
+        if (!string.Equals(createMetadata.PayloadFingerprint, payloadFingerprint, StringComparison.Ordinal))
+        {
+            createMetadata = await RotateApplicationCreateKeyAsync(
+                merchantAccount,
+                relationship,
+                provider,
+                providerRequest,
+                payloadFingerprint,
+                createMetadata,
+                cancellationToken);
+        }
+
         relationship.LastProviderError = null;
         await dbContext.SaveChangesAsync(cancellationToken);
         try
         {
-            var providerRequest = ToProviderRequest(merchantAccount);
             var providerResult = await provider.CreateMerchantAsync(
                 providerRequest,
                 relationship.ApplicationCreateIdempotencyKey,
@@ -302,10 +348,24 @@ public sealed class MerchantAccountService(
                 actorUserId,
                 cancellationToken);
         }
-        catch (Exception ex) when (ex is HttpRequestException or InvalidOperationException or JsonException)
+        catch (Exception ex) when (ex is HttpRequestException or InvalidOperationException or JsonException or TaskCanceledException)
         {
-            relationship.LastProviderError = SafeProviderError(ex, "NMI application creation failed.");
+            var failure = ClassifyApplicationCreateFailure(ex, cancellationToken);
+            createMetadata = createMetadata with
+            {
+                LastFailureClassification = failure.Classification,
+                LastFailureReasonCode = failure.ReasonCode,
+                LastFailureAtUtc = dateTimeProvider.UtcNow
+            };
+            relationship.CapabilitiesJson = SetApplicationCreateMetadata(relationship.CapabilitiesJson, createMetadata);
+            relationship.LastProviderError = failure.Classification == AmbiguousFailure
+                ? "NMI application creation outcome is ambiguous. Retry only with the same payload and idempotency key."
+                : SafeProviderError(ex, "NMI application creation failed.");
             await dbContext.SaveChangesAsync(cancellationToken);
+            if (failure.Classification == AmbiguousFailure)
+            {
+                throw new InvalidOperationException(relationship.LastProviderError, ex);
+            }
             throw;
         }
     }
@@ -432,12 +492,11 @@ public sealed class MerchantAccountService(
         {
             relationship.GatewayPasswordProtected = secretProtector.Protect(providerResult.GatewayPassword);
         }
-        relationship.CapabilitiesJson = JsonSerializer.Serialize(new
-        {
-            ProviderStatus = providerResult.Status,
+        relationship.CapabilitiesJson = SetProviderCapabilities(
+            relationship.CapabilitiesJson,
+            providerResult.Status,
             relationship.ProviderReference,
-            ProviderMerchantId = Clean(providerResult.ProviderMerchantId)
-        });
+            Clean(providerResult.ProviderMerchantId));
         relationship.LastProviderError = null;
         relationship.SupportNotes = null;
         if (!string.IsNullOrWhiteSpace(providerResult.ProviderReference))
@@ -1393,10 +1452,232 @@ public sealed class MerchantAccountService(
         return secretProtector.Unprotect(Required(protectedValue, label));
     }
 
+    private async Task<ApplicationCreateOperationMetadata> RotateApplicationCreateKeyAsync(
+        MerchantAccount merchantAccount,
+        MerchantProviderRelationship relationship,
+        IPartnerProvider provider,
+        PartnerMerchantCreateRequest providerRequest,
+        string payloadFingerprint,
+        ApplicationCreateOperationMetadata metadata,
+        CancellationToken cancellationToken)
+    {
+        if (!string.IsNullOrWhiteSpace(relationship.ProviderReference))
+        {
+            throw new InvalidOperationException("NMI application key rotation is blocked because a provider reference exists.");
+        }
+        if (!string.Equals(metadata.LastFailureClassification, DefinitiveValidationFailure, StringComparison.Ordinal))
+        {
+            throw new InvalidOperationException(
+                "NMI application key rotation is allowed only after a definitive validation failure.");
+        }
+
+        var matchingApplicationExists = await provider.HasMatchingMerchantApplicationAsync(
+            providerRequest,
+            cancellationToken);
+        if (matchingApplicationExists)
+        {
+            throw new InvalidOperationException(
+                "NMI application key rotation is blocked because reconciliation found a matching application.");
+        }
+
+        var nextVersion = checked(metadata.KeyVersion + 1);
+        var now = dateTimeProvider.UtcNow;
+        var rotated = metadata with
+        {
+            KeyVersion = nextVersion,
+            PayloadFingerprint = payloadFingerprint,
+            RotatedAtUtc = now,
+            RotationReasonCode = SanitizeReasonCode(metadata.LastFailureReasonCode) ?? "VALIDATION_ERROR",
+            LastFailureClassification = null,
+            LastFailureReasonCode = null,
+            LastFailureAtUtc = null,
+            Rotations = (metadata.Rotations ?? [])
+                .Append(new ApplicationCreateRotationAudit(
+                    nextVersion,
+                    payloadFingerprint,
+                    now,
+                    SanitizeReasonCode(metadata.LastFailureReasonCode) ?? "VALIDATION_ERROR"))
+                .ToArray()
+        };
+        relationship.ApplicationCreateIdempotencyKey = StableIdempotencyKey(
+            $"nmi-application-create-v{nextVersion}",
+            merchantAccount.Id);
+        relationship.CapabilitiesJson = SetApplicationCreateMetadata(relationship.CapabilitiesJson, rotated);
+        relationship.LastProviderError = null;
+        await dbContext.SaveChangesAsync(cancellationToken);
+        return rotated;
+    }
+
+    private static ApplicationCreateFailure ClassifyApplicationCreateFailure(
+        Exception exception,
+        CancellationToken cancellationToken)
+    {
+        if (exception is NmiValidationException validationException &&
+            IsDefinitiveValidationFailure(validationException))
+        {
+            return new ApplicationCreateFailure(
+                DefinitiveValidationFailure,
+                SanitizeReasonCode(validationException.ValidationCodes.FirstOrDefault()) ??
+                    $"HTTP_{(int)(validationException.StatusCode ?? System.Net.HttpStatusCode.UnprocessableEntity)}");
+        }
+        if ((exception is TaskCanceledException && !cancellationToken.IsCancellationRequested) ||
+            exception is JsonException ||
+            exception is HttpRequestException { StatusCode: null } ||
+            (exception is HttpRequestException httpException &&
+             httpException.StatusCode is not null &&
+             (int)httpException.StatusCode.Value >= 500))
+        {
+            return new ApplicationCreateFailure(AmbiguousFailure, "AMBIGUOUS_OUTCOME");
+        }
+
+        return new ApplicationCreateFailure("NonValidationFailure", "NON_VALIDATION_FAILURE");
+    }
+
+    private static bool IsDefinitiveValidationFailure(NmiValidationException exception)
+    {
+        if (exception.StatusCode == System.Net.HttpStatusCode.UnprocessableEntity)
+        {
+            return true;
+        }
+
+        return exception.StatusCode == System.Net.HttpStatusCode.BadRequest &&
+            exception.ValidationCodes.Any(code =>
+                string.Equals(code, "VALIDATION_ERROR", StringComparison.OrdinalIgnoreCase) ||
+                string.Equals(code, "VALIDATION_FAILED", StringComparison.OrdinalIgnoreCase) ||
+                string.Equals(code, "IDEMPOTENCY_KEY_BAD_REQUEST", StringComparison.OrdinalIgnoreCase));
+    }
+
+    private static ApplicationCreateOperationMetadata NewApplicationCreateMetadata(
+        string payloadFingerprint,
+        DateTimeOffset operationStartedAtUtc)
+    {
+        return new ApplicationCreateOperationMetadata(
+            1,
+            payloadFingerprint,
+            operationStartedAtUtc,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null);
+    }
+
+    private static ApplicationCreateOperationMetadata? ReadApplicationCreateMetadata(string? capabilitiesJson)
+    {
+        if (string.IsNullOrWhiteSpace(capabilitiesJson))
+        {
+            return null;
+        }
+
+        try
+        {
+            using var document = JsonDocument.Parse(capabilitiesJson);
+            return document.RootElement.TryGetProperty(ApplicationCreateMetadataProperty, out var metadata)
+                ? metadata.Deserialize<ApplicationCreateOperationMetadata>()
+                : null;
+        }
+        catch (JsonException)
+        {
+            return null;
+        }
+    }
+
+    private static string SetApplicationCreateMetadata(
+        string? capabilitiesJson,
+        ApplicationCreateOperationMetadata metadata)
+    {
+        var root = SafeJsonObject(capabilitiesJson);
+        root[ApplicationCreateMetadataProperty] = JsonSerializer.SerializeToNode(metadata);
+        return root.ToJsonString();
+    }
+
+    private static string SetProviderCapabilities(
+        string? capabilitiesJson,
+        string providerStatus,
+        string? providerReference,
+        string? providerMerchantId)
+    {
+        var root = SafeJsonObject(capabilitiesJson);
+        root["ProviderStatus"] = providerStatus;
+        root["ProviderReference"] = providerReference;
+        root["ProviderMerchantId"] = providerMerchantId;
+        return root.ToJsonString();
+    }
+
+    private static JsonObject SafeJsonObject(string? json)
+    {
+        if (!string.IsNullOrWhiteSpace(json))
+        {
+            try
+            {
+                if (JsonNode.Parse(json) is JsonObject root)
+                {
+                    return root;
+                }
+            }
+            catch (JsonException)
+            {
+                // Invalid legacy metadata is discarded rather than propagated.
+            }
+        }
+
+        return new JsonObject();
+    }
+
+    private static bool TryLegacyDefinitiveValidationReason(string? safeError, out string reasonCode)
+    {
+        reasonCode = string.Empty;
+        if (string.IsNullOrWhiteSpace(safeError))
+        {
+            return false;
+        }
+
+        var codeMatch = Regex.Match(
+            safeError,
+            @"Codes:\s*([A-Za-z0-9_.:-]+)",
+            RegexOptions.CultureInvariant);
+        reasonCode = SanitizeReasonCode(codeMatch.Success ? codeMatch.Groups[1].Value : null) ?? "VALIDATION_ERROR";
+        if (Regex.IsMatch(safeError, @"HTTP 422", RegexOptions.CultureInvariant))
+        {
+            return true;
+        }
+
+        return Regex.IsMatch(safeError, @"HTTP 400", RegexOptions.CultureInvariant) &&
+            reasonCode is "VALIDATION_ERROR" or "VALIDATION_FAILED" or "IDEMPOTENCY_KEY_BAD_REQUEST";
+    }
+
+    private static string? SanitizeReasonCode(string? value)
+    {
+        var clean = Clean(value);
+        return clean is not null && Regex.IsMatch(clean, @"^[A-Za-z0-9_.:-]{1,80}$", RegexOptions.CultureInvariant)
+            ? clean.ToUpperInvariant()
+            : null;
+    }
+
     private static string StableIdempotencyKey(string operation, Guid merchantAccountId)
     {
         return $"{operation}-{merchantAccountId:N}";
     }
+
+    private sealed record ApplicationCreateOperationMetadata(
+        int KeyVersion,
+        string PayloadFingerprint,
+        DateTimeOffset OperationStartedAtUtc,
+        DateTimeOffset? RotatedAtUtc,
+        string? RotationReasonCode,
+        string? LastFailureClassification,
+        string? LastFailureReasonCode,
+        DateTimeOffset? LastFailureAtUtc,
+        IReadOnlyList<ApplicationCreateRotationAudit>? Rotations);
+
+    private sealed record ApplicationCreateRotationAudit(
+        int KeyVersion,
+        string PayloadFingerprint,
+        DateTimeOffset RotatedAtUtc,
+        string ReasonCode);
+
+    private sealed record ApplicationCreateFailure(string Classification, string ReasonCode);
 
     private static string SafeProviderError(Exception exception, string fallback)
     {

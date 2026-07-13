@@ -72,6 +72,8 @@ public sealed class NmiPartnerProviderValidationTests
                 StringComparer.Ordinal);
         Assert.Equal("Retail", fields["fld_business_nature"]);
         Assert.Equal(50, fields["fld_type_of_goods_sold"].Length);
+        Assert.Equal("NMI Sandbox Motorcycle Supply LL", fields["fld_legal_name"]);
+        Assert.Equal("123456789", fields["fld_federal_tax_id"]);
     }
 
     [Fact]
@@ -89,7 +91,40 @@ public sealed class NmiPartnerProviderValidationTests
         Assert.Empty(exception.Descriptions);
     }
 
-    private static NmiPartnerProvider Provider(TestHttpClientFactory factory)
+    [Fact]
+    public void Payload_fingerprint_is_stable_for_same_payload_and_changes_with_corrected_payload()
+    {
+        var provider = Provider(new TestHttpClientFactory("{}"));
+        var request = Request();
+
+        var first = provider.GetMerchantApplicationPayloadFingerprint(request);
+        var retry = provider.GetMerchantApplicationPayloadFingerprint(request);
+        var corrected = provider.GetMerchantApplicationPayloadFingerprint(
+            request with { LegalBusinessName = "Corrected Sandbox Company LLC" });
+
+        Assert.Equal(64, first.Length);
+        Assert.Equal(first, retry);
+        Assert.NotEqual(first, corrected);
+        Assert.Matches("^[A-F0-9]{64}$", first);
+        Assert.DoesNotContain(request.TaxIdentifier!, first, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task Reconciliation_uses_read_only_list_and_detail_queries_and_finds_matching_application()
+    {
+        var factory = new ReconciliationHttpClientFactory();
+        var provider = Provider(factory);
+
+        var exists = await provider.HasMatchingMerchantApplicationAsync(Request(), CancellationToken.None);
+
+        Assert.True(exists);
+        Assert.Equal(2, factory.ApplicationRequests.Count);
+        Assert.All(factory.ApplicationRequests, request => Assert.Equal(HttpMethod.Get, request.Method));
+        Assert.Contains("per_page=100", factory.ApplicationRequests[0].RequestUri!.Query, StringComparison.Ordinal);
+        Assert.DoesNotContain("updated_from", factory.ApplicationRequests[0].RequestUri!.Query, StringComparison.Ordinal);
+    }
+
+    private static NmiPartnerProvider Provider(IHttpClientFactory factory)
     {
         return new NmiPartnerProvider(
             factory,
@@ -158,6 +193,73 @@ public sealed class NmiPartnerProviderValidationTests
         public string? ApplicationPayload => handler.ApplicationPayload;
 
         public HttpClient CreateClient(string name) => client;
+    }
+
+    private sealed class ReconciliationHttpClientFactory : IHttpClientFactory
+    {
+        private readonly HttpClient client;
+
+        public ReconciliationHttpClientFactory()
+        {
+            var handler = new ReconciliationHandler();
+            ApplicationRequests = handler.ApplicationRequests;
+            client = new HttpClient(handler)
+            {
+                BaseAddress = new Uri("https://sandbox.signup.nmi.com/api/v1/")
+            };
+        }
+
+        public List<HttpRequestMessage> ApplicationRequests { get; }
+
+        public HttpClient CreateClient(string name) => client;
+
+        private sealed class ReconciliationHandler : HttpMessageHandler
+        {
+            public List<HttpRequestMessage> ApplicationRequests { get; } = [];
+
+            protected override Task<HttpResponseMessage> SendAsync(
+                HttpRequestMessage request,
+                CancellationToken cancellationToken)
+            {
+                if (request.RequestUri?.AbsolutePath.EndsWith("/oauth/token", StringComparison.Ordinal) == true)
+                {
+                    return Task.FromResult(Response(HttpStatusCode.OK, "{\"access_token\":\"oauth-secret\"}"));
+                }
+
+                ApplicationRequests.Add(request);
+                if (request.RequestUri?.AbsolutePath.EndsWith("/applications", StringComparison.Ordinal) == true)
+                {
+                    return Task.FromResult(Response(HttpStatusCode.OK, """
+                        {
+                          "applications": [{ "id": "app_1234567890123456", "status": "draft" }],
+                          "current_page": 1,
+                          "last_page": 1,
+                          "per_page": 100,
+                          "total": 1
+                        }
+                        """));
+                }
+
+                return Task.FromResult(Response(HttpStatusCode.OK, """
+                    {
+                      "id": "app_1234567890123456",
+                      "fields": [
+                        { "id": "fld_legal_name", "value": "NMI Sandbox Motorcycle Supply LL" },
+                        { "id": "fld_dba_name", "value": "NMI Sandbox Moto Supply" },
+                        { "id": "fld_legal_postal_code", "value": "78701" }
+                      ]
+                    }
+                    """));
+            }
+
+            private static HttpResponseMessage Response(HttpStatusCode status, string body)
+            {
+                return new HttpResponseMessage(status)
+                {
+                    Content = new StringContent(body, Encoding.UTF8, "application/json")
+                };
+            }
+        }
     }
 
     private sealed class TestHandler(string validationResponse) : HttpMessageHandler

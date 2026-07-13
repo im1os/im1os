@@ -122,6 +122,12 @@ public interface IPartnerProvider
         string idempotencyKey,
         CancellationToken cancellationToken);
 
+    string GetMerchantApplicationPayloadFingerprint(PartnerMerchantCreateRequest request);
+
+    Task<bool> HasMatchingMerchantApplicationAsync(
+        PartnerMerchantCreateRequest request,
+        CancellationToken cancellationToken);
+
     Task<PartnerMerchantCreateResult> SubmitMerchantApplicationAsync(
         string providerReference,
         PartnerMerchantCreateRequest request,
