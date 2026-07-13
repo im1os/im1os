@@ -204,6 +204,47 @@ public sealed class MerchantAccountServiceTests
     }
 
     [Fact]
+    public async Task Unversioned_legacy_key_rotates_after_definitive_payload_bound_rejection()
+    {
+        await using var dbContext = CreateContext();
+        var provider = new RecordingPartnerProvider
+        {
+            FirstCreateException = new NmiValidationException(
+                System.Net.HttpStatusCode.BadRequest,
+                [],
+                ["IDEMPOTENCY_KEY_BAD_REQUEST"],
+                [])
+        };
+        var service = CreateService(dbContext, provider);
+        var organizationId = Guid.NewGuid();
+        var actorId = Guid.NewGuid();
+        var submitted = await SubmitAsync(service, organizationId, actorId);
+
+        await Assert.ThrowsAsync<NmiValidationException>(() => service.ApproveApplicationAsync(
+            organizationId,
+            submitted.MerchantAccountId,
+            actorId,
+            CancellationToken.None));
+        var relationship = await dbContext.MerchantProviderRelationships.IgnoreQueryFilters().SingleAsync();
+        relationship.ApplicationCreateIdempotencyKey =
+            $"nmi-application-create-{submitted.MerchantAccountId:N}";
+        await dbContext.SaveChangesAsync();
+        var legacyKey = relationship.ApplicationCreateIdempotencyKey;
+
+        var result = await service.ApproveApplicationAsync(
+            organizationId,
+            submitted.MerchantAccountId,
+            actorId,
+            CancellationToken.None);
+
+        Assert.Equal(MerchantAccountStatuses.LegalConsentRequired, result.Status);
+        Assert.Equal(1, provider.ReconciliationCalls);
+        Assert.Equal(2, provider.CreateCalls);
+        Assert.NotEqual(legacyKey, relationship.ApplicationCreateIdempotencyKey);
+        Assert.Contains("nmi-application-create-v2", relationship.ApplicationCreateIdempotencyKey, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public async Task Rotation_is_blocked_when_provider_reference_exists()
     {
         await using var dbContext = CreateContext();

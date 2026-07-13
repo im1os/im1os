@@ -320,7 +320,11 @@ public sealed class MerchantAccountService(
             }
         }
 
-        if (!string.Equals(createMetadata.PayloadFingerprint, payloadFingerprint, StringComparison.Ordinal))
+        if (!string.Equals(createMetadata.PayloadFingerprint, payloadFingerprint, StringComparison.Ordinal) ||
+            RequiresLegacyPayloadBoundRotation(
+                relationship.ApplicationCreateIdempotencyKey,
+                createMetadata,
+                payloadFingerprint))
         {
             createMetadata = await RotateApplicationCreateKeyAsync(
                 merchantAccount,
@@ -1545,6 +1549,22 @@ public sealed class MerchantAccountService(
                 string.Equals(code, "VALIDATION_ERROR", StringComparison.OrdinalIgnoreCase) ||
                 string.Equals(code, "VALIDATION_FAILED", StringComparison.OrdinalIgnoreCase) ||
                 string.Equals(code, "IDEMPOTENCY_KEY_BAD_REQUEST", StringComparison.OrdinalIgnoreCase));
+    }
+
+    private static bool RequiresLegacyPayloadBoundRotation(
+        string? idempotencyKey,
+        ApplicationCreateOperationMetadata metadata,
+        string payloadFingerprint)
+    {
+        return !string.IsNullOrWhiteSpace(idempotencyKey) &&
+            idempotencyKey.StartsWith("nmi-application-create-", StringComparison.Ordinal) &&
+            !idempotencyKey.StartsWith("nmi-application-create-v", StringComparison.Ordinal) &&
+            string.Equals(metadata.PayloadFingerprint, payloadFingerprint, StringComparison.Ordinal) &&
+            string.Equals(metadata.LastFailureClassification, DefinitiveValidationFailure, StringComparison.Ordinal) &&
+            string.Equals(
+                metadata.LastFailureReasonCode,
+                "IDEMPOTENCY_KEY_BAD_REQUEST",
+                StringComparison.OrdinalIgnoreCase);
     }
 
     private static ApplicationCreateOperationMetadata NewApplicationCreateMetadata(
