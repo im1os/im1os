@@ -43,7 +43,8 @@ public sealed class NmiPartnerProviderValidationTests
               ]
             }
             """;
-        var provider = Provider(response);
+        var factory = new TestHttpClientFactory(response);
+        var provider = Provider(factory);
 
         var exception = await Assert.ThrowsAsync<NmiValidationException>(() =>
             provider.CreateMerchantAsync(Request(), "stable-create-key", CancellationToken.None));
@@ -63,13 +64,21 @@ public sealed class NmiPartnerProviderValidationTests
         Assert.DoesNotContain("oauth-secret", exception.Message, StringComparison.Ordinal);
         Assert.DoesNotContain("Bearer token", exception.Message, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("\"errors\"", exception.Message, StringComparison.Ordinal);
+        using var payload = System.Text.Json.JsonDocument.Parse(factory.ApplicationPayload!);
+        var fields = payload.RootElement.GetProperty("fields").EnumerateArray()
+            .ToDictionary(
+                field => field.GetProperty("id").GetString()!,
+                field => field.GetProperty("value").ToString(),
+                StringComparer.Ordinal);
+        Assert.Equal("Retail", fields["fld_business_nature"]);
+        Assert.Equal(50, fields["fld_type_of_goods_sold"].Length);
     }
 
     [Fact]
     public async Task CreateMerchantAsync_DiscardsMalformedRawErrorResponse()
     {
         const string response = "not-json tax=123456789 ssn=111223333 token=oauth-secret";
-        var provider = Provider(response);
+        var provider = Provider(new TestHttpClientFactory(response));
 
         var exception = await Assert.ThrowsAsync<NmiValidationException>(() =>
             provider.CreateMerchantAsync(Request(), "stable-create-key", CancellationToken.None));
@@ -80,10 +89,10 @@ public sealed class NmiPartnerProviderValidationTests
         Assert.Empty(exception.Descriptions);
     }
 
-    private static NmiPartnerProvider Provider(string validationResponse)
+    private static NmiPartnerProvider Provider(TestHttpClientFactory factory)
     {
         return new NmiPartnerProvider(
-            new TestHttpClientFactory(validationResponse),
+            factory,
             Options.Create(new NmiPaymentOptions
             {
                 PartnerOAuthClientId = "oauth-client",
@@ -132,29 +141,41 @@ public sealed class NmiPartnerProviderValidationTests
             "5533");
     }
 
-    private sealed class TestHttpClientFactory(string validationResponse) : IHttpClientFactory
+    private sealed class TestHttpClientFactory : IHttpClientFactory
     {
-        private readonly HttpClient client = new(new TestHandler(validationResponse))
+        private readonly TestHandler handler;
+        private readonly HttpClient client;
+
+        public TestHttpClientFactory(string validationResponse)
         {
-            BaseAddress = new Uri("https://sandbox.signup.nmi.com/api/v1/")
-        };
+            handler = new TestHandler(validationResponse);
+            client = new HttpClient(handler)
+            {
+                BaseAddress = new Uri("https://sandbox.signup.nmi.com/api/v1/")
+            };
+        }
+
+        public string? ApplicationPayload => handler.ApplicationPayload;
 
         public HttpClient CreateClient(string name) => client;
     }
 
     private sealed class TestHandler(string validationResponse) : HttpMessageHandler
     {
-        protected override Task<HttpResponseMessage> SendAsync(
+        public string? ApplicationPayload { get; private set; }
+
+        protected override async Task<HttpResponseMessage> SendAsync(
             HttpRequestMessage request,
             CancellationToken cancellationToken)
         {
             if (request.RequestUri?.AbsolutePath.EndsWith("/oauth/token", StringComparison.Ordinal) == true)
             {
-                return Task.FromResult(Response(HttpStatusCode.OK, "{\"access_token\":\"oauth-secret\"}"));
+                return Response(HttpStatusCode.OK, "{\"access_token\":\"oauth-secret\"}");
             }
 
             Assert.Equal("stable-create-key", request.Headers.GetValues("Idempotency-Key").Single());
-            return Task.FromResult(Response(HttpStatusCode.UnprocessableEntity, validationResponse));
+            ApplicationPayload = await request.Content!.ReadAsStringAsync(cancellationToken);
+            return Response(HttpStatusCode.UnprocessableEntity, validationResponse);
         }
 
         private static HttpResponseMessage Response(HttpStatusCode status, string body)

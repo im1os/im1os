@@ -79,7 +79,7 @@ public sealed class NmiValidationException : HttpRequestException
             statusCode,
             fields.Order(StringComparer.OrdinalIgnoreCase).Take(10).ToArray(),
             codes.Order(StringComparer.OrdinalIgnoreCase).Take(10).ToArray(),
-            descriptions.Take(3).ToArray());
+            descriptions.Take(10).ToArray());
     }
 
     private static void Collect(
@@ -135,7 +135,7 @@ public sealed class NmiValidationException : HttpRequestException
                     AddCode(value, codes);
                 }
 
-                if (propertyName is not null &&
+                if (propertyName is not null && withinErrors &&
                     (DescriptionPropertyNames.Contains(propertyName) ||
                      string.Equals(propertyName, "error", StringComparison.OrdinalIgnoreCase)))
                 {
@@ -244,6 +244,7 @@ public sealed class NmiValidationException : HttpRequestException
             parts.Add($"Details: {string.Join("; ", descriptions)}");
         }
 
-        return string.Join(' ', parts);
+        var message = string.Join(' ', parts);
+        return message.Length <= 950 ? message : $"{message[..947]}...";
     }
 }

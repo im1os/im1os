@@ -327,6 +327,7 @@ public sealed class NmiPartnerProvider(
         var dba = Clean(request.Dba) ?? businessName;
         var phone = Required(FormatPhone(Clean(request.Phone)), "Owner phone");
         var email = Required(request.Email, "Owner email");
+        var goodsDescription = Clean(request.BusinessDescription);
 
         var fields = new List<object>();
         AddField(fields, "fld_average_ticket", request.AverageTicket);
@@ -337,10 +338,10 @@ public sealed class NmiPartnerProvider(
         AddField(fields, "fld_percent_of_ecommerce", request.EcommercePercentage);
         AddField(fields, "fld_percent_of_moto", request.MotoPercentage);
         AddField(fields, "fld_years_in_business", request.YearsInBusiness);
-        AddField(fields, "fld_business_nature", Clean(request.BusinessDescription));
+        AddField(fields, "fld_business_nature", BusinessNature(request));
         AddField(fields, "fld_type_business", Clean(request.BusinessType));
         AddField(fields, "fld_state_incorporated", state);
-        AddField(fields, "fld_type_of_goods_sold", Clean(request.BusinessDescription));
+        AddField(fields, "fld_type_of_goods_sold", goodsDescription is null ? null : Truncate(goodsDescription, 50));
         AddField(fields, "fld_mcc", Clean(request.Mcc));
         AddField(fields, "fld_federal_tax_id", Required(request.TaxIdentifier, "Tax identifier"));
         AddField(fields, "fld_contact_name", $"{firstName} {lastName}".Trim());
@@ -457,6 +458,22 @@ public sealed class NmiPartnerProvider(
     private static string Truncate(string value, int maxLength)
     {
         return value.Length <= maxLength ? value : value[..maxLength];
+    }
+
+    private static string BusinessNature(PartnerMerchantCreateRequest request)
+    {
+        var ecommerce = request.EcommercePercentage ?? 0m;
+        var moto = request.MotoPercentage ?? 0m;
+        var cardPresent = request.CardPresentPercentage ?? 0m;
+        var keyed = request.KeyEnteredPercentage ?? 0m;
+        if (ecommerce > cardPresent && ecommerce >= moto && ecommerce >= keyed)
+        {
+            return "Internet";
+        }
+
+        return moto > cardPresent && moto > ecommerce && moto >= keyed
+            ? "Mail Order/Telephone Order"
+            : "Retail";
     }
 
     private static string? FormatPhone(string? value)
