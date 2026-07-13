@@ -1,4 +1,6 @@
 @model iM1os.Application.FinancialServices.Merchant.CompanyMerchantAccountWorkspace
+@using Microsoft.Extensions.Hosting
+@inject Microsoft.AspNetCore.Hosting.IWebHostEnvironment HostEnvironment
 @{
     ViewData["Title"] = "Merchant Account";
     var account = Model.Account;
@@ -120,6 +122,13 @@
                 <h2>Merchant Application</h2>
                 <p>@(canEdit ? "Edit the application details and save before approval or activation." : "Application details are locked for this status.")</p>
             </div>
+            @if (HostEnvironment.IsDevelopment() && canEdit)
+            {
+                <form method="post" asp-controller="FinancialServices" asp-action="FillMerchantApplicationSandboxData">
+                    @Html.AntiForgeryToken()
+                    <button class="im1-button im1-button-secondary" type="submit">Fill NMI Sandbox Test Data</button>
+                </form>
+            }
         </header>
         <form class="im1-form-grid" method="post">
             @Html.AntiForgeryToken()

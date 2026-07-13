@@ -1,13 +1,17 @@
 using System.Security.Claims;
 using iM1os.Application.FinancialServices;
 using iM1os.Application.FinancialServices.Merchant;
+using iM1os.Web.Development;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.Extensions.Hosting;
 
 namespace iM1os.Web.Controllers;
 
 [Authorize]
-public sealed class FinancialServicesController(IMerchantAccountService merchantAccountService) : Controller
+public sealed class FinancialServicesController(
+    IMerchantAccountService merchantAccountService,
+    IWebHostEnvironment hostEnvironment) : Controller
 {
     [HttpGet]
     public IActionResult Index()
@@ -52,6 +56,34 @@ public sealed class FinancialServicesController(IMerchantAccountService merchant
         {
             await merchantAccountService.SaveDraftAsync(organizationId, UserId(), form.ToRequest(), cancellationToken);
             TempData["MerchantStatus"] = "Merchant application saved.";
+        }
+        catch (Exception ex) when (ex is InvalidOperationException or ArgumentException)
+        {
+            TempData["MerchantError"] = ex.Message;
+        }
+
+        return RedirectToAction(nameof(MerchantApplication), new { organizationId });
+    }
+
+    [HttpPost]
+    [ValidateAntiForgeryToken]
+    [Authorize(Roles = "Owner,Administrator")]
+    public async Task<IActionResult> FillMerchantApplicationSandboxData(CancellationToken cancellationToken)
+    {
+        if (!hostEnvironment.IsDevelopment())
+        {
+            return NotFound();
+        }
+
+        var organizationId = OrganizationId();
+        try
+        {
+            await merchantAccountService.SaveDraftAsync(
+                organizationId,
+                UserId(),
+                NmiSandboxMerchantApplicationFixture.Create().ToRequest(),
+                cancellationToken);
+            TempData["MerchantStatus"] = "Development-only NMI sandbox test data saved.";
         }
         catch (Exception ex) when (ex is InvalidOperationException or ArgumentException)
         {
