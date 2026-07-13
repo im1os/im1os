@@ -8,8 +8,10 @@ public sealed class ApplicationDbContextFactory : IDesignTimeDbContextFactory<Ap
 {
     public ApplicationDbContext CreateDbContext(string[] args)
     {
+        var connectionString = Environment.GetEnvironmentVariable("ConnectionStrings__DefaultConnection") ??
+            "Host=localhost;Port=5432;Database=im1os_design;Username=im1os";
         var options = new DbContextOptionsBuilder<ApplicationDbContext>()
-            .UseNpgsql("Host=localhost;Port=5432;Database=im1os_design;Username=im1os;Password=im1os_dev")
+            .UseNpgsql(connectionString)
             .Options;
 
         var currentUser = new NoCurrentUser();
