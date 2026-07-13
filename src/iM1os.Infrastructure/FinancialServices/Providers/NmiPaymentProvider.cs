@@ -52,11 +52,6 @@ public sealed class NmiPaymentProvider(
                 ["state"] = Clean(request.Region),
                 ["zip"] = Clean(request.PostalCode),
                 ["country"] = Clean(request.Country) ?? "US"
-            },
-            ["order_details"] = new Dictionary<string, object?>
-            {
-                ["order_id"] = Clean(request.OrderId),
-                ["description"] = Clean(request.Description)
             }
         });
 

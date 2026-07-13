@@ -72,7 +72,11 @@ public sealed class Im1PaymentsServiceTests
         Assert.Contains("\"zip\":\"60601\"", handler.RequestBody);
         Assert.DoesNotContain("postal_code", handler.RequestBody);
         Assert.DoesNotContain("merchant_defined_fields", handler.RequestBody);
+        Assert.DoesNotContain("order_details", handler.RequestBody);
         Assert.DoesNotContain("im1_", handler.RequestBody);
+
+        var transaction = await dbContext.PaymentTransactions.IgnoreQueryFilters().SingleAsync();
+        Assert.Equal("TEST-1001", transaction.OrderId);
     }
 
     [Fact]
