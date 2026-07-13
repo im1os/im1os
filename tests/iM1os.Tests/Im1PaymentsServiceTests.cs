@@ -205,6 +205,63 @@ public sealed class Im1PaymentsServiceTests
     }
 
     [Fact]
+    public async Task CreateSaleAsync_records_only_allowlisted_nmi_payment_validation_details()
+    {
+        await using var dbContext = CreateContext();
+        const string submittedToken = "tok_sensitive_value_must_not_persist";
+        var handler = new RecordingHandler($$"""
+            {
+              "type": "validationError",
+              "error_code": "E_VALIDATION",
+              "message": "The provided data is invalid.",
+              "details": [
+                {
+                  "fieldName": "payment_details.payment_token",
+                  "message": "The payment token {{submittedToken}} is invalid."
+                },
+                {
+                  "fieldName": "billing_address.zip",
+                  "message": "ZIP format is invalid."
+                },
+                {
+                  "fieldName": "unsupported.private_value",
+                  "message": "Unsafe value 123456789 should not persist."
+                }
+              ]
+            }
+            """, HttpStatusCode.UnprocessableEntity);
+        var service = CreateService(dbContext, handler);
+        var organizationId = Guid.NewGuid();
+        AddActiveMerchant(dbContext, organizationId);
+
+        var result = await service.CreateSaleAsync(
+            organizationId,
+            Guid.NewGuid(),
+            new PaymentSaleRequest(
+                submittedToken,
+                1m,
+                "USD",
+                Email: "private@example.test",
+                PostalCode: "60601"),
+            CancellationToken.None);
+
+        Assert.False(result.Success);
+        Assert.Equal("422", result.ResponseCode);
+        Assert.Contains("billing_address.zip", result.ResponseText);
+        Assert.Contains("payment_details.payment_token", result.ResponseText);
+        Assert.Contains("E_VALIDATION", result.ResponseText);
+        Assert.Contains("ZIP format is invalid.", result.ResponseText);
+        Assert.DoesNotContain(submittedToken, result.ResponseText);
+        Assert.DoesNotContain("private@example.test", result.ResponseText);
+        Assert.DoesNotContain("unsupported.private_value", result.ResponseText);
+        Assert.DoesNotContain("123456789", result.ResponseText);
+
+        var transaction = await dbContext.PaymentTransactions.IgnoreQueryFilters().SingleAsync();
+        Assert.Null(transaction.RawResponseJson);
+        Assert.Equal(result.ResponseText, transaction.ResponseText);
+    }
+
+    [Fact]
     public async Task CreateSaleAsync_persists_declined_payment_attempt_and_history()
     {
         await using var dbContext = CreateContext();

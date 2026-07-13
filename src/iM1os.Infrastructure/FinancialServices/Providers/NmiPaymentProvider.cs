@@ -1,3 +1,4 @@
+using System.Net;
 using System.Net.Http.Headers;
 using System.Text;
 using System.Text.Json;
@@ -75,16 +76,19 @@ public sealed class NmiPaymentProvider(
         var root = document.RootElement;
         if (!response.IsSuccessStatusCode)
         {
+            var responseText = response.StatusCode is HttpStatusCode.BadRequest or HttpStatusCode.UnprocessableEntity
+                ? NmiValidationException.FromPaymentResponse(response.StatusCode, responseJson, request).Message
+                : JsonValue(root, "message") ?? JsonValue(root, "response_text") ?? response.ReasonPhrase;
             return new ProviderPaymentResult(
                 false,
                 "Error",
                 null,
                 null,
                 ((int)response.StatusCode).ToString(),
-                JsonValue(root, "message") ?? JsonValue(root, "response_text") ?? response.ReasonPhrase,
+                responseText,
                 null,
                 null,
-                responseJson);
+                null);
         }
 
         var responseCode = JsonValue(root, "response");
@@ -105,7 +109,7 @@ public sealed class NmiPaymentProvider(
             JsonValue(root, "response_text"),
             JsonValue(root, "card_type"),
             LastFour(JsonValue(root, "cc_number")),
-            responseJson);
+            null);
     }
 
     private static IDictionary<string, object?> RemoveNulls(IDictionary<string, object?> values)

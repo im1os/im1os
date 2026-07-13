@@ -12,6 +12,9 @@ public sealed class NmiValidationException : HttpRequestException
     private static readonly Regex FieldIdentifierPattern = new(
         @"\b(?:fld|col)_[a-z0-9_]{1,80}\b",
         RegexOptions.Compiled | RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
+    private static readonly Regex PaymentFieldIdentifierPattern = new(
+        @"\b[a-z][a-z0-9_]{0,50}(?:\.[a-z][a-z0-9_]{0,50}){0,3}\b",
+        RegexOptions.Compiled | RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
     private static readonly Regex SafeCodePattern = new(
         @"^[a-z0-9][a-z0-9_.:-]{0,79}$",
         RegexOptions.Compiled | RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
@@ -26,7 +29,7 @@ public sealed class NmiValidationException : HttpRequestException
         RegexOptions.Compiled | RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
     private static readonly HashSet<string> FieldPropertyNames = new(StringComparer.OrdinalIgnoreCase)
     {
-        "field", "field_id", "fieldId", "attribute", "path"
+        "field", "field_id", "fieldId", "fieldName", "attribute", "path"
     };
     private static readonly HashSet<string> CodePropertyNames = new(StringComparer.OrdinalIgnoreCase)
     {
@@ -35,6 +38,15 @@ public sealed class NmiValidationException : HttpRequestException
     private static readonly HashSet<string> DescriptionPropertyNames = new(StringComparer.OrdinalIgnoreCase)
     {
         "message", "description", "detail"
+    };
+    private static readonly HashSet<string> PaymentFieldIdentifiers = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "amount", "currency", "customer_receipt", "industry",
+        "payment_details", "payment_token", "payment_details.payment_token",
+        "billing_address", "first_name", "last_name", "email", "phone", "address1", "city", "state", "zip", "country",
+        "billing_address.first_name", "billing_address.last_name", "billing_address.email", "billing_address.phone",
+        "billing_address.address1", "billing_address.city", "billing_address.state", "billing_address.zip", "billing_address.country",
+        "order_details", "order_id", "description", "order_details.order_id", "order_details.description"
     };
 
     public NmiValidationException(
@@ -68,7 +80,42 @@ public sealed class NmiValidationException : HttpRequestException
         try
         {
             using var document = JsonDocument.Parse(responseJson);
-            Collect(document.RootElement, null, false, submittedValues, fields, codes, descriptions);
+            Collect(document.RootElement, null, false, submittedValues, fields, codes, descriptions, null);
+        }
+        catch (JsonException)
+        {
+            // Raw or malformed provider responses are intentionally discarded.
+        }
+
+        return new NmiValidationException(
+            statusCode,
+            fields.Order(StringComparer.OrdinalIgnoreCase).Take(10).ToArray(),
+            codes.Order(StringComparer.OrdinalIgnoreCase).Take(10).ToArray(),
+            descriptions.Take(10).ToArray());
+    }
+
+    public static NmiValidationException FromPaymentResponse(
+        HttpStatusCode statusCode,
+        string responseJson,
+        ProviderPaymentSaleRequest submittedRequest)
+    {
+        var fields = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var codes = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var descriptions = new HashSet<string>(StringComparer.Ordinal);
+        var submittedValues = SubmittedValues(submittedRequest);
+
+        try
+        {
+            using var document = JsonDocument.Parse(responseJson);
+            Collect(
+                document.RootElement,
+                null,
+                false,
+                submittedValues,
+                fields,
+                codes,
+                descriptions,
+                PaymentFieldIdentifiers);
         }
         catch (JsonException)
         {
@@ -89,17 +136,19 @@ public sealed class NmiValidationException : HttpRequestException
         IReadOnlyCollection<string> submittedValues,
         ISet<string> fields,
         ISet<string> codes,
-        ISet<string> descriptions)
+        ISet<string> descriptions,
+        IReadOnlySet<string>? allowedFieldIdentifiers)
     {
         switch (element.ValueKind)
         {
             case JsonValueKind.Object:
                 foreach (var property in element.EnumerateObject())
                 {
-                    ExtractFieldIdentifiers(property.Name, fields);
+                    ExtractFieldIdentifiers(property.Name, fields, allowedFieldIdentifiers);
                     var childWithinErrors = withinErrors ||
                         string.Equals(property.Name, "errors", StringComparison.OrdinalIgnoreCase) ||
-                        string.Equals(property.Name, "validation_errors", StringComparison.OrdinalIgnoreCase);
+                        string.Equals(property.Name, "validation_errors", StringComparison.OrdinalIgnoreCase) ||
+                        string.Equals(property.Name, "details", StringComparison.OrdinalIgnoreCase);
                     Collect(
                         property.Value,
                         property.Name,
@@ -107,13 +156,14 @@ public sealed class NmiValidationException : HttpRequestException
                         submittedValues,
                         fields,
                         codes,
-                        descriptions);
+                        descriptions,
+                        allowedFieldIdentifiers);
                 }
                 break;
             case JsonValueKind.Array:
                 foreach (var child in element.EnumerateArray())
                 {
-                    Collect(child, propertyName, withinErrors, submittedValues, fields, codes, descriptions);
+                    Collect(child, propertyName, withinErrors, submittedValues, fields, codes, descriptions, allowedFieldIdentifiers);
                 }
                 break;
             case JsonValueKind.String:
@@ -123,10 +173,11 @@ public sealed class NmiValidationException : HttpRequestException
                     break;
                 }
 
-                ExtractFieldIdentifiers(value, fields);
+                ExtractFieldIdentifiers(value, fields, allowedFieldIdentifiers);
                 if ((propertyName is not null && FieldPropertyNames.Contains(propertyName)))
                 {
-                    ExtractFieldIdentifiers(value, fields);
+                    ExtractFieldIdentifiers(value, fields, allowedFieldIdentifiers);
+                    break;
                 }
 
                 if ((propertyName is not null && CodePropertyNames.Contains(propertyName)) ||
@@ -156,11 +207,27 @@ public sealed class NmiValidationException : HttpRequestException
         }
     }
 
-    private static void ExtractFieldIdentifiers(string value, ISet<string> fields)
+    private static void ExtractFieldIdentifiers(
+        string value,
+        ISet<string> fields,
+        IReadOnlySet<string>? allowedFieldIdentifiers)
     {
         foreach (Match match in FieldIdentifierPattern.Matches(value))
         {
             fields.Add(match.Value.ToLowerInvariant());
+        }
+
+        if (allowedFieldIdentifiers is null)
+        {
+            return;
+        }
+
+        foreach (Match match in PaymentFieldIdentifierPattern.Matches(value))
+        {
+            if (allowedFieldIdentifiers.Contains(match.Value))
+            {
+                fields.Add(match.Value.ToLowerInvariant());
+            }
         }
     }
 
@@ -206,7 +273,7 @@ public sealed class NmiValidationException : HttpRequestException
         return description.Contains(submittedValue, StringComparison.OrdinalIgnoreCase);
     }
 
-    private static IReadOnlyCollection<string> SubmittedValues(PartnerMerchantCreateRequest request)
+    private static IReadOnlyCollection<string> SubmittedValues(object request)
     {
         return request.GetType()
             .GetProperties(BindingFlags.Instance | BindingFlags.Public)
