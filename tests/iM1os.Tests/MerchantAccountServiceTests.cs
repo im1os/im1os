@@ -376,10 +376,54 @@ public sealed class MerchantAccountServiceTests
 
         Assert.Equal(MerchantAccountStatuses.UnderReview, result.Status);
         Assert.Equal(2, provider.SubmitCalls);
+        Assert.Equal(provider.UpdateIdempotencyKeys[0], provider.UpdateIdempotencyKeys[1]);
+        Assert.Single(provider.UpdateIdempotencyKeys.Distinct());
         Assert.Equal(provider.SubmitIdempotencyKeys[0], provider.SubmitIdempotencyKeys[1]);
         Assert.Equal(relationship.ApplicationSubmitIdempotencyKey, provider.SubmitIdempotencyKeys[0]);
+        using var capabilities = JsonDocument.Parse(relationship.CapabilitiesJson!);
+        var updateOperation = capabilities.RootElement.GetProperty("ApplicationUpdateOperation");
+        Assert.Equal(1, updateOperation.GetProperty("KeyVersion").GetInt32());
+        Assert.Equal(provider.PayloadFingerprint, updateOperation.GetProperty("PayloadFingerprint").GetString());
+        Assert.Equal(provider.UpdateIdempotencyKeys[0], updateOperation.GetProperty("IdempotencyKey").GetString());
         Assert.NotNull(relationship.LegalConsentCompletedAtUtc);
         Assert.NotNull(relationship.ProviderApplicationSubmittedAtUtc);
+    }
+
+    [Fact]
+    public async Task Corrected_submission_payload_versions_the_persisted_update_key_after_definitive_validation()
+    {
+        await using var dbContext = CreateContext();
+        var provider = new RecordingPartnerProvider
+        {
+            FirstSubmitException = new NmiValidationException(
+                System.Net.HttpStatusCode.UnprocessableEntity,
+                ["fld_pricing_type"],
+                ["VALIDATION_ERROR"],
+                ["The required field is missing."])
+        };
+        var service = CreateService(dbContext, provider);
+        var organizationId = Guid.NewGuid();
+        var actorId = Guid.NewGuid();
+        var submitted = await SubmitAsync(service, organizationId, actorId);
+        await service.ApproveApplicationAsync(organizationId, submitted.MerchantAccountId, actorId, CancellationToken.None);
+
+        await Assert.ThrowsAsync<NmiValidationException>(() => service.CompleteLegalConsentAsync(
+            organizationId,
+            actorId,
+            CancellationToken.None));
+        provider.PayloadFingerprint = "PAYLOAD_FINGERPRINT_V2";
+
+        await service.CompleteLegalConsentAsync(organizationId, actorId, CancellationToken.None);
+        var relationship = await dbContext.MerchantProviderRelationships.IgnoreQueryFilters().SingleAsync();
+        using var capabilities = JsonDocument.Parse(relationship.CapabilitiesJson!);
+        var updateOperation = capabilities.RootElement.GetProperty("ApplicationUpdateOperation");
+        var rotation = Assert.Single(updateOperation.GetProperty("Rotations").EnumerateArray());
+
+        Assert.Equal(2, updateOperation.GetProperty("KeyVersion").GetInt32());
+        Assert.Equal("PAYLOAD_FINGERPRINT_V2", updateOperation.GetProperty("PayloadFingerprint").GetString());
+        Assert.Equal("VALIDATION_ERROR", rotation.GetProperty("ReasonCode").GetString());
+        Assert.NotEqual(provider.UpdateIdempotencyKeys[0], provider.UpdateIdempotencyKeys[1]);
+        Assert.Equal(provider.SubmitIdempotencyKeys[0], provider.SubmitIdempotencyKeys[1]);
     }
 
     [Fact]
@@ -663,6 +707,7 @@ public sealed class MerchantAccountServiceTests
         public bool TimeoutFirstTokenizationCredential { get; init; }
         public Exception? CreateException { get; init; }
         public Exception? FirstCreateException { get; init; }
+        public Exception? FirstSubmitException { get; init; }
         public string PayloadFingerprint { get; set; } = "PAYLOAD_FINGERPRINT_V1";
         public bool MatchingApplicationExists { get; set; }
         public string RefreshStatus { get; init; } = MerchantAccountStatuses.Active;
@@ -673,6 +718,7 @@ public sealed class MerchantAccountServiceTests
         public int TokenizationCredentialCalls { get; private set; }
         public int ReconciliationCalls { get; private set; }
         public List<string> CreateIdempotencyKeys { get; } = [];
+        public List<string> UpdateIdempotencyKeys { get; } = [];
         public List<string> SubmitIdempotencyKeys { get; } = [];
         public List<string> PaymentCredentialIdempotencyKeys { get; } = [];
         public List<string> TokenizationCredentialIdempotencyKeys { get; } = [];
@@ -728,11 +774,17 @@ public sealed class MerchantAccountServiceTests
         public Task<PartnerMerchantCreateResult> SubmitMerchantApplicationAsync(
             string providerReference,
             PartnerMerchantCreateRequest request,
-            string idempotencyKey,
+            string updateIdempotencyKey,
+            string submitIdempotencyKey,
             CancellationToken cancellationToken)
         {
             SubmitCalls++;
-            SubmitIdempotencyKeys.Add(idempotencyKey);
+            UpdateIdempotencyKeys.Add(updateIdempotencyKey);
+            SubmitIdempotencyKeys.Add(submitIdempotencyKey);
+            if (FirstSubmitException is not null && SubmitCalls == 1)
+            {
+                throw FirstSubmitException;
+            }
             if (FailFirstSubmit && SubmitCalls == 1)
             {
                 throw new HttpRequestException("Simulated NMI submission timeout.");

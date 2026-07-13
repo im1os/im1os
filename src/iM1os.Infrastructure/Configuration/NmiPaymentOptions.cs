@@ -14,6 +14,8 @@ public sealed class NmiPaymentOptions
 
     public string? SignUpPackageId { get; set; }
 
+    public string? SignUpPricingType { get; set; }
+
     public string CollectJsUrl { get; set; } = "https://secure.nmi.com/token/Collect.js";
 
     public string? MerchantPrivateKey { get; set; }

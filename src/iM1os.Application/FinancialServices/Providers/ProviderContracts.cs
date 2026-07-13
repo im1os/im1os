@@ -131,7 +131,8 @@ public interface IPartnerProvider
     Task<PartnerMerchantCreateResult> SubmitMerchantApplicationAsync(
         string providerReference,
         PartnerMerchantCreateRequest request,
-        string idempotencyKey,
+        string updateIdempotencyKey,
+        string submitIdempotencyKey,
         CancellationToken cancellationToken);
 
     Task<PartnerMerchantCreateResult> GetMerchantApplicationStatusAsync(

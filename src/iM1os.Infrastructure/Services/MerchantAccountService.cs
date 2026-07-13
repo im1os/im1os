@@ -19,6 +19,7 @@ public sealed class MerchantAccountService(
     ISecretProtector secretProtector) : IMerchantAccountService
 {
     private const string ApplicationCreateMetadataProperty = "ApplicationCreateOperation";
+    private const string ApplicationUpdateMetadataProperty = "ApplicationUpdateOperation";
     private const string DefinitiveValidationFailure = "DefinitiveValidation";
     private const string AmbiguousFailure = "Ambiguous";
     private static readonly IReadOnlySet<string> ApplicationStatuses = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
@@ -397,6 +398,48 @@ public sealed class MerchantAccountService(
 
         relationship.LegalConsentCompletedAtUtc ??= dateTimeProvider.UtcNow;
         relationship.ApplicationSubmitIdempotencyKey ??= StableIdempotencyKey("nmi-application-submit", merchantAccount.Id);
+        var providerRequest = ToProviderRequest(merchantAccount);
+        var payloadFingerprint = provider.GetMerchantApplicationPayloadFingerprint(providerRequest);
+        var updateMetadata = ReadApplicationUpdateMetadata(relationship.CapabilitiesJson);
+        if (updateMetadata is null)
+        {
+            updateMetadata = new ApplicationUpdateOperationMetadata(
+                1,
+                payloadFingerprint,
+                StableIdempotencyKey("nmi-application-update-v1", merchantAccount.Id),
+                dateTimeProvider.UtcNow,
+                null,
+                null,
+                null);
+        }
+        else if (!string.Equals(updateMetadata.PayloadFingerprint, payloadFingerprint, StringComparison.Ordinal))
+        {
+            if (!TryLegacyDefinitiveValidationReason(relationship.LastProviderError, out var reasonCode))
+            {
+                throw new InvalidOperationException(
+                    "NMI application update key rotation is allowed only after a definitive validation failure.");
+            }
+
+            var nextVersion = checked(updateMetadata.KeyVersion + 1);
+            var rotatedAtUtc = dateTimeProvider.UtcNow;
+            updateMetadata = updateMetadata with
+            {
+                KeyVersion = nextVersion,
+                PayloadFingerprint = payloadFingerprint,
+                IdempotencyKey = StableIdempotencyKey($"nmi-application-update-v{nextVersion}", merchantAccount.Id),
+                RotatedAtUtc = rotatedAtUtc,
+                RotationReasonCode = SanitizeReasonCode(reasonCode) ?? "VALIDATION_ERROR",
+                Rotations = (updateMetadata.Rotations ?? [])
+                    .Append(new ApplicationUpdateRotationAudit(
+                        nextVersion,
+                        payloadFingerprint,
+                        rotatedAtUtc,
+                        SanitizeReasonCode(reasonCode) ?? "VALIDATION_ERROR"))
+                    .ToArray()
+            };
+        }
+
+        relationship.CapabilitiesJson = SetApplicationUpdateMetadata(relationship.CapabilitiesJson, updateMetadata);
         relationship.LastProviderError = null;
         await dbContext.SaveChangesAsync(cancellationToken);
 
@@ -404,7 +447,8 @@ public sealed class MerchantAccountService(
         {
             var providerResult = await provider.SubmitMerchantApplicationAsync(
                 relationship.ProviderReference,
-                ToProviderRequest(merchantAccount),
+                providerRequest,
+                updateMetadata.IdempotencyKey,
                 relationship.ApplicationSubmitIdempotencyKey,
                 cancellationToken);
             relationship.ProviderApplicationSubmittedAtUtc ??= dateTimeProvider.UtcNow;
@@ -1612,6 +1656,35 @@ public sealed class MerchantAccountService(
         return root.ToJsonString();
     }
 
+    private static ApplicationUpdateOperationMetadata? ReadApplicationUpdateMetadata(string? capabilitiesJson)
+    {
+        if (string.IsNullOrWhiteSpace(capabilitiesJson))
+        {
+            return null;
+        }
+
+        try
+        {
+            using var document = JsonDocument.Parse(capabilitiesJson);
+            return document.RootElement.TryGetProperty(ApplicationUpdateMetadataProperty, out var metadata)
+                ? metadata.Deserialize<ApplicationUpdateOperationMetadata>()
+                : null;
+        }
+        catch (JsonException)
+        {
+            return null;
+        }
+    }
+
+    private static string SetApplicationUpdateMetadata(
+        string? capabilitiesJson,
+        ApplicationUpdateOperationMetadata metadata)
+    {
+        var root = SafeJsonObject(capabilitiesJson);
+        root[ApplicationUpdateMetadataProperty] = JsonSerializer.SerializeToNode(metadata);
+        return root.ToJsonString();
+    }
+
     private static string SetProviderCapabilities(
         string? capabilitiesJson,
         string providerStatus,
@@ -1669,7 +1742,7 @@ public sealed class MerchantAccountService(
 
     private static string? SanitizeReasonCode(string? value)
     {
-        var clean = Clean(value);
+        var clean = Clean(value)?.TrimEnd('.', ':', '-');
         return clean is not null && Regex.IsMatch(clean, @"^[A-Za-z0-9_.:-]{1,80}$", RegexOptions.CultureInvariant)
             ? clean.ToUpperInvariant()
             : null;
@@ -1692,6 +1765,21 @@ public sealed class MerchantAccountService(
         IReadOnlyList<ApplicationCreateRotationAudit>? Rotations);
 
     private sealed record ApplicationCreateRotationAudit(
+        int KeyVersion,
+        string PayloadFingerprint,
+        DateTimeOffset RotatedAtUtc,
+        string ReasonCode);
+
+    private sealed record ApplicationUpdateOperationMetadata(
+        int KeyVersion,
+        string PayloadFingerprint,
+        string IdempotencyKey,
+        DateTimeOffset PreparedAtUtc,
+        DateTimeOffset? RotatedAtUtc,
+        string? RotationReasonCode,
+        IReadOnlyList<ApplicationUpdateRotationAudit>? Rotations);
+
+    private sealed record ApplicationUpdateRotationAudit(
         int KeyVersion,
         string PayloadFingerprint,
         DateTimeOffset RotatedAtUtc,

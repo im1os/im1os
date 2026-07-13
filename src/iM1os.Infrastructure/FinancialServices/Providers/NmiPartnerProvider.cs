@@ -149,7 +149,8 @@ public sealed class NmiPartnerProvider(
     public async Task<PartnerMerchantCreateResult> SubmitMerchantApplicationAsync(
         string providerReference,
         PartnerMerchantCreateRequest request,
-        string idempotencyKey,
+        string updateIdempotencyKey,
+        string submitIdempotencyKey,
         CancellationToken cancellationToken)
     {
         if (string.IsNullOrWhiteSpace(providerReference))
@@ -159,6 +160,30 @@ public sealed class NmiPartnerProvider(
 
         var accessToken = await GetSignupAccessTokenAsync(cancellationToken);
         var signupClient = httpClientFactory.CreateClient("NmiSignup");
+        using var updateMessage = new HttpRequestMessage(
+            HttpMethod.Patch,
+            $"applications/{Uri.EscapeDataString(providerReference)}")
+        {
+            Content = JsonContent(new
+            {
+                fields = BuildSignupFields(request),
+                collections = BuildSignupCollections(request)
+            })
+        };
+        updateMessage.Headers.Authorization = new AuthenticationHeaderValue("Bearer", accessToken);
+        updateMessage.Headers.TryAddWithoutValidation("Idempotency-Key", updateIdempotencyKey);
+        updateMessage.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
+
+        using var updateResponse = await signupClient.SendAsync(updateMessage, cancellationToken);
+        var updateResponseJson = await updateResponse.Content.ReadAsStringAsync(cancellationToken);
+        if (!updateResponse.IsSuccessStatusCode)
+        {
+            throw NmiValidationException.FromResponse(
+                updateResponse.StatusCode,
+                updateResponseJson,
+                request);
+        }
+
         using var submitMessage = new HttpRequestMessage(
             HttpMethod.Post,
             $"applications/{Uri.EscapeDataString(providerReference)}/submit?skip_merchant_email=true")
@@ -166,7 +191,7 @@ public sealed class NmiPartnerProvider(
             Content = JsonContent(new { })
         };
         submitMessage.Headers.Authorization = new AuthenticationHeaderValue("Bearer", accessToken);
-        submitMessage.Headers.TryAddWithoutValidation("Idempotency-Key", idempotencyKey);
+        submitMessage.Headers.TryAddWithoutValidation("Idempotency-Key", submitIdempotencyKey);
         submitMessage.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
 
         using var submitResponse = await signupClient.SendAsync(submitMessage, cancellationToken);
@@ -376,7 +401,7 @@ public sealed class NmiPartnerProvider(
             throw new InvalidOperationException("NMI Sign-Up legal consent response did not include a URL.");
     }
 
-    private static IReadOnlyCollection<object> BuildSignupFields(PartnerMerchantCreateRequest request)
+    private IReadOnlyCollection<object> BuildSignupFields(PartnerMerchantCreateRequest request)
     {
         var firstName = Required(request.FirstName, "Owner first name");
         var lastName = Required(request.LastName, "Owner last name");
@@ -391,6 +416,7 @@ public sealed class NmiPartnerProvider(
         var goodsDescription = Clean(request.BusinessDescription);
 
         var fields = new List<object>();
+        AddField(fields, "fld_pricing_type", Required(paymentOptions.SignUpPricingType, "NMI Sign-Up pricing type"));
         AddField(fields, "fld_average_ticket", request.AverageTicket);
         AddField(fields, "fld_high_ticket", request.HighTicket);
         AddField(fields, "fld_monthly_volume", request.ExpectedMonthlyVolume);

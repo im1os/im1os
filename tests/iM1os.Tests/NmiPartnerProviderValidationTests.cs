@@ -71,6 +71,7 @@ public sealed class NmiPartnerProviderValidationTests
                 field => field.GetProperty("value").ToString(),
                 StringComparer.Ordinal);
         Assert.Equal("Retail", fields["fld_business_nature"]);
+        Assert.Equal("Flat Rate", fields["fld_pricing_type"]);
         Assert.Equal(50, fields["fld_type_of_goods_sold"].Length);
         Assert.Equal("NMI Sandbox Motorcycle Supply LL", fields["fld_legal_name"]);
         Assert.Equal("123456789", fields["fld_federal_tax_id"]);
@@ -110,6 +111,29 @@ public sealed class NmiPartnerProviderValidationTests
     }
 
     [Fact]
+    public async Task Submit_updates_existing_draft_with_configured_pricing_before_submission()
+    {
+        var factory = new SubmissionHttpClientFactory();
+        var provider = Provider(factory);
+
+        var result = await provider.SubmitMerchantApplicationAsync(
+            "app_1234567890123456",
+            Request(),
+            "stable-update-key",
+            "stable-submit-key",
+            CancellationToken.None);
+
+        Assert.Equal("UnderReview", result.Status);
+        Assert.Equal([HttpMethod.Patch, HttpMethod.Post], factory.ApplicationRequests.Select(x => x.Method));
+        Assert.Equal("stable-update-key", factory.ApplicationRequests[0].Headers.GetValues("Idempotency-Key").Single());
+        Assert.Equal("stable-submit-key", factory.ApplicationRequests[1].Headers.GetValues("Idempotency-Key").Single());
+        using var payload = System.Text.Json.JsonDocument.Parse(factory.UpdatePayload!);
+        var pricing = payload.RootElement.GetProperty("fields").EnumerateArray()
+            .Single(field => field.GetProperty("id").GetString() == "fld_pricing_type");
+        Assert.Equal("Flat Rate", pricing.GetProperty("value").GetString());
+    }
+
+    [Fact]
     public async Task Reconciliation_uses_read_only_list_and_detail_queries_and_finds_matching_application()
     {
         var factory = new ReconciliationHttpClientFactory();
@@ -132,7 +156,8 @@ public sealed class NmiPartnerProviderValidationTests
             {
                 PartnerOAuthClientId = "oauth-client",
                 PartnerOAuthClientSecret = "oauth-secret",
-                SignUpPackageId = "pkg_merrick_tsys"
+                SignUpPackageId = "pkg_merrick_tsys",
+                SignUpPricingType = "Flat Rate"
             }));
     }
 
@@ -254,6 +279,60 @@ public sealed class NmiPartnerProviderValidationTests
                       ]
                     }
                     """));
+            }
+
+            private static HttpResponseMessage Response(HttpStatusCode status, string body)
+            {
+                return new HttpResponseMessage(status)
+                {
+                    Content = new StringContent(body, Encoding.UTF8, "application/json")
+                };
+            }
+        }
+    }
+
+    private sealed class SubmissionHttpClientFactory : IHttpClientFactory
+    {
+        private readonly SubmissionHandler handler = new();
+        private readonly HttpClient client;
+
+        public SubmissionHttpClientFactory()
+        {
+            client = new HttpClient(handler)
+            {
+                BaseAddress = new Uri("https://sandbox.signup.nmi.com/api/v1/")
+            };
+        }
+
+        public List<HttpRequestMessage> ApplicationRequests => handler.ApplicationRequests;
+
+        public string? UpdatePayload => handler.UpdatePayload;
+
+        public HttpClient CreateClient(string name) => client;
+
+        private sealed class SubmissionHandler : HttpMessageHandler
+        {
+            public List<HttpRequestMessage> ApplicationRequests { get; } = [];
+
+            public string? UpdatePayload { get; private set; }
+
+            protected override async Task<HttpResponseMessage> SendAsync(
+                HttpRequestMessage request,
+                CancellationToken cancellationToken)
+            {
+                if (request.RequestUri?.AbsolutePath.EndsWith("/oauth/token", StringComparison.Ordinal) == true)
+                {
+                    return Response(HttpStatusCode.OK, "{\"access_token\":\"oauth-secret\"}");
+                }
+
+                ApplicationRequests.Add(request);
+                if (request.Method == HttpMethod.Patch)
+                {
+                    UpdatePayload = await request.Content!.ReadAsStringAsync(cancellationToken);
+                    return Response(HttpStatusCode.OK, "{\"id\":\"app_1234567890123456\",\"status\":\"draft\"}");
+                }
+
+                return Response(HttpStatusCode.OK, "{\"id\":\"app_1234567890123456\",\"status\":\"submitted\"}");
             }
 
             private static HttpResponseMessage Response(HttpStatusCode status, string body)
