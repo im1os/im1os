@@ -49,22 +49,13 @@ public sealed class NmiPaymentProvider(
                 ["address1"] = Clean(request.AddressLine1),
                 ["city"] = Clean(request.City),
                 ["state"] = Clean(request.Region),
-                ["postal_code"] = Clean(request.PostalCode),
+                ["zip"] = Clean(request.PostalCode),
                 ["country"] = Clean(request.Country) ?? "US"
             },
             ["order_details"] = new Dictionary<string, object?>
             {
                 ["order_id"] = Clean(request.OrderId),
                 ["description"] = Clean(request.Description)
-            },
-            ["merchant_defined_fields"] = new Dictionary<string, object?>
-            {
-                ["im1_organization_id"] = request.OrganizationId.ToString(),
-                ["im1_merchant_account_id"] = request.MerchantAccountId.ToString(),
-                ["im1_provider_merchant_id"] = request.ProviderMerchantId,
-                ["im1_payment_id"] = request.PaymentTransactionId.ToString(),
-                ["im1_reference_type"] = Clean(request.ReferenceType),
-                ["im1_reference_id"] = Clean(request.ReferenceId)
             }
         });
 

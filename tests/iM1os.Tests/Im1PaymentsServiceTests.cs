@@ -43,6 +43,39 @@ public sealed class Im1PaymentsServiceTests
     }
 
     [Fact]
+    public async Task CreateSaleAsync_uses_the_nmi_v5_billing_schema_and_omits_unconfigured_merchant_fields()
+    {
+        await using var dbContext = CreateContext();
+        var handler = new RecordingHandler("""
+            {
+              "id": "28147497671995",
+              "response": "1",
+              "response_text": "Approved",
+              "status": "approved"
+            }
+            """);
+        var service = CreateService(dbContext, handler);
+        var organizationId = Guid.NewGuid();
+        AddActiveMerchant(dbContext, organizationId);
+
+        await service.CreateSaleAsync(
+            organizationId,
+            Guid.NewGuid(),
+            new PaymentSaleRequest(
+                "tok_v5_schema",
+                1m,
+                "USD",
+                OrderId: "TEST-1001",
+                PostalCode: "60601"),
+            CancellationToken.None);
+
+        Assert.Contains("\"zip\":\"60601\"", handler.RequestBody);
+        Assert.DoesNotContain("postal_code", handler.RequestBody);
+        Assert.DoesNotContain("merchant_defined_fields", handler.RequestBody);
+        Assert.DoesNotContain("im1_", handler.RequestBody);
+    }
+
+    [Fact]
     public async Task CreateSaleAsync_records_approved_transaction_ledger_entry_and_domain_event()
     {
         await using var dbContext = CreateContext();
