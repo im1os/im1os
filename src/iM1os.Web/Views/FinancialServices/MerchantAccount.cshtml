@@ -1,4 +1,5 @@
 @model iM1os.Application.FinancialServices.Merchant.CompanyMerchantAccountWorkspace
+@using System.Text.Json
 @using Microsoft.Extensions.Hosting
 @inject Microsoft.AspNetCore.Hosting.IWebHostEnvironment HostEnvironment
 @inject IConfiguration Configuration
@@ -9,6 +10,14 @@
     var canEdit = app.CanEdit;
     var sandboxApplicationFixtureEnabled = HostEnvironment.IsDevelopment() ||
         Configuration.GetValue<bool>("NmiPayments:EnableSandboxApplicationFixture");
+    var configuredLegalConsentHelperUrl = Configuration["NmiPayments:LegalConsentHelperUrl"] ??
+        "https://sandbox.signup.nmi.com/build/consent-helper-1.0.0.umd.js";
+    var legalConsentHelperUrlIsAllowed =
+        Uri.TryCreate(configuredLegalConsentHelperUrl, UriKind.Absolute, out var legalConsentHelperUri) &&
+        legalConsentHelperUri.Scheme == Uri.UriSchemeHttps &&
+        (legalConsentHelperUri.Host.Equals("sandbox.signup.nmi.com", StringComparison.OrdinalIgnoreCase) ||
+         legalConsentHelperUri.Host.Equals("signup.nmi.com", StringComparison.OrdinalIgnoreCase));
+    var legalConsentHelperUrl = legalConsentHelperUrlIsAllowed ? legalConsentHelperUri!.AbsoluteUri : null;
     var saveLabel = app.Status is "Submitted" or "Approved" ? "Save Changes" : "Save Draft";
     var hero = new IM1WorkspaceHeroModel(
         "Merchant Account",
@@ -92,23 +101,67 @@
                     <p>An authorized company signer must complete this consent before iM1 can submit the application to NMI.</p>
                 </div>
             </header>
-            @if (!string.IsNullOrWhiteSpace(Model.LegalConsent.LegalConsentUrl))
+            @if (!string.IsNullOrWhiteSpace(Model.LegalConsent.LegalConsentUrl) && legalConsentHelperUrl is not null)
             {
-                <div class="im1-action-row">
-                    <a class="im1-button im1-button-secondary"
-                       href="@Model.LegalConsent.LegalConsentUrl"
-                       target="_blank"
-                       rel="noopener noreferrer">Open consent in a secure window</a>
-                </div>
-                <iframe title="NMI legal consent"
-                        src="@Model.LegalConsent.LegalConsentUrl"
-                        referrerpolicy="no-referrer"
-                        style="width:100%;min-height:680px;border:1px solid var(--im1-border-color);border-radius:12px"></iframe>
-                <form method="post" asp-controller="FinancialServices" asp-action="CompleteNmiLegalConsent">
+                <div id="nmi-legal-consent-widget"
+                     style="width:100%;min-height:680px;border:1px solid var(--im1-border-color);border-radius:12px;overflow:hidden"></div>
+                <p id="nmi-legal-consent-status" class="im1-form-help" role="status">
+                    Complete every required signature in the NMI consent form. Submission unlocks only after NMI confirms acceptance.
+                </p>
+                <form id="nmi-legal-consent-form" method="post" asp-controller="FinancialServices" asp-action="CompleteNmiLegalConsent">
                     @Html.AntiForgeryToken()
                     <p class="im1-form-help">iM1 records only the completion time. Signatures and consent documents remain with NMI.</p>
-                    <button class="im1-button im1-button-primary" type="submit">I completed NMI legal consent</button>
+                    <button id="nmi-legal-consent-submit"
+                            class="im1-button im1-button-primary"
+                            type="submit"
+                            disabled
+                            aria-disabled="true">Submit application to NMI</button>
                 </form>
+                <script src="@legalConsentHelperUrl"></script>
+                <script>
+                    (() => {
+                        const consentUrl = @Html.Raw(JsonSerializer.Serialize(Model.LegalConsent.LegalConsentUrl));
+                        const form = document.getElementById("nmi-legal-consent-form");
+                        const submitButton = document.getElementById("nmi-legal-consent-submit");
+                        const status = document.getElementById("nmi-legal-consent-status");
+
+                        const showLoadError = () => {
+                            submitButton.disabled = true;
+                            submitButton.setAttribute("aria-disabled", "true");
+                            status.textContent = "NMI legal consent could not be loaded. Refresh the page or contact iM1 support.";
+                        };
+
+                        form.addEventListener("submit", event => {
+                            if (submitButton.disabled) {
+                                event.preventDefault();
+                            }
+                        });
+
+                        if (!window.LegalConsent || typeof window.LegalConsent.load !== "function") {
+                            showLoadError();
+                            return;
+                        }
+
+                        try {
+                            window.LegalConsent.load(
+                                consentUrl,
+                                { selector: "#nmi-legal-consent-widget", overlay: "transparent" },
+                                {
+                                    onAccepted: result => {
+                                        const accepted = result?.accepted === true;
+                                        submitButton.disabled = !accepted;
+                                        submitButton.setAttribute("aria-disabled", accepted ? "false" : "true");
+                                        status.textContent = accepted
+                                            ? "NMI confirmed legal consent. You may now submit the application."
+                                            : "Complete every required signature before submitting the application.";
+                                    },
+                                    onError: showLoadError
+                                });
+                        } catch {
+                            showLoadError();
+                        }
+                    })();
+                </script>
             }
             else
             {

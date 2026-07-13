@@ -390,6 +390,33 @@ public sealed class MerchantAccountServiceTests
     }
 
     [Fact]
+    public async Task Nmi_legal_consent_rejection_clears_the_local_completion_marker()
+    {
+        await using var dbContext = CreateContext();
+        var provider = new RecordingPartnerProvider
+        {
+            FirstSubmitException = new InvalidOperationException("NMI legal consent is not complete.")
+        };
+        var service = CreateService(dbContext, provider);
+        var organizationId = Guid.NewGuid();
+        var actorId = Guid.NewGuid();
+        var submitted = await SubmitAsync(service, organizationId, actorId);
+        await service.ApproveApplicationAsync(organizationId, submitted.MerchantAccountId, actorId, CancellationToken.None);
+
+        await Assert.ThrowsAsync<InvalidOperationException>(() => service.CompleteLegalConsentAsync(
+            organizationId,
+            actorId,
+            CancellationToken.None));
+
+        var relationship = await dbContext.MerchantProviderRelationships.IgnoreQueryFilters().SingleAsync();
+        var merchantAccount = await dbContext.MerchantAccounts.IgnoreQueryFilters().SingleAsync();
+        Assert.Null(relationship.LegalConsentCompletedAtUtc);
+        Assert.Null(relationship.ProviderApplicationSubmittedAtUtc);
+        Assert.Equal(MerchantAccountStatuses.LegalConsentRequired, merchantAccount.Status);
+        Assert.False(merchantAccount.PaymentsEnabled);
+    }
+
+    [Fact]
     public async Task Corrected_submission_payload_versions_the_persisted_update_key_after_definitive_validation()
     {
         await using var dbContext = CreateContext();

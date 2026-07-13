@@ -12,6 +12,8 @@ public sealed class NmiPaymentOptions
 
     public string SignUpBaseUrl { get; set; } = "https://sandbox.signup.nmi.com/api/v1/";
 
+    public string LegalConsentHelperUrl { get; set; } = "https://sandbox.signup.nmi.com/build/consent-helper-1.0.0.umd.js";
+
     public string? SignUpPackageId { get; set; }
 
     public string? SignUpPricingType { get; set; }
