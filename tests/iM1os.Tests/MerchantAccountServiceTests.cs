@@ -2,6 +2,7 @@ using iM1os.Application.FinancialServices.Merchant;
 using iM1os.Application.FinancialServices.Providers;
 using iM1os.Application.Payments;
 using iM1os.Domain.FinancialServices.Merchant;
+using iM1os.Infrastructure.FinancialServices.Providers;
 using iM1os.Infrastructure.Persistence;
 using iM1os.Infrastructure.Services;
 using Microsoft.EntityFrameworkCore;
@@ -87,6 +88,37 @@ public sealed class MerchantAccountServiceTests
         Assert.Equal(provider.CreateIdempotencyKeys[0], provider.CreateIdempotencyKeys[1]);
         Assert.Single(provider.CreateIdempotencyKeys.Distinct());
         Assert.Single(await dbContext.MerchantProviderRelationships.IgnoreQueryFilters().ToListAsync());
+    }
+
+    [Fact]
+    public async Task Safe_NMI_validation_error_is_persisted_without_provider_response_values()
+    {
+        await using var dbContext = CreateContext();
+        var safeException = new NmiValidationException(
+            System.Net.HttpStatusCode.UnprocessableEntity,
+            ["fld_federal_tax_id"],
+            ["invalid_format"],
+            ["Value format is invalid."]);
+        var provider = new RecordingPartnerProvider { CreateException = safeException };
+        var service = CreateService(dbContext, provider);
+        var organizationId = Guid.NewGuid();
+        var actorId = Guid.NewGuid();
+        var submitted = await SubmitAsync(service, organizationId, actorId);
+
+        await Assert.ThrowsAsync<NmiValidationException>(() => service.ApproveApplicationAsync(
+            organizationId,
+            submitted.MerchantAccountId,
+            actorId,
+            CancellationToken.None));
+        var relationship = await dbContext.MerchantProviderRelationships.IgnoreQueryFilters().SingleAsync();
+
+        Assert.Equal(safeException.Message, relationship.LastProviderError);
+        Assert.Contains("HTTP 422", relationship.LastProviderError, StringComparison.Ordinal);
+        Assert.Contains("fld_federal_tax_id", relationship.LastProviderError, StringComparison.Ordinal);
+        Assert.Contains("invalid_format", relationship.LastProviderError, StringComparison.Ordinal);
+        Assert.DoesNotContain("821234567", relationship.LastProviderError, StringComparison.Ordinal);
+        Assert.DoesNotContain("111223333", relationship.LastProviderError, StringComparison.Ordinal);
+        Assert.DoesNotContain("1234567890", relationship.LastProviderError, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -385,6 +417,7 @@ public sealed class MerchantAccountServiceTests
         public bool FailFirstSubmit { get; init; }
         public bool FailFirstTokenizationCredential { get; init; }
         public bool TimeoutFirstTokenizationCredential { get; init; }
+        public Exception? CreateException { get; init; }
         public string RefreshStatus { get; init; } = MerchantAccountStatuses.Active;
         public int CreateCalls { get; private set; }
         public int SubmitCalls { get; private set; }
@@ -414,6 +447,10 @@ public sealed class MerchantAccountServiceTests
         {
             CreateCalls++;
             CreateIdempotencyKeys.Add(idempotencyKey);
+            if (CreateException is not null)
+            {
+                throw CreateException;
+            }
             if (FailFirstCreate && CreateCalls == 1)
             {
                 throw new HttpRequestException("Simulated NMI application timeout.");

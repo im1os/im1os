@@ -4,6 +4,7 @@ using iM1os.Application.FinancialServices.Merchant;
 using iM1os.Application.FinancialServices.Providers;
 using iM1os.Domain.FinancialServices.Events;
 using iM1os.Domain.FinancialServices.Merchant;
+using iM1os.Infrastructure.FinancialServices.Providers;
 using Microsoft.EntityFrameworkCore;
 
 namespace iM1os.Infrastructure.Services;
@@ -1399,10 +1400,16 @@ public sealed class MerchantAccountService(
 
     private static string SafeProviderError(Exception exception, string fallback)
     {
-        if (exception.Message.Contains("legal consent", StringComparison.OrdinalIgnoreCase) ||
+        if (exception is NmiValidationException ||
+            exception.Message.Contains("legal consent", StringComparison.OrdinalIgnoreCase) ||
             exception.Message.Contains("reconciliation", StringComparison.OrdinalIgnoreCase))
         {
             return exception.Message;
+        }
+
+        if (exception is HttpRequestException { StatusCode: not null } httpException)
+        {
+            return $"{fallback.TrimEnd('.')} (HTTP {(int)httpException.StatusCode.Value}).";
         }
 
         return fallback;

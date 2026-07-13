@@ -60,10 +60,10 @@ public sealed class NmiPartnerProvider(
         var createResponseJson = await createResponse.Content.ReadAsStringAsync(cancellationToken);
         if (!createResponse.IsSuccessStatusCode)
         {
-            throw new HttpRequestException(
-                $"NMI Sign-Up application creation failed with HTTP {(int)createResponse.StatusCode}.",
-                null,
-                createResponse.StatusCode);
+            throw NmiValidationException.FromResponse(
+                createResponse.StatusCode,
+                createResponseJson,
+                request);
         }
 
         using var createDocument = JsonDocument.Parse(createResponseJson);
@@ -112,9 +112,7 @@ public sealed class NmiPartnerProvider(
         var submitResponseJson = await submitResponse.Content.ReadAsStringAsync(cancellationToken);
         if (!submitResponse.IsSuccessStatusCode)
         {
-            var errorMessage = NmiErrorMessage(submitResponseJson);
-            if (!string.IsNullOrWhiteSpace(errorMessage) &&
-                errorMessage.Contains("already been submitted", StringComparison.OrdinalIgnoreCase))
+            if (submitResponseJson.Contains("already been submitted", StringComparison.OrdinalIgnoreCase))
             {
                 return new PartnerMerchantCreateResult(
                     ProviderCode,
@@ -126,13 +124,16 @@ public sealed class NmiPartnerProvider(
                     providerReference);
             }
 
-            throw new HttpRequestException(
-                submitResponse.StatusCode == System.Net.HttpStatusCode.UnprocessableEntity &&
-                errorMessage?.Contains("consent", StringComparison.OrdinalIgnoreCase) == true
-                    ? "NMI legal consent is not complete."
-                    : $"NMI Sign-Up application submission failed with HTTP {(int)submitResponse.StatusCode}.",
-                null,
-                submitResponse.StatusCode);
+            if (submitResponse.StatusCode == System.Net.HttpStatusCode.UnprocessableEntity &&
+                submitResponseJson.Contains("consent", StringComparison.OrdinalIgnoreCase))
+            {
+                throw new InvalidOperationException("NMI legal consent is not complete.");
+            }
+
+            throw NmiValidationException.FromResponse(
+                submitResponse.StatusCode,
+                submitResponseJson,
+                request);
         }
 
         return ToMerchantCreateResult(providerReference, submitResponseJson);
@@ -497,39 +498,6 @@ public sealed class NmiPartnerProvider(
                 : x)
             .Where(x => x.Value is not null && (x.Value is not IDictionary<string, object?> child || child.Count > 0))
             .ToDictionary(x => x.Key, x => x.Value);
-    }
-
-    private static string? NmiErrorMessage(string responseJson)
-    {
-        try
-        {
-            using var document = JsonDocument.Parse(responseJson);
-            var message = JsonValue(document.RootElement, "message") ??
-                JsonValue(document.RootElement, "error") ??
-                JsonValue(document.RootElement, "response_text");
-            if (document.RootElement.TryGetProperty("errors", out var errors) &&
-                errors.ValueKind == JsonValueKind.Array)
-            {
-                var details = errors
-                    .EnumerateArray()
-                    .Select(error => error.ValueKind == JsonValueKind.String ? error.GetString() : error.ToString())
-                    .Where(error => !string.IsNullOrWhiteSpace(error))
-                    .Take(3)
-                    .ToArray();
-                if (details.Length > 0)
-                {
-                    return string.IsNullOrWhiteSpace(message)
-                        ? string.Join("; ", details)
-                        : $"{message}: {string.Join("; ", details)}";
-                }
-            }
-
-            return message;
-        }
-        catch (JsonException)
-        {
-            return string.IsNullOrWhiteSpace(responseJson) ? null : responseJson;
-        }
     }
 
     private static string? JsonValue(JsonElement element, string propertyName)
